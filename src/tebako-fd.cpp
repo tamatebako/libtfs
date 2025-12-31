@@ -29,12 +29,12 @@
 
 #include <tebako-pch.h>
 #include <tebako-pch-pp.h>
-#include <tebako-common.h>
-#include <tebako-io.h>
+#include <tebako/fs/common.h>
+#include <tebako/fs/io.h>
 #include <tebako-io-inner.h>
 #include <tebako-io-root.h>
-#include <tebako-fd.h>
-#include <tebako-memfs.h>
+#include <tebako/fs/internal/fd_table.h>
+#include <tebako/fs/memfs.h>
 
 using namespace std;
 

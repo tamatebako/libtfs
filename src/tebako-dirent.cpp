@@ -27,16 +27,38 @@
  *
  */
 
+// CRITICAL: Include dirent.h BEFORE PCH
+#include <dirent.h>
+
 #include <tebako-pch.h>
 #include <tebako-pch-pp.h>
-#include <tebako-common.h>
+#include <tebako/fs/common.h>
 #include <tebako-io-inner.h>
 #include <tebako-io-root.h>
-#include <tebako-fd.h>
-#include <tebako-dirent.h>
-#include <tebako-memfs.h>
+#include <tebako/fs/internal/fd_table.h>
+#include <tebako/fs/dirent.h>
+#include <tebako/fs/memfs.h>
+
+// Ensure IFTODT is defined (some systems don't have it)
+#ifndef IFTODT
+#define IFTODT(mode) (((mode) & 0170000) >> 12)
+#endif
 
 using namespace std;
+
+// Declare the C helper function from tebako-dirent-helper.c
+extern "C" {
+  void populate_dirent_buffer_c(void* buffer, ino_t ino, off_t offset,
+                                mode_t mode, const char* name, size_t name_len, size_t reclen);
+}
+
+// C++ wrapper that uses the C function
+void tebako::populate_tebako_dirent(tebako::tebako_dirent& entry, ino_t ino, off_t offset,
+                                     mode_t mode, const char* name, size_t name_len) {
+#ifndef RB_W32
+  populate_dirent_buffer_c(entry.e(), ino, offset, mode, name, name_len, sizeof(tebako::tebako_dirent));
+#endif
+}
 
 namespace tebako {
 

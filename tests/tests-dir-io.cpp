@@ -28,7 +28,7 @@
  */
 
 #include "tests.h"
-#include <tebako-common.h>
+#include <tebako/fs/common.h>
 
 namespace {
 class DirIOTests : public testing::Test {

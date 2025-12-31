@@ -72,8 +72,8 @@
 #define min(a, b) (((a) < (b)) ? (a) : (b))
 #endif
 
-#include <tebako-io.h>
-#include <tebako-io-rb-w32-inner.h>
+#include <tebako/fs/io.h>
+#include <tebako/fs/ruby/io_rb_w32_inner.h>
 
 #if defined(_WIN32) && defined(RB_W32)
 

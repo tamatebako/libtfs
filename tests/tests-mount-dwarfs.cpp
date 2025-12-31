@@ -52,7 +52,7 @@
 #undef closedir
 #endif
 
-#include <tebako-mount-table.h>
+#include <tebako/fs/internal/mount_table.h>
 
 namespace tebako {
 

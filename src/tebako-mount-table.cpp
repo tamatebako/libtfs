@@ -30,7 +30,7 @@
 #include <tebako-pch.h>
 #include <tebako-pch-pp.h>
 
-#include <tebako-mount-table.h>
+#include <tebako/fs/internal/mount_table.h>
 
 namespace tebako {
 sync_tebako_mount_table& sync_tebako_mount_table::get_tebako_mount_table(void)

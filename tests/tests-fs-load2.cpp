@@ -54,9 +54,9 @@
 struct tebako_dirent;
 
 #include <tebako-io-inner.h>
-#include <tebako-memfs.h>
-#include <tebako-memfs-table.h>
-#include <tebako-mount-table.h>
+#include <tebako/fs/memfs.h>
+#include <tebako/fs/internal/memfs_table.h>
+#include <tebako/fs/internal/mount_table.h>
 
 namespace {
 class LoadTests2 : public ::testing::Test {

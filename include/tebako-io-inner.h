@@ -61,6 +61,6 @@ const int DWARFS_S_LINK_RELATIVE = -5;
 #ifdef _WIN32
 struct tebako_dirent;
 #else
-union tebako_dirent;
+struct tebako_dirent;
 #endif
 }  // namespace tebako

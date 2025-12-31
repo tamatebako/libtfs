@@ -75,3 +75,11 @@ typedef SSIZE_T ssize_t;
 #include <sys/file.h>
 #include <ftw.h>
 #endif
+
+// CRITICAL: Create typedef using decltype to capture complete type
+// This avoids forward declaration issues
+#ifndef _WIN32
+// Use decltype on a dereferenced pointer to capture the complete type
+// The expression is never evaluated (unevaluated context), just its type is used
+using tebako_system_dirent_t = decltype(*static_cast<struct dirent*>(static_cast<void*>(0)));
+#endif

@@ -1,8 +1,8 @@
 /**
  *
- * Copyright (c) 2021-2025 [Ribose Inc](https://www.ribose.com).
+ * Copyright (c) 2022-2025 [Ribose Inc](https://www.ribose.com).
  * All rights reserved.
- * This file is a part of the Tebako project.
+ * This file is a part of the Tebako project. (libdwarfs-wr)
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -29,31 +29,40 @@
 
 #pragma once
 
-#include <cstddef>
-#include <string>
+#ifdef RB_W32
+#ifdef __cplusplus
+extern "C" {
+#endif  // __cplusplus
+char* rb_w32_ugetcwd(char*, int);
+int rb_w32_uchdir(const char*);
+int rb_w32_umkdir(const char*, int);
+int rb_w32_urmdir(const char*);
+int rb_w32_uunlink(const char*);
+int rb_w32_access(const char*, int);
 
-#include "dwarfs/mmif.h"
+int rb_w32_uopen(const char*, int, ...);
+int rb_w32_close(int);
+ssize_t rb_w32_read(int, void*, size_t);
+ssize_t rb_w32_pread(int, void*, size_t, size_t);
+off_t rb_w32_lseek(int, off_t, int);
 
-namespace tebako {
+int rb_w32_stati128(const char*, struct stati128*);
+int rb_w32_lstati128(const char*, struct stati128*);
+int rb_w32_fstati128(int, struct stati128*);
 
-class mfs : public dwarfs::mmif {
- public:
-  mfs(const void* addr, size_t size);
-  ~mfs() = default;
+#if defined(RUBY_WIN32_DIR_H) || defined(RB_W32_DIR_DEFINED)
+DIR* rb_w32_uopendir(const char*);
+struct direct* rb_w32_readdir(DIR*, void*);
+long rb_w32_telldir(DIR*);
+void rb_w32_seekdir(DIR*, long);
+void rb_w32_rewinddir(DIR*);
+void rb_w32_closedir(DIR*);
+#endif
 
-  void const* addr() const override;
-  size_t size() const override;
+int flock(int, int);
 
-  std::error_code lock(dwarfs::file_off_t offset, size_t size) override;
-  std::error_code release(dwarfs::file_off_t offset, size_t size) override;
-  std::error_code release_until(dwarfs::file_off_t offset) override;
+#ifdef __cplusplus
+}
+#endif  // __cplusplus
 
-  std::filesystem::path const& path() const override;
-
- private:
-  size_t size_;
-  const void* addr_;
-  off_t const page_size_;
-};
-
-}  // namespace tebako
+#endif  // RB_W32

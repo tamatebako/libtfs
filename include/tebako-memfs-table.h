@@ -40,7 +40,7 @@ typedef std::map<uint32_t, std::shared_ptr<memfs>> tebako_memfs_table;
 
 class sync_tebako_memfs_table {
  private:
-  folly::Synchronized<tebako_memfs_table> s_tebako_memfs_table;
+  tebako::Synchronized<tebako_memfs_table> s_tebako_memfs_table;
 
  public:
   static sync_tebako_memfs_table& get_tebako_memfs_table(void);

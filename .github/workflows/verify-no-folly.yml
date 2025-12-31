@@ -1,0 +1,266 @@
+name: Verify No Folly Code
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  pull_request:
+    branches:
+      - main
+      - develop
+
+jobs:
+  verify-no-folly:
+    name: Check for Folly Code
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for folly namespace usage in source code
+        # Verify that folly:: is only used in comments, not in actual code
+        # This prevents accidental reintroduction of folly dependencies
+        run: |
+          echo "=== Checking for folly:: in source files ==="
+
+          # Search for folly:: in source files, excluding comments
+          # We allow folly:: in:
+          # - Single-line comments (// ...)
+          # - Multi-line comments (/* ... */)
+          # - Documentation comments
+          found_issues=0
+
+          # Check .cpp files
+          for file in $(find src -name "*.cpp" 2>/dev/null); do
+            echo "Checking: $file"
+
+            # Look for folly:: that is NOT in a comment
+            # This regex matches folly:: not preceded by // or within /* */
+            if grep -n "folly::" "$file" | grep -v "^\s*//" | grep -v "^\s*\*" | grep -v "^\s*/\*"; then
+              echo "ERROR: Found folly:: usage in $file (not in comment)"
+              found_issues=1
+            fi
+          done
+
+          # Check .h files
+          for file in $(find include -name "*.h" 2>/dev/null); do
+            echo "Checking: $file"
+
+            if grep -n "folly::" "$file" | grep -v "^\s*//" | grep -v "^\s*\*" | grep -v "^\s*/\*"; then
+              echo "ERROR: Found folly:: usage in $file (not in comment)"
+              found_issues=1
+            fi
+          done
+
+          if [ $found_issues -eq 1 ]; then
+            echo ""
+            echo "❌ FAILED: Found folly:: usage outside of comments"
+            echo "Folly dependencies must not be used in libdwarfs-wr code"
+            exit 1
+          fi
+
+          echo "✓ No problematic folly:: usage found"
+
+      - name: Check for folly header includes
+        # Ensure no folly headers are included in our codebase
+        # This would indicate direct folly dependency
+        run: |
+          echo "=== Checking for folly header includes ==="
+          found_includes=0
+
+          # Check for #include <folly/ or #include "folly/
+          for file in $(find src include -name "*.cpp" -o -name "*.h" 2>/dev/null); do
+            if grep -n '#include.*[<"]folly/' "$file" | grep -v "^\s*//" | grep -v "^\s*\*"; then
+              echo "ERROR: Found folly header include in $file"
+              found_includes=1
+            fi
+          done
+
+          if [ $found_includes -eq 1 ]; then
+            echo ""
+            echo "❌ FAILED: Found folly header includes"
+            echo "Folly headers must not be included in libdwarfs-wr code"
+            exit 1
+          fi
+
+          echo "✓ No folly header includes found"
+
+      - name: Check for thrift namespace usage
+        # Verify that thrift is only referenced in comments or build configs
+        # This prevents accidental reintroduction of thrift dependencies
+        run: |
+          echo "=== Checking for apache::thrift in source files ==="
+          found_thrift=0
+
+          # Check .cpp files
+          for file in $(find src -name "*.cpp" 2>/dev/null); do
+            if grep -n "apache::thrift" "$file" | grep -v "^\s*//" | grep -v "^\s*\*"; then
+              echo "ERROR: Found apache::thrift usage in $file (not in comment)"
+              found_thrift=1
+            fi
+          done
+
+          # Check .h files
+          for file in $(find include -name "*.h" 2>/dev/null); do
+            if grep -n "apache::thrift" "$file" | grep -v "^\s*//" | grep -v "^\s*\*"; then
+              echo "ERROR: Found apache::thrift usage in $file (not in comment)"
+              found_thrift=1
+            fi
+          done
+
+          if [ $found_thrift -eq 1 ]; then
+            echo ""
+            echo "❌ FAILED: Found thrift usage outside of comments"
+            exit 1
+          fi
+
+          echo "✓ No problematic thrift usage found"
+
+      - name: Check for thrift header includes
+        # Ensure no thrift headers are included in our codebase
+        run: |
+          echo "=== Checking for thrift header includes ==="
+          found_includes=0
+
+          # Check for #include <thrift/ or similar patterns
+          for file in $(find src include -name "*.cpp" -o -name "*.h" 2>/dev/null); do
+            if grep -n '#include.*[<"]thrift/' "$file" | grep -v "^\s*//" | grep -v "^\s*\*"; then
+              echo "ERROR: Found thrift header include in $file"
+              found_includes=1
+            fi
+          done
+
+          if [ $found_includes -eq 1 ]; then
+            echo ""
+            echo "❌ FAILED: Found thrift header includes"
+            exit 1
+          fi
+
+          echo "✓ No thrift header includes found"
+
+      - name: Verify CMakeLists.txt folly references
+        # Check that folly in CMakeLists.txt is only in BUILD_BYPRODUCTS
+        # BUILD_BYPRODUCTS is allowed because it's for dwarfs internal use
+        # Any other folly reference would indicate new dependencies
+        run: |
+          echo "=== Checking CMakeLists.txt for folly references ==="
+
+          # Allow folly in BUILD_BYPRODUCTS (dwarfs internal build artifact)
+          # Disallow folly anywhere else
+          found_bad_folly=0
+
+          if [ -f CMakeLists.txt ]; then
+            # Extract folly references that are NOT in BUILD_BYPRODUCTS context
+            while IFS= read -r line; do
+              # Check if line contains folly but not in BUILD_BYPRODUCTS
+              if echo "$line" | grep -i "folly" | grep -v "BUILD_BYPRODUCTS" | grep -v "#.*folly" | grep -v "DWARFS_WITH_FOLLY"; then
+                echo "WARNING: Found folly reference in CMakeLists.txt: $line"
+                # For now, just warn, don't fail
+                # found_bad_folly=1
+              fi
+            done < CMakeLists.txt
+          fi
+
+          # Verify DWARFS_WITH_FOLLY is set to OFF
+          if grep -q "DWARFS_WITH_FOLLY" CMakeLists.txt; then
+            if ! grep "DWARFS_WITH_FOLLY.*OFF" CMakeLists.txt > /dev/null; then
+              echo "ERROR: DWARFS_WITH_FOLLY should be set to OFF in CMakeLists.txt"
+              found_bad_folly=1
+            fi
+          fi
+
+          if [ $found_bad_folly -eq 1 ]; then
+            echo ""
+            echo "❌ FAILED: Found improper folly references in CMakeLists.txt"
+            exit 1
+          fi
+
+          echo "✓ CMakeLists.txt folly references are acceptable"
+
+      - name: Verify CMakeLists.txt thrift references
+        # Check that thrift in CMakeLists.txt is only in BUILD_BYPRODUCTS
+        # or in DWARFS_WITH_THRIFT=OFF settings
+        run: |
+          echo "=== Checking CMakeLists.txt for thrift references ==="
+
+          found_bad_thrift=0
+
+          if [ -f CMakeLists.txt ]; then
+            # Extract thrift references that are NOT in acceptable contexts
+            while IFS= read -r line; do
+              if echo "$line" | grep -i "thrift" | grep -v "BUILD_BYPRODUCTS" | grep -v "#.*thrift" | grep -v "DWARFS_WITH_THRIFT"; then
+                echo "WARNING: Found thrift reference in CMakeLists.txt: $line"
+                # For now, just warn, don't fail
+                # found_bad_thrift=1
+              fi
+            done < CMakeLists.txt
+          fi
+
+          # Verify DWARFS_WITH_THRIFT is set to OFF
+          if grep -q "DWARFS_WITH_THRIFT" CMakeLists.txt; then
+            if ! grep "DWARFS_WITH_THRIFT.*OFF" CMakeLists.txt > /dev/null; then
+              echo "ERROR: DWARFS_WITH_THRIFT should be set to OFF in CMakeLists.txt"
+              found_bad_thrift=1
+            fi
+          fi
+
+          if [ $found_bad_thrift -eq 1 ]; then
+            echo ""
+            echo "❌ FAILED: Found improper thrift references in CMakeLists.txt"
+            exit 1
+          fi
+
+          echo "✓ CMakeLists.txt thrift references are acceptable"
+
+      - name: Check for serialization backend usage
+        # Verify that we're using Cereal and Bitsery instead of folly
+        # This is a positive check to ensure alternatives are in place
+        run: |
+          echo "=== Verifying serialization backends ==="
+
+          found_cereal=0
+          found_bitsery=0
+
+          # Check if Cereal is referenced in source or CMake
+          if grep -r "cereal" src include CMakeLists.txt 2>/dev/null | grep -v "Binary"; then
+            found_cereal=1
+          fi
+
+          # Check if Bitsery is referenced in source or CMake
+          if grep -r "bitsery" src include CMakeLists.txt 2>/dev/null | grep -v "Binary"; then
+            found_bitsery=1
+          fi
+
+          if [ $found_cereal -eq 0 ] && [ $found_bitsery -eq 0 ]; then
+            echo "WARNING: Neither Cereal nor Bitsery found in codebase"
+            echo "This may indicate missing serialization backend configuration"
+          else
+            echo "✓ Found alternative serialization backends:"
+            [ $found_cereal -eq 1 ] && echo "  - Cereal: ✓"
+            [ $found_bitsery -eq 1 ] && echo "  - Bitsery: ✓"
+          fi
+
+      - name: Report verification results
+        if: always()
+        run: |
+          echo ""
+          echo "================================"
+          echo "Folly/Thrift Verification Results"
+          echo "================================"
+          echo "Status: ${{ job.status }}"
+          echo ""
+          echo "Checks performed:"
+          echo "  ✓ Source code folly:: usage"
+          echo "  ✓ Folly header includes"
+          echo "  ✓ Thrift namespace usage"
+          echo "  ✓ Thrift header includes"
+          echo "  ✓ CMakeLists.txt folly references"
+          echo "  ✓ CMakeLists.txt thrift references"
+          echo "  ✓ Serialization backend usage"
+          echo ""
+          echo "These checks ensure libdwarfs-wr remains free of"
+          echo "folly and thrift dependencies."

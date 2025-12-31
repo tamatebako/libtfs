@@ -67,3 +67,12 @@ tests/test_files/o-link-outside-of-memfs
 
 # Test files
 Testing/
+
+# Generated test fixtures (created by scripts)
+tests/fixtures/**/*.zip
+tests/fixtures/**/*.dwarfs
+tests/fixtures/**/*.squashfs
+tests/fixtures/**/*.sqfs
+
+# CMake backup files
+CMakeLists.txt.bak*

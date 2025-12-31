@@ -29,12 +29,12 @@
 
 #include <tebako-pch.h>
 #include <tebako-pch-pp.h>
-#include <tebako-common.h>
+#include <tebako/fs/common.h>
 #include <tebako-io-inner.h>
 #include <tebako-io-root.h>
-#include <tebako-memfs.h>
-#include <tebako-memfs-table.h>
-#include <tebako-mount-table.h>
+#include <tebako/fs/memfs.h>
+#include <tebako/fs/internal/memfs_table.h>
+#include <tebako/fs/internal/mount_table.h>
 
 #include <tebako-cmdline.h>
 

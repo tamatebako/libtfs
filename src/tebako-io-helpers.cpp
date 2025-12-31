@@ -29,7 +29,7 @@
 
 #include <tebako-pch.h>
 #include <tebako-pch-pp.h>
-#include <tebako-common.h>
+#include <tebako/fs/common.h>
 
 char* tebako_path_assign(tebako_path_t out, const std::string& in)
 {
@@ -130,9 +130,9 @@ class tebako_path_s_l : public tebako_path_s {
   }
 };
 
-static folly::Synchronized<tebako_path_s*> tebako_cwd{NULL};
+static tebako::Synchronized<tebako_path_s*> tebako_cwd{NULL};
 
-void tebako_init_cwd(dwarfs::logger& lgr, bool need_debug_policy)
+void tebako_init_cwd(dwarfs::stream_logger& lgr, bool need_debug_policy)
 {
   auto locked = tebako_cwd.wlock();
   // *locked = new tebako_path_s;

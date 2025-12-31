@@ -58,7 +58,7 @@ if(MSVC)
   endif(NOT VCPKG_TARGET_TRIPLET)
 endif(MSVC)
 
-project(libdwarfs-wr VERSION ${LIBDWARFS_WR_VERSION})
+project(libtfs VERSION ${LIBDWARFS_WR_VERSION})
 
 option(PREFER_SYSTEM_GTEST "Use system Google test" OFF)
 option(WITH_TESTS "Find Google test, install INCBIN, build test applications" ON)
@@ -273,13 +273,16 @@ set(Boost_LINK_STATIC       ON)
 # a package configuration file for use with find_package's config mode.
 # This configuration  file enforces -lz -lbz2 -llzma and it is an issue for us on Alpine/clang
 # See https://cmake.org/cmake/help/latest/module/FindBoost.html#boost-cmake for details
-set(Boost_NO_BOOST_CMAKE    ON)
+# set(Boost_NO_BOOST_CMAKE    ON)
 
 set(USE_STATIC_DEPS_ON_UNIX ON)
 set(GFLAGS_SHARED          OFF)
 set(CMAKE_CXX_STANDARD      20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS   OFF)
+
+# Find DwarFS via CMake package config (provided by vcpkg)
+find_package(dwarfs CONFIG REQUIRED)
 
 # This is due to a bug in folly's Portability.h
 # Adopted 'as is' from Dwarfs CMake script
@@ -298,572 +301,136 @@ endif(CMAKE_BUILD_TYPE STREQUAL Debug)
 
 
 
-# ...................................................................
-# External projects
+# ~~~~~~~~~~~~~~~~~~~~~~~~~ Library ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-def_ext_prj_g(DWARFS "tebako-v0.9.0")
-def_ext_prj_g(INCBIN "6e576cae5ab5810f25e2631f2e0b80cbe7dc8cbf")
+set(__LIBDL "")
+set(__LIBJEMALLOC "")
+set(__LIBXXHASH "")
+set(__LIBZSTD "")
+set(__LIBFMT "")
+set(__LIBARCHIVE "")
+set(__LIBSSL "")
+set(__LIBCRYPTO "")
+set(__LIBBITSTRING "")
+set(__LIBICUUC "")
+set(__LIBICUI18N "")
+set(__LIBICUDATA "")
+set(__LIBZLIB "")
+set(__LIBOPENSSL_ROOT "")
+set(__LIBSYSTEM_ZLIB "")
+set(__LIBANDROID_NDK "")
+set(__LIBadaliba "")
+set(_LIBEH "")
+set(_LIBNAME "_LIB")
 
-if(NOT IS_WINDOWS)
-  find_library(_LIBGLOG "libglog.a")
-  if(${_LIBGLOG} STREQUAL "_LIBGLOG-NOTFOUND")
-    message(STATUS "glog static library was not found, building locally")
-    set(GLOG_VERSION "0.7.1")
-    set(WITH_GLOG_BUILD ON)
+# DwarFS libraries for test linking
+# Note: These are only needed by tests that actually mount filesystems (test_c_api)
+set(__LIBDWARFS_COMMON "${DWARFS_BINARY_DIR}/libdwarfs_common.a")
+set(__LIBDWARFS_READER "${DWARFS_BINARY_DIR}/libdwarfs_reader.a")
+set(__LIBDWARFS_DECOMPRESSOR "${DWARFS_BINARY_DIR}/libdwarfs_decompressor.a")
+set(__LIBDWARFS_COMPRESSOR "${DWARFS_BINARY_DIR}/libdwarfs_compressor.a")
+set(__LIBFLATBUFFERS "${DWARFS_BINARY_DIR}/_deps/flatbuffers-build/libflatbuffers.a")
+set(__LIBRICEPP "${DWARFS_BINARY_DIR}/ricepp/libricepp.a")
 
-    # Try to find shared library
-    find_library(_LIBGLOG_SHARED "glog")
-    if(NOT ${_LIBGLOG_SHARED} STREQUAL "_LIBGLOG_SHARED-NOTFOUND")
-      message(STATUS "glog shared library found, determining version")
-      # Try to determine installed glog version
-      find_program(PKG_CONFIG_EXECUTABLE NAMES pkg-config)
-      if(PKG_CONFIG_EXECUTABLE)
-        execute_process(
-          COMMAND ${PKG_CONFIG_EXECUTABLE} --modversion libglog
-          OUTPUT_VARIABLE GLOG_VERSION
-          OUTPUT_STRIP_TRAILING_WHITESPACE
-          ERROR_QUIET
-          RESULT_VARIABLE PKG_CONFIG_RESULT
-        )
-        if(PKG_CONFIG_RESULT EQUAL 0 AND GLOG_VERSION)
-          message(STATUS "Using system glog version: ${GLOG_VERSION}")
-        else(PKG_CONFIG_RESULT EQUAL 0 AND GLOG_VERSION)
-          message(STATUS "Could not determine system glog version, using default version")
-        endif(PKG_CONFIG_RESULT EQUAL 0 AND GLOG_VERSION)
-      else(PKG_CONFIG_EXECUTABLE)
-        message(FATAL_ERROR "pkg-config not found")
-      endif(PKG_CONFIG_EXECUTABLE)
-    endif(NOT ${_LIBGLOG_SHARED} STREQUAL "_LIBGLOG_SHARED-NOTFOUND")
-  endif(${_LIBGLOG} STREQUAL "_LIBGLOG-NOTFOUND")
+# System/dependency libraries for DwarFS
+set(__LIBGLOG "${DEPS_LIB_DIR}/libglog.a")
+set(__LIBGFLAGS "${DEPS_LIB_DIR}/libgflags.a")
+set(__LIBZSTD_LINK "${DEPS_LIB_DIR}/libzstd.a")
+set(__LIBBROTLICOMMON "${DEPS_LIB_DIR}/libbrotlicommon.a")
+set(__LIBBROTLIDEC "${DEPS_LIB_DIR}/libbrotlidec.a")
+set(__LIBBROTLIENC "${DEPS_LIB_DIR}/libbrotlienc.a")
 
-  if(IS_DARWIN)
-    message(STATUS "building brotli and gflags locally")
-    set(WITH_GFLAGS_BUILD ON)
-    set(WITH_BROTLI_BUILD ON)
-  endif(IS_DARWIN)
+# System libraries from Homebrew (macOS)
+if(IS_DARWIN)
+  set(__LIBSSL "/opt/homebrew/opt/openssl@3/lib/libssl.a")
+  set(__LIBCRYPTO "/opt/homebrew/opt/openssl@3/lib/libcrypto.a")
+  set(__LIBFLAC "/opt/homebrew/opt/flac/lib/libFLAC.a")
+  set(__LIBFLACPP "/opt/homebrew/opt/flac/lib/libFLAC++.a")
+  set(__LIBOGG "/opt/homebrew/opt/libogg/lib/libogg.a")
+  set(__LIBLZ4 "/opt/homebrew/opt/lz4/lib/liblz4.a")
+  set(__LIBXXHASH "/opt/homebrew/opt/xxhash/lib/libxxhash.a")
+  set(__LIBLZMA "/opt/homebrew/opt/xz/lib/liblzma.a")
+  set(__LIBFMT "/opt/homebrew/opt/fmt/lib/libfmt.a")
+  # Boost libraries (filesystem and chrono for DwarFS)
+  set(__LIBBOOST_FS "/opt/homebrew/opt/boost/lib/libboost_filesystem.a")
+  set(__LIBBOOST_CHRONO "/opt/homebrew/opt/boost/lib/libboost_chrono.a")
+endif(IS_DARWIN)
 
-  if (NOT WITH_GFLAGS_BUILD)
-    find_library(_LIBGFLAGS "libgflags.a")
-    if(${_LIBGFLAGS} STREQUAL "_LIBGFLAGS-NOTFOUND")
-      message(STATUS "gflags static library was not found, building locally")
-      set(WITH_GFLAGS_BUILD ON)
-    endif()
-  endif()
-
-  find_library(_LIBDC "libdouble-conversion.a")
-  if(${_LIBDC} STREQUAL "_LIBDC-NOTFOUND")
-    message(STATUS "double-conversion static library was not found, building locally")
-    set(WITH_DC_BUILD ON)
-  endif()
-
-  if(NOT WITH_BROTLI_BUILD AND NOT IS_MSYS)
-    find_library(_LIBBROTLICOMMON "libbrotlicommon.a")
-    find_library(_LIBBROTLIENC "libbrotlienc.a")
-    find_library(_LIBBROTLIDEC "libbrotlidec.a")
-    if(${_LIBBROTLICOMMON} STREQUAL "_LIBBROTLICOMMON-NOTFOUND" OR
-      ${_LIBBROTLIENC} STREQUAL "_LIBBROTLIENC-NOTFOUND" OR
-      ${_LIBBROTLIDEC} STREQUAL "_LIBBROTLIDEC-NOTFOUND")
-      message(STATUS "brotli static library was not found, building locally")
-      set(WITH_BROTLI_BUILD ON)
-    endif()
-  endif(NOT WITH_BROTLI_BUILD AND NOT IS_MSYS)
-
-  if(NOT WITH_LZ4_BUILD)
-    find_library(_LIBLZ4 "liblz4.a")
-    if(${_LIBLZ4} STREQUAL "_LIBLZ4-NOTFOUND")
-      message(STATUS "lz4 static library was not found, building locally")
-      set(WITH_LZ4_BUILD ON)
-    endif()
-  endif(NOT WITH_LZ4_BUILD)
-  if(WITH_JEMALLOC_BUILD)
-    def_ext_prj_t(JEMALLOC "5.3.0" "2db82d1e7119df3e71b7640219b6dfe84789bc0537983c3b7ac4f7189aecfeaa")
-  elseif(WITH_JEMALLOC_BUILD)
-    find_library(_LIBJEMALLOC "libjemalloc.a" REQUIRED)
-  endif(WITH_JEMALLOC_BUILD)
-
-else(NOT IS_WINDOWS)
-  set(WITH_DLFCN_WIN32_BUILD ON)
-endif(NOT IS_WINDOWS)
-
-message("Collecting packages:")
-message(STATUS "dwarfs      -  @${DWARFS_TAG}   at  ${DWARFS_SOURCE_DIR}")
-message(STATUS "incbin      -  @${INCBIN_TAG}  at  ${INCBIN_SOURCE_DIR}")
-if(WITH_ZSTD_BUILD)
-  def_ext_prj_g(ZSTD "v1.5.5")
-  message(STATUS "zstd        -  @${ZSTD_TAG}  at  ${ZSTD_SOURCE_DIR}")
-endif(WITH_ZSTD_BUILD)
-if(WITH_FMT_BUILD)
-  def_ext_prj_g(FMT "10.1.1")
-  message(STATUS "fmt         -  @${FMT_TAG}  at  ${FMT_SOURCE_DIR}")
-endif(WITH_FMT_BUILD)
-if(WITH_GLOG_BUILD)
-  def_ext_prj_g(GLOG "v${GLOG_VERSION}")
-  message(STATUS "glog        -  @${GLOG_TAG}  at  ${GLOG_SOURCE_DIR}")
-endif(WITH_GLOG_BUILD)
-if(WITH_GFLAGS_BUILD)
-  def_ext_prj_g(GFLAGS "52e94563eba1968783864942fedf6e87e3c611f4")
-  message(STATUS "gflags      -  @${GFLAGS_TAG}  at  ${GFLAGS_SOURCE_DIR}")
-endif(WITH_GFLAGS_BUILD)
-if(WITH_DC_BUILD)
-  def_ext_prj_g(DC "v3.2.0")
-  message(STATUS "double-conversion  -  @${DC_TAG}  at  ${DC_SOURCE_DIR}")
-endif(WITH_DC_BUILD)
-if(WITH_BROTLI_BUILD)
-  def_ext_prj_g(BROTLI "v1.1.0")
-  message(STATUS "brotli      -  @${BROTLI_TAG}  at  ${BROTLI_SOURCE_DIR}")
-endif(WITH_BROTLI_BUILD)
-if(WITH_LZ4_BUILD)
-  def_ext_prj_g(LZ4 "v1.9.4")
-  message(STATUS "lz4         -  @${LZ4_TAG}  at  ${LZ4_SOURCE_DIR}")
-endif(WITH_LZ4_BUILD)
-if(WITH_JEMALLOC_BUILD)
-  message(STATUS "jemalloc    -  v${JEMALLOC_VER}  at  ${JEMALLOC_SOURCE_DIR}")
-endif(WITH_JEMALLOC_BUILD)
-if(WITH_DLFCN_WIN32_BUILD)
-  def_ext_prj_g(DLFCN_WIN32 "v1.4.1")
-  message(STATUS "dlfcn-win32 -  @${DLFCN_WIN32_TAG}  at  ${DLFCN_WIN32_SOURCE_DIR}")
-endif(WITH_DLFCN_WIN32_BUILD)
-if(WITH_OPENSSL_BUILD)
-  message(STATUS "openssl     -  @${OPENSSL_TAG}  at  ${OPENSSL_SOURCE_DIR}")
-endif(WITH_OPENSSL_BUILD)
-
-# ...................................................................
-# incbin
-
-if(WITH_TESTS)
-# ...................................................................
-# Filesystem locations
-
-# DATA_TEST_DIR folder contains raw data for filesystem tests
-  set(DATA_TEST_DIR  ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_filesystem)
-  set(DATA_TEST_DIR_MSG "")
-
-  set(DATA_TEST_DIR_2  ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_filesystem_2)
-  set(DATA_TEST_DIR_MSG "")
-
-
-  if (WITH_LINK_TESTS)
-    set(WLT "with link tests")
-    add_compile_definitions(WITH_LINK_TESTS)
-  else(WITH_LINK_TESTS)
-    set(WLT "without link tests")
-  endif(WITH_LINK_TESTS)
-
-  message(STATUS "Using test data set ${WLT} from '${CMAKE_CURRENT_SOURCE_DIR}/tests/test_filesystem' ${DATA_TEST_DIR_MSG} and mounted dwarfs from ${DATA_TEST_DIR_2}" )
-
-# DATA_BIN_DIR folder is used to create packaged filesystem
-  set(DATA_BIN_DIR  ${CMAKE_CURRENT_BINARY_DIR})
-# DATA_BIN_FILE is packaged filesystem itself
-  set(DATA_BIN_FILE ${DATA_BIN_DIR}/fs.bin)
-  set(DATA_BIN_FILE_2 ${DATA_BIN_DIR}/fs2.bin)
-  set(TEST_PACKAGE_DESCRIPTOR "${CMAKE_CURRENT_SOURCE_DIR}/tests/package_descriptor/pd")
-
-
-endif(WITH_TESTS)
-
-# ...................................................................
-# DwarFS
-
-# ...................................................................
-# The libraries that are build by DwarFS project
-# libdwarfs libdwarfs_compression
-# libfolly libfsst libxxhash libmetadata_thrift libthrift_light
-# libfmt libarchive
-# These forward-declarations and BUILD_BYPRODICTS are required to support 'Ninja'
-# Otherwise add_dependencies would be enough for 'Unix makefiles' generator
-
-set(__LIBDWARFS "${DWARFS_BINARY_DIR}/${CMAKE_STATIC_LIBRARY_PREFIX}dwarfs${CMAKE_STATIC_LIBRARY_SUFFIX}")
-set(__LIBDWARFS_COMPRESSION "${DWARFS_BINARY_DIR}/${CMAKE_STATIC_LIBRARY_PREFIX}dwarfs_compression${CMAKE_STATIC_LIBRARY_SUFFIX}")
-set(__LIBFOLLY "${DWARFS_BINARY_DIR}/folly/${CMAKE_STATIC_LIBRARY_PREFIX}folly${CMAKE_STATIC_LIBRARY_SUFFIX}")
-set(__LIBFSST "${DWARFS_BINARY_DIR}/${CMAKE_STATIC_LIBRARY_PREFIX}fsst${CMAKE_STATIC_LIBRARY_SUFFIX}")
-set(__LIBT_METADATA "${DWARFS_BINARY_DIR}/${CMAKE_STATIC_LIBRARY_PREFIX}metadata_thrift${CMAKE_STATIC_LIBRARY_SUFFIX}")
-set(__LIBT_LIGHT "${DWARFS_BINARY_DIR}/${CMAKE_STATIC_LIBRARY_PREFIX}thrift_light${CMAKE_STATIC_LIBRARY_SUFFIX}")
-
-if(NOT IS_WINDOWS)
-  set(__LIBARCHIVE "${DEPS}/lib/libarchive.a")
-endif(NOT IS_WINDOWS)
-
-if(NOT IS_WINDOWS AND NOT IS_MSYS)
-  # Use system zstd and xxhash for MSys
-  set(__LIBXXHASH "${DWARFS_BINARY_DIR}/libxxhash.a")
-
-  # Build fmt for MSys
-  if(CMAKE_BUILD_TYPE STREQUAL Debug)
-    set(__LIBFMT "${DWARFS_BINARY_DIR}/_deps/fmt-build/libfmtd.a")
-  else()
-    set(__LIBFMT "${DWARFS_BINARY_DIR}/_deps/fmt-build/libfmt.a")
-  endif()
-endif(NOT IS_WINDOWS AND NOT IS_MSYS)
-
-ExternalProject_Add(${DWARFS_PRJ}
-  PREFIX ${DEPS}
-  GIT_REPOSITORY https://github.com/tamatebako/dwarfs.git
-  GIT_TAG ${DWARFS_TAG}
-  UPDATE_COMMAND ""
-  CMAKE_ARGS -DCMAKE_INSTALL_PREFIX=${DEPS}
-             ${VCPKG_PARAMS}
-             -DWITH_TESTS=OFF
-             -DTEBAKO_BUILD_SCOPE=${TEBAKO_BUILD_SCOPE}
-             -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
-             -DDEPS=${DEPS}
-             -DCMAKE_PREFIX_PATH=${DEPS}
-             -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
-             -DUSE_JEMALLOC=${USE_JEMALLOC}
-             -DFOLLY_NO_EXCEPTION_TRACER=ON
-             -DDISABLE_CCACHE=ON
-             -DWITH_MAN_PAGES=OFF
-             -DNIXPKGS_DWARFS_VERSION_OVERRIDE=tebako-${LIBDWARFS_WR_VERSION}
-             ${OPENSSL_OPTION}
-  SOURCE_DIR ${DWARFS_SOURCE_DIR}
-  BINARY_DIR ${DWARFS_BINARY_DIR}
-  BUILD_BYPRODUCTS ${__LIBDWARFS}       ${__LIBDWARFS_COMPRESSION} ${__LIBFSST}   ${__LIBFOLLY}
-                   ${__LIBT_METADATA}   ${__LIBT_LIGHT}            ${__LIBXXHASH} ${__LIBZSTD}
-                   ${__LIBFMT}          ${__LIBARCHIVE}
-)
-
-if (WITH_OPENSSL_BUILD)
-  add_dependencies(${DWARFS_PRJ} ${OPENSSL_PRJ})
-endif(WITH_OPENSSL_BUILD)
-
-if (WITH_JEMALLOC_BUILD)
-  add_dependencies(${DWARFS_PRJ} ${JEMALLOC_PRJ})
-endif(WITH_JEMALLOC_BUILD)
-
-# ...................................................................
-# incbin
-
-set(INCBIN_BUILD_COMMAND ${CMAKE_COMMAND} -E true)
 if(IS_WINDOWS)
-  set(INCBIN_BUILD_COMMAND ${CMAKE_C_COMPILER} ${INCBIN_SOURCE_DIR}/incbin.c -nologo -link -out:${DEPS_BIN_DIR}/incbin.exe)
+  include_directories(BEFORE ${CMAKE_CURRENT_SOURCE_DIR}/include/incbin)
+  list(PREPEND _LIBRARIES ${_LIBWINPTHREAD})
 endif(IS_WINDOWS)
 
-ExternalProject_Add(${INCBIN_PRJ}
-  PREFIX ${DEPS}
-  GIT_REPOSITORY https://github.com/graphitemaster/incbin.git
-  GIT_TAG ${INCBIN_TAG}
-  UPDATE_COMMAND ""
-  CONFIGURE_COMMAND ${CMAKE_COMMAND} -E make_directory ${DEPS}/bin
-  COMMAND ${CMAKE_COMMAND} -E make_directory ${DEPS}/include
-  BUILD_COMMAND ${INCBIN_BUILD_COMMAND}
-  INSTALL_COMMAND ${CMAKE_COMMAND} -E copy ${INCBIN_SOURCE_DIR}/incbin.h ${DEPS}/include/incbin.h
-)
+if(IS_TERMINAL)
+  include_directories(BEFORE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+endif(IS_TERMINAL)
 
-# ...................................................................
-# zstd
+if(CMAKE_BUILD_TYPE STREQUAL Debug)
+  if(MSVC)
+    add_compile_options(/MTd)
+    add_link_options(/IGNORE:4221)
+  endif(MSVC)
+  if(IS_MSYS)
+    add_link_options(/DEFAULTLIB:libz/gcc)
+    add_link_options(/DEFAULTLIB:libgcc)
+  endif(IS_MSYS)
+endif(CMAKE_BUILD_TYPE STREQUAL Debug)
 
-if(WITH_ZSTD_BUILD)
-  set(__LIBZSTD "${DEPS}/lib/libzstd.a")
-  ExternalProject_Add(${ZSTD_PRJ}
-    PREFIX ${DEPS}
-    GIT_REPOSITORY "https://github.com/facebook/zstd.git"
-    GIT_TAG ${ZSTD_TAG}
-    UPDATE_COMMAND ""
-    PATCH_COMMAND ${GNU_BASH} -c "${TOOLS}/ci-scripts/patch-zstd.sh ${ZSTD_SOURCE_DIR}"
-    CONFIGURE_COMMAND ${CMAKE_COMMAND}
-               -DCMAKE_INSTALL_PREFIX=${DEPS}
-               -DBUILD_SHARED_LIBS:BOOL=OFF
-               -DZSTD_BUILD_PROGRAMS:BOOL=OFF
-               -DBUILD_TESTING:BOOL=OFF
-               -DCMAKE_CXX_STANDARD=17
-               -DCMAKE_CXX_STANDARD_REQUIRED=ON
-               -DCMAKE_CXX_EXTENSIONS=OFF
-               -DCMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}
-               -S${ZSTD_SOURCE_DIR}/build/cmake
-               -B${ZSTD_BINARY_DIR}
-    BUILD_BYPRODUCTS ${__LIBZSTD}
-  )
-  add_dependencies(${DWARFS_PRJ} ${ZSTD_PRJ})
-endif(WITH_ZSTD_BUILD)
+if(INSTALL_OPENSSL AND WITH_CXX11_ABI)
+  set(CMAKE_PREFIX_PATH ${CMAKE_PREFIX_PATH} ${CMAKE_TRY_COMPILE_PLATFORM_VARIABLE_PREFIX}SSL_ROOT )
+endif(INSTALL_OPENSSL AND WITH_CXX11_ABI)
 
-# ...................................................................
-# fmt
-
-if(WITH_FMT_BUILD)
-  set(__LIBFMT "${DEPS}/lib/libfmt.a")
-  ExternalProject_Add(${FMT_PRJ}
-    PREFIX ${DEPS}
-    GIT_REPOSITORY "https://github.com/fmtlib/fmt.git"
-    GIT_TAG ${FMT_TAG}
-    UPDATE_COMMAND ""
-    CMAKE_ARGS -DCMAKE_INSTALL_PREFIX=${DEPS}
-               -DBUILD_SHARED_LIBS:BOOL=OFF
-               -DCMAKE_CXX_STANDARD=17
-               -DCMAKE_CXX_STANDARD_REQUIRED=ON
-               -DCMAKE_CXX_EXTENSIONS=OFF
-               -DCMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}
-    SOURCE_DIR ${FMT_SOURCE_DIR}
-    BINARY_DIR ${FMT_BINARY_DIR}
-    BUILD_BYPRODUCTS ${__LIBFMT}
-  )
-  add_dependencies(${DWARFS_PRJ} ${FMT_PRJ})
-endif(WITH_FMT_BUILD)
-
-# ...................................................................
-# glog
-
-if(WITH_GLOG_BUILD)
-  set(__LIBGLOG "${DEPS}/lib/libglog.a")
-  ExternalProject_Add(${GLOG_PRJ}
-    PREFIX ${DEPS}
-    GIT_REPOSITORY "https://github.com/google/glog.git"
-    GIT_TAG ${GLOG_TAG}
-    UPDATE_COMMAND ""
-    PATCH_COMMAND ${GNU_BASH} -c "${TOOLS}/ci-scripts/patch-glog.sh ${GLOG_SOURCE_DIR}"
-    CMAKE_ARGS -DCMAKE_INSTALL_PREFIX=${DEPS}
-               -DBUILD_SHARED_LIBS:BOOL=OFF
-               -DBUILD_TESTING=OFF
-               -DWITH_GTEST=OFF
-               -DCMAKE_CXX_STANDARD=17
-               -DCMAKE_CXX_STANDARD_REQUIRED=ON
-               -DCMAKE_CXX_EXTENSIONS=OFF
-               -DCMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}
-               -DWITH_UNWIND=OFF
-    SOURCE_DIR ${GLOG_SOURCE_DIR}
-    BINARY_DIR ${GLOG_BINARY_DIR}
-    BUILD_BYPRODUCTS ${__LIBGLOG}
-  )
-  add_dependencies(${DWARFS_PRJ} ${GLOG_PRJ})
-endif(WITH_GLOG_BUILD)
-
-# ...................................................................
-# gflags
-
-if(WITH_GFLAGS_BUILD)
-  set(__LIBGFLAGS "${DEPS}/lib/libgflags.a")
-  ExternalProject_Add(${GFLAGS_PRJ}
-    PREFIX ${DEPS}
-    GIT_REPOSITORY "https://github.com/gflags/gflags.git"
-    GIT_TAG ${GFLAGS_TAG}
-    UPDATE_COMMAND ""
-    CMAKE_ARGS -DCMAKE_INSTALL_PREFIX=${DEPS}
-               -DGFLAGS_BUILD_STATIC_LIBS:BOOL=ON
-               -DGFLAGS_BUILD_SHARED_LIBS:BOOL=OFF
-               -DBUILD_gflags_nothreads_LIB:BOOL=OFF
-               -DINSTALL_SHARED_LIBS:BOOL=OFF
-               -DCMAKE_BUILD_TYPE=Release
-               -DCMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}
-    SOURCE_DIR ${GFLAGS_SOURCE_DIR}
-    BINARY_DIR ${GFLAGS_BINARY_DIR}
-    BUILD_BYPRODUCTS ${__LIBGFLAGS}
-  )
-  add_dependencies(${GLOG_PRJ} ${GFLAGS_PRJ})
-  add_dependencies(${DWARFS_PRJ} ${GFLAGS_PRJ})
-endif(WITH_GFLAGS_BUILD)
-
-# ...................................................................
-# double-conversion
-
-if(WITH_DC_BUILD)
-  set(__LIBDC "${DEPS}/lib/libdouble-conversion.a")
-  ExternalProject_Add(${DC_PRJ}
-    PREFIX ${DEPS}
-    GIT_REPOSITORY "https://github.com/google/double-conversion.git"
-    GIT_TAG ${DC_TAG}
-    UPDATE_COMMAND ""
-    CMAKE_ARGS -DCMAKE_INSTALL_PREFIX=${DEPS}
-               -DCMAKE_BUILD_TYPE=Release
-               -DCMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}
-    SOURCE_DIR ${DC_SOURCE_DIR}
-    BINARY_DIR ${DC_BINARY_DIR}
-    BUILD_BYPRODUCTS ${__LIBDC}
-  )
-  add_dependencies(${DWARFS_PRJ} ${DC_PRJ})
-endif(WITH_DC_BUILD)
-
-# ...................................................................
-# brotli
-
-if(WITH_BROTLI_BUILD)
-  set(__LIBBROTLICOMMON "${DEPS}/lib/libbrotlicommon.a")
-  set(__LIBBROTLIENC "${DEPS}/lib/libbrotlienc.a")
-  set(__LIBBROTLIDEC "${DEPS}/lib/libbrotlidec.a")
-  ExternalProject_Add(${BROTLI_PRJ}
-    PREFIX ${DEPS}
-    GIT_REPOSITORY "https://github.com/google/brotli.git"
-    GIT_TAG ${BROTLI_TAG}
-    UPDATE_COMMAND ""
-    CMAKE_ARGS -DCMAKE_INSTALL_PREFIX=${DEPS}
-               -DCMAKE_BUILD_TYPE=Release
-               -DCMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}
-               -DBUILD_SHARED_LIBS=OFF
-               -DBROTLI_BUNDLED_MODE=OFF
-    SOURCE_DIR ${BROTLI_SOURCE_DIR}
-    BINARY_DIR ${BROTLI_BINARY_DIR}
-    BUILD_BYPRODUCTS ${__LIBBROTLICOMMON} ${__LIBBROTLIENC} ${__LIBBROTLIDEC}
-  )
-  add_dependencies(${DWARFS_PRJ} ${BROTLI_PRJ})
-endif(WITH_BROTLI_BUILD)
-
-# ...................................................................
-# lz4
-
-if(WITH_LZ4_BUILD)
-  set(__LIBLZ4 "${DEPS}/lib/liblz4.a")
-  ExternalProject_Add(${LZ4_PRJ}
-    PREFIX ${DEPS}
-    GIT_REPOSITORY "https://github.com/lz4/lz4.git"
-    GIT_TAG ${LZ4_TAG}
-    UPDATE_COMMAND ""
-    CONFIGURE_COMMAND ""
-    BUILD_IN_SOURCE true
-    BUILD_COMMAND cd "${LZ4_SOURCE_DIR}" && make "prefix=${DEPS}"
-    INSTALL_COMMAND cd "${LZ4_SOURCE_DIR}" && make "prefix=${DEPS}" install
-    SOURCE_DIR ${LZ4_SOURCE_DIR}
-    BUILD_BYPRODUCTS ${__LIBLZ4}
-  )
-  add_dependencies(${DWARFS_PRJ} ${LZ4_PRJ})
-endif(WITH_LZ4_BUILD)
-
-# ...................................................................
-# jemalloc
-
-if(WITH_JEMALLOC_BUILD)
-  set(__LIBJEMALLOC "${DEPS}/lib/libjemalloc.a")
-
-  ExternalProject_Add(${JEMALLOC_PRJ}
-    PREFIX ${DEPS}
-    URL https://github.com/jemalloc/jemalloc/releases/download/${JEMALLOC_VER}/jemalloc-${JEMALLOC_VER}.tar.bz2
-    URL_HASH SHA256=${JEMALLOC_HASH}
-    DOWNLOAD_NO_PROGRESS true
-    UPDATE_COMMAND ""
-    CONFIGURE_COMMAND ${JEMALLOC_SOURCE_DIR}/configure
-                      --srcdir=${JEMALLOC_SOURCE_DIR}
-                      --prefix=${DEPS}
-                      --enable-static
-                      --disable-shared
-                      --datarootdir=${DEPS}/share.dummy
-                      --disable-syscall
-                      ${JEMALLOC_LG_VADDR} ${JEMALLOC_LG_PAGE}
-    SOURCE_DIR ${JEMALLOC_SOURCE_DIR}
-    BINARY_DIR ${JEMALLOC_BINARY_DIR}
-    BUILD_BYPRODUCTS ${__LIBJEMALLOC}
-  )
-endif(WITH_JEMALLOC_BUILD)
-
-# ...................................................................
-# dlfcn-win32
-if(WITH_DLFCN_WIN32_BUILD)
-  ExternalProject_Add(${DLFCN_WIN32_PRJ}
-    PREFIX ${DEPS}
-    GIT_REPOSITORY "https://github.com/dlfcn-win32/dlfcn-win32"
-    GIT_TAG ${DLFCN_WIN32_TAG}
-    UPDATE_COMMAND ""
-    SOURCE_DIR ${DLFCN_WIN32_SOURCE_DIR}
-    BINARY_DIR ${DLFCN_WIN32_BINARY_DIR}
-    CMAKE_ARGS -DCMAKE_INSTALL_PREFIX=${DEPS}
-               -DCMAKE_BUILD_TYPE=Release
-               -DCMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}
-               -DBUILD_SHARED_LIBS=OFF
-               -DBUILD_TESTS=OFF
-    BUILD_BYPRODUCTS ${__LIBDL}
-  )
-  add_dependencies(${DWARFS_PRJ} ${DLFCN_WIN32_PRJ})
-endif(WITH_DLFCN_WIN32_BUILD)
-
-# ...................................................................
-# Library
-
-configure_file(
-   ${CMAKE_CURRENT_SOURCE_DIR}/resources/version.h.in
-   ${CMAKE_CURRENT_SOURCE_DIR}/include/version.h
-   @ONLY
-)
-
-check_symbol_exists(getattrlist "unistd.h" TEBAKO_HAS_GETATTRLIST)
-check_symbol_exists(fgetattrlist "unistd.h" TEBAKO_HAS_FGETATTRLIST)
-
-check_symbol_exists(eaccess "unistd.h" TEBAKO_HAS_EACCESS)
-
-check_symbol_exists(lstat "sys/stat.h" TEBAKO_HAS_LSTAT)
-check_symbol_exists(fstatat "sys/stat.h" TEBAKO_HAS_FSTATAT)
-
-check_symbol_exists(opendir "dirent.h" TEBAKO_HAS_OPENDIR)
-check_symbol_exists(closedir "dirent.h" TEBAKO_HAS_CLOSEDIR)
-check_symbol_exists(readdir "dirent.h" TEBAKO_HAS_READDIR)
-check_symbol_exists(seekdir "dirent.h" TEBAKO_HAS_SEEKDIR)
-check_symbol_exists(telldir "dirent.h" TEBAKO_HAS_TELLDIR)
-
-check_symbol_exists(dirfd "dirent.h" TEBAKO_HAS_DIRFD)
-check_symbol_exists(fdopendir "dirent.h" TEBAKO_HAS_FDOPENDIR)
-check_symbol_exists(scandir "dirent.h" TEBAKO_HAS_SCANDIR)
-
-check_symbol_exists(openat "fcntl.h" TEBAKO_HAS_OPENAT)
-check_symbol_exists(readv "sys/uio.h" TEBAKO_HAS_READV)
-
-check_symbol_exists(pread "unistd.h" TEBAKO_HAS_PREAD)
-
-check_symbol_exists(flock "sys/file.h" TEBAKO_HAS_FLOCK)
-
-
-check_cxx_source_compiles(
-    "#include <sys/stat.h>
-     int main() {
-      return mkdir(\"tmp\", 0700);
-     }"
-    TEBAKO_HAS_POSIX_MKDIR)
-
-check_cxx_source_compiles(
-    "#include <direct.h>
-     int main() {
-      return mkdir(\"tmp\");
-     }"
-    TEBAKO_HAS_WINDOWS_MKDIR)
-
-if(NOT TEBAKO_HAS_POSIX_MKDIR AND NOT TEBAKO_HAS_WINDOWS_MKDIR)
-  message(FATAL_ERROR "Configuration script did not find neither Posix nor Windows mkdir")
-endif(NOT TEBAKO_HAS_POSIX_MKDIR AND NOT TEBAKO_HAS_WINDOWS_MKDIR)
-
-configure_file(
-  ${CMAKE_CURRENT_SOURCE_DIR}/resources/tebako-config.h.in
-  ${CMAKE_CURRENT_SOURCE_DIR}/include/tebako-config.h
-)
-
-if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
-  add_compile_options(-fdiagnostics-color=always -static-libgcc)
-
-  # For gcc, -O3 is *much* worse than -O2
-  # Update: This is still true for gcc-12
-  set(CMAKE_C_FLAGS_RELEASE "-DNDEBUG -O2 -g")
-  set(CMAKE_CXX_FLAGS_RELEASE "-DNDEBUG -O2 -g")
-elseif("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
-  add_compile_options(-fcolor-diagnostics)
-  if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS "13.0.0")
-    # for some reason, clang-10 binaries crash upon throwing exceptions
-    # [maxirmx] This is true for clang-12 Release build, but no crash for RelWithDebugInfo
-    add_compile_options(-fno-omit-frame-pointer)
-  endif(CMAKE_CXX_COMPILER_VERSION VERSION_LESS "13.0.0")
-elseif(IS_WINDOWS)
-    add_compile_options(/Zc:__cplusplus /utf-8 /wd4267 /wd4244 /wd5219)
-    # Apply /MT or /MTd  (multithread, static version of the run-time library)
-    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
-endif()
+# CRITICAL: Build pure C library in subdirectory BEFORE global include_directories()
+# This completely isolates it from C++ headers in the parent scope
+add_subdirectory(src/c_helpers)
 
 include_directories(BEFORE ${CMAKE_CURRENT_SOURCE_DIR}/include
+                    ${CMAKE_CURRENT_SOURCE_DIR}/include/tebako
+                    ${CMAKE_CURRENT_SOURCE_DIR}/include/tebako/fs
+                    ${CMAKE_CURRENT_SOURCE_DIR}/include/tebako/fs/internal
+                    ${CMAKE_CURRENT_SOURCE_DIR}/include/tebako/fs/util
+                    ${CMAKE_CURRENT_SOURCE_DIR}/include/tebako/fs/ruby
                     ${DEPS}/include
-                    ${DWARFS_SOURCE_DIR}/folly ${DWARFS_BINARY_DIR}/folly ${DWARFS_SOURCE_DIR}/fbthrift
-                    ${DWARFS_BINARY_DIR}/thrift ${DWARFS_BINARY_DIR} ${DWARFS_SOURCE_DIR}/include
-                    ${DWARFS_BINARY_DIR}/_deps/fmt-src/include
+                    ${DEPS}/include/libxml2-2.9.1
 )
 
 link_directories(BEFORE ${DEPS_LIB_DIR})
 
-add_library(dwarfs-wr STATIC
-    "src/file-ctl.cpp"
-    "src/dir-ctl.cpp"
-    "src/dir-io.cpp"
-    "src/file-io.cpp"
+set(TFS_SOURCE_FILES
+  src/backend_factory.cpp
+  src/c_api.cpp
+  src/tebako-cmdline.cpp
+  src/tebako-dirent.cpp
+  src/tebako-fd.cpp
+  src/tebako-io-helpers.cpp
+  src/tebako-io-root.cpp
+  src/tebako-kfd.cpp
+  src/tebako-memfs-table.cpp
+  src/tebako-memfs.cpp
+  src/tebako-mount-table.cpp
+  src/tebako-package-descriptor.cpp
+)
+
+add_library(tfs STATIC
     "src/dl-ctl.cpp"
     "src/tebako-cmdline.cpp"
     "src/tebako-io-helpers.cpp"
     "src/tebako-io-root.cpp"
     "src/tebako-kfd.cpp"
     "src/tebako-mount-table.cpp"
-    "src/tebako-mfs.cpp"
     "src/tebako-memfs.cpp"
     "src/tebako-memfs-table.cpp"
     "src/tebako-fd.cpp"
     "src/tebako-dirent.cpp"
     "src/tebako-package-descriptor.cpp"
+    "src/backend_factory.cpp"
+    "src/backends/zip_backend.cpp"
+    "src/backends/dwarfs_backend.cpp"
+    "src/internal/memory_file_view.cpp"
+    "src/internal/memory_file_segment.cpp"
+    # "src/backends/squashfs_backend.cpp"  # TODO: Re-enable once squashfs-tools-ng is available
+    # Modern C API implementation (replaces old file-ctl/dir-ctl/file-io/dir-io)
+    "src/c_api.cpp"
     "include/tebako-cmdline.h"
     "include/tebako-common.h"
     "include/tebako-config.h"
@@ -877,458 +444,75 @@ add_library(dwarfs-wr STATIC
     "include/tebako-memfs.h"
     "include/tebako-memfs-table.h"
     "include/tebako-mount-table.h"
-    "include/tebako-mfs.h"
     "include/tebako-package-descriptor.h"
     "include/tebako-pch.h"
     "include/tebako-pch-pp.h"
     "include/version.h"
+    "include/tebako/fs/backend_factory.h"
+    "include/tebako/fs/backends/zip_backend.h"
+    "include/tebako/fs/backends/dwarfs_backend.h"
+    "include/tebako/fs/internal/memory_file_view.h"
+    "include/tebako/fs/internal/memory_file_segment.h"
+    # "include/tebako/fs/backends/squashfs_backend.h"  # TODO: Re-enable
+    "include/tebako/fs/c_api.h"
   )
 
 if(RB_W32)
-  target_sources(dwarfs-wr PUBLIC
+  target_sources(tfs PUBLIC
     ""
     "include/tebako-io.h"
     "include/tebako-io-rb-w32-inner.h"
   )
 endif(RB_W32)
 
-add_dependencies(dwarfs-wr ${DWARFS_PRJ})
+# Link the pure C helper library to tfs
+target_link_libraries(tfs PUBLIC tebako_dirent_helper_c)
+
+# Find and link libzip (provided by vcpkg)
+find_package(libzip CONFIG REQUIRED)
+target_link_libraries(tfs PUBLIC libzip::zip)
+
+# Link DwarFS libraries via CMake targets (provided by vcpkg)
+target_link_libraries(tfs PUBLIC
+  dwarfs::dwarfs_reader
+  dwarfs::dwarfs_common
+)
+
+# Find and link squashfs-tools-ng (provided by vcpkg)
+# TODO: Re-enable once squashfs-tools-ng is available
+# find_package(squashfs-tools-ng CONFIG REQUIRED)
+# target_link_libraries(tfs PUBLIC squashfs-tools-ng::squashfs)
+
+# Find argtable3 for CLI tool
+find_package(argtable3 CONFIG REQUIRED)
+
+add_dependencies(tfs ${DWARFS_PRJ})
 if(WITH_GLOG_BUILD)
-  add_dependencies(dwarfs-wr ${GLOG_PRJ})
+  add_dependencies(tfs ${GLOG_PRJ})
 endif(WITH_GLOG_BUILD)
 if(WITH_GFLAGS_BUILD)
-  add_dependencies(dwarfs-wr ${GFLAGS_PRJ})
+  add_dependencies(tfs ${GFLAGS_PRJ})
 endif(WITH_GFLAGS_BUILD)
 if(WITH_FMT_BUILD)
-  add_dependencies(dwarfs-wr ${FMT_PRJ})
+  add_dependencies(tfs ${FMT_PRJ})
 endif(WITH_FMT_BUILD)
 if(WITH_DC_BUILD)
-  add_dependencies(dwarfs-wr ${DC_PRJ})
+  add_dependencies(tfs ${DC_PRJ})
 endif(WITH_DC_BUILD)
 if(WITH_LZ4_BUILD)
-  add_dependencies(dwarfs-wr ${LZ4_PRJ})
+  add_dependencies(tfs ${LZ4_PRJ})
 endif(WITH_LZ4_BUILD)
 if(WITH_JEMALLOC_BUILD)
-  add_dependencies(dwarfs-wr ${JEMALLOC_PRJ})
+  add_dependencies(tfs ${JEMALLOC_PRJ})
 endif(WITH_JEMALLOC_BUILD)
-# ...................................................................
-# Tests
-
-if(WITH_TESTS)
-
-  add_library(empty MODULE tests/empty/empty.c)
-  set_target_properties(empty PROPERTIES POSITION_INDEPENDENT_CODE ON)
-  set_target_properties(empty PROPERTIES C_VISIBILITY_PRESET hidden)
-
-  if(WIN32)
-    if(DEFINED ENV{TEMP})
-      file(TO_CMAKE_PATH "$ENV{TEMP}" TESTS_TMP_DIR)
-    elseif(DEFINED ENV{TMP})
-      file(TO_CMAKE_PATH "$ENV{TMP}" TESTS_TMP_DIR)
-    else()
-      message(FATAL_ERROR "Environment variable TEMP or TMP is not defined")
-    endif()
-    file(TO_CMAKE_PATH "$ENV{PROGRAMFILES}" TESTS_USR_DIR)
-    find_program(SHELL_PATH cmd.exe)
-  else(WIN32)
-    # Cannot use env. variables on MacOS because temp folder is unique on each run and
-    # it breaks cross-tests on different Os version
-    file(TO_CMAKE_PATH "/tmp" TESTS_TMP_DIR)
-    file(TO_CMAKE_PATH "/usr" TESTS_USR_DIR)
-    find_program(SHELL_PATH sh)
-  endif(WIN32)
-
-  get_filename_component(TESTS_BIN_DIR "${SHELL_PATH}" DIRECTORY)
-  get_filename_component(TESTS_BIN_NAKED_DIR "${TESTS_BIN_DIR}" NAME)
-
-  configure_file(
-    ${CMAKE_CURRENT_SOURCE_DIR}/resources/tebako-test-config.h.in
-    ${CMAKE_CURRENT_SOURCE_DIR}/tests/tebako-test-config.h
-    @ONLY
-  )
-
-  if(PREFER_SYSTEM_GTEST)
-    find_package(GTest REQUIRED)
-    set(GTestMain GTest::Main)
-  else(PREFER_SYSTEM_GTEST)
-    message(STATUS "Fetching googletest")
-    include(FetchContent)
-
-    FetchContent_Declare(
-      googletest
-      GIT_REPOSITORY https://github.com/google/googletest.git
-      GIT_TAG        main
-    )
-# maintain compiler/linker settings on Windows
-    set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
-# explicitely disable unneeded gmock build
-    set(BUILD_GMOCK OFF CACHE BOOL "" FORCE)
-
-    set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
-    FetchContent_MakeAvailable(googletest)
-
-    set(GTestMain gtest_main)
-  endif(PREFER_SYSTEM_GTEST)
-
-  enable_testing()
-  include(GoogleTest)
-# ...................................................................
-# Packaged filesystem
-# links for testing are created here to avoid interoperatibility problems Linux/Windows
-
-  set(TESTS_OUTSIDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_files")
-
-  add_custom_target(PACKAGED_FILESYSTEM_STEP_1 ALL
-    COMMAND ${CMAKE_COMMAND} -E touch ${CMAKE_CURRENT_SOURCE_DIR}/tests/tebako-fs.cpp
-    COMMAND ${CMAKE_COMMAND} -E touch ${CMAKE_CURRENT_SOURCE_DIR}/tests/tebako-fs2.cpp
-    COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_BINARY_DIR}/${LIBEMPTY_NAME} ${DATA_TEST_DIR}/directory-1
-  )
-
-    add_dependencies(PACKAGED_FILESYSTEM_STEP_1 empty ${DWARFS_PRJ})
-    add_dependencies(dwarfs-wr PACKAGED_FILESYSTEM_STEP_1)
-
-#  feat: exectable application stub
-#  add_executable(wr-mount "tests/tebako-fs2.cpp")
-#  if(WIN32)
-#    set(TESTS_THE_OTHER_MEMFS_IMAGE "${CMAKE_CURRENT_BINARY_DIR}/wr-mount.exe")
-#  else()
-#    set(TESTS_THE_OTHER_MEMFS_IMAGE "${CMAKE_CURRENT_BINARY_DIR}/wr-mount")
-#  endif()
-
-  if (WITH_LINK_TESTS)
-    add_custom_target(PACKAGED_FILESYSTEM_STEP_2 ALL
-      COMMAND ${CMAKE_COMMAND} -E chdir ${DATA_TEST_DIR} rm -rf h-link-to-file-2 s-link-to-file-1 s-link-to-dir-1 s-link-outside-of-memfs s-dir-outside-of-memfs
-      COMMAND ${CMAKE_COMMAND} -E chdir ${DATA_TEST_DIR_2} rm -rf h-link-to-file-2 s-link-to-file-1 s-link-to-dir-1 s-link-outside-of-memfs s-dir-outside-of-memfs
-      COMMAND ${CMAKE_COMMAND} -E chdir ${DATA_TEST_DIR} ln -f directory-2/file-in-directory-2.txt h-link-to-file-2
-      COMMAND ${CMAKE_COMMAND} -E chdir ${DATA_TEST_DIR} ln -f -s directory-1/file-in-directory-1.txt s-link-to-file-1
-      COMMAND ${CMAKE_COMMAND} -E chdir ${DATA_TEST_DIR} ln -f -s directory-2 s-link-to-dir-1
-      COMMAND ${CMAKE_COMMAND} -E chdir ${DATA_TEST_DIR}/directory-1 ln -f -s level-2/file-at-level-2.txt s-link-to-level-2
-      COMMAND ${CMAKE_COMMAND} -E chdir ${DATA_TEST_DIR} ln -f -s ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_files/a-file-outside-of-memfs.txt s-link-outside-of-memfs
-      COMMAND ${CMAKE_COMMAND} -E chdir ${DATA_TEST_DIR_2} ln -f -s ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_files/a-file-outside-of-memfs.txt s-link-outside-of-memfs
-      COMMAND ${CMAKE_COMMAND} -E chdir ${DATA_TEST_DIR} ln -f -s ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_files s-dir-outside-of-memfs
-      COMMAND ${CMAKE_COMMAND} -E chdir ${DATA_TEST_DIR_2} ln -f -s ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_files s-dir-outside-of-memfs
-      COMMAND ${CMAKE_COMMAND} -E chdir ${DATA_TEST_DIR} ln -f -s ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_files/a-file-outside-of-memfs.txt
-                                                                  ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_files/o-link-outside-of-memfs
-      COMMAND ${CMAKE_COMMAND} -E chdir ${DATA_TEST_DIR_2} ln -f -s ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_files/a-file-outside-of-memfs.txt
-                                                                    ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_files/o-link-outside-of-memfs
-    )
-    add_dependencies(PACKAGED_FILESYSTEM_STEP_2 PACKAGED_FILESYSTEM_STEP_1)
-
-    add_custom_target(PACKAGED_FILESYSTEM_STEP_3 ALL
-      COMMAND ${GNU_BASH} -c "chmod -w ${DATA_TEST_DIR}/directory-2/file-in-directory-2.txt"
-      COMMAND ${MKDWARFS} --force --progress simple -o ${DATA_BIN_FILE} -i ${DATA_TEST_DIR}
-      COMMAND ${MKDWARFS} --force --progress simple -o ${DATA_BIN_FILE_2} -i ${DATA_TEST_DIR_2} --header ${TEST_PACKAGE_DESCRIPTOR}
-      COMMAND ${CMAKE_COMMAND} -E rm -rf ${DATA_TEST_DIR}/*-link-to-* ${DATA_TEST_DIR}/directory-1/*-link-to-*
-                                          ${DATA_TEST_DIR}/directory-1/*empty.* ${DATA_TEST_DIR}/*-outside-of-memfs
-      COMMAND ${CMAKE_COMMAND} -E rm -rf ${DATA_TEST_DIR_2}/*-link-to-* ${DATA_TEST_DIR_2}/directory-1/*-link-to-*
-                                          ${DATA_TEST_DIR_2}/directory-1/*empty.* ${DATA_TEST_DIR_2}/*-outside-of-memfs
-      BYPRODUCTS ${DATA_BIN_FILE} ${DATA_BIN_FILE_2}
-      )
-    add_dependencies(PACKAGED_FILESYSTEM_STEP_3 PACKAGED_FILESYSTEM_STEP_2)
-
-  else(WITH_LINK_TESTS)
-    add_custom_target(PACKAGED_FILESYSTEM_STEP_3 ALL
-      COMMAND ${MKDWARFS} --force --progress simple -o ${DATA_BIN_FILE} -i ${DATA_TEST_DIR}
-      COMMAND ${MKDWARFS} --force --progress simple -o ${DATA_BIN_FILE_2} -i ${DATA_TEST_DIR_2} --header ${TEST_PACKAGE_DESCRIPTOR}
-      COMMAND ${CMAKE_COMMAND} -E rm -rf ${DATA_TEST_DIR}/directory-1/*empty.*
-      BYPRODUCTS ${DATA_BIN_FILE} ${DATA_BIN_FILE_2}
-    )
-    add_dependencies(PACKAGED_FILESYSTEM_STEP_3 PACKAGED_FILESYSTEM_STEP_1)
-  endif(WITH_LINK_TESTS)
-
-  add_dependencies(PACKAGED_FILESYSTEM_STEP_3 ${DWARFS_PRJ})
-
-  configure_file(
-    ${CMAKE_CURRENT_SOURCE_DIR}/tests/resources/tebako-fs.cpp.in
-    ${CMAKE_CURRENT_SOURCE_DIR}/tests/tebako-fs.cpp
-    @ONLY
-  )
-
-#  feat: executable application stub
-#  configure_file(
-#    ${CMAKE_CURRENT_SOURCE_DIR}/tests/resources/tebako-fs2.cpp.in
-#    ${CMAKE_CURRENT_SOURCE_DIR}/tests/tebako-fs2.cpp
-#    @ONLY
-#  )
-
-
-  if(IS_WINDOWS)
-    add_custom_command(
-      OUTPUT ${CMAKE_CURRENT_SOURCE_DIR}/tests/tebako-fs0.c
-      COMMAND ${DEPS}/bin/incbin.exe ${CMAKE_CURRENT_SOURCE_DIR}/tests/tebako-fs.cpp -o ${CMAKE_CURRENT_SOURCE_DIR}/tests/tebako-fs0.c
-      DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/tests/tebako-fs.cpp ${DATA_BIN_FILE} ${INCBIN_PRJ}
-    )
-#  feat: exectable application stub
-#    add_custom_command(
-#      OUTPUT ${CMAKE_CURRENT_SOURCE_DIR}/tests/tebako-fs02.c
-#      COMMAND ${DEPS}/bin/incbin.exe ${CMAKE_CURRENT_SOURCE_DIR}/tests/tebako-fs2.cpp -o ${CMAKE_CURRENT_SOURCE_DIR}/tests/tebako-fs02.c
-#      DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/tests/tebako-fs2.cpp ${DATA_BIN_FILE_2} ${INCBIN_PRJ}
-#    )
-  endif(IS_WINDOWS)
-
-  function(ADD_DWARFS_LIBRARY NAME PRJ APP_NM)
-    add_library(${NAME} STATIC IMPORTED)
-    set_target_properties(${NAME} PROPERTIES IMPORTED_LOCATION ${_${NAME}})
-    add_dependencies(${NAME} ${PRJ})
-    target_link_libraries(${APP_NM} ${NAME})
-  endfunction()
-
-  function(ADD_DWARFS_LIBRARY_W NAME PRJ APP_NM)
-    add_library(${NAME} STATIC IMPORTED)
-    set_target_properties(${NAME} PROPERTIES IMPORTED_LOCATION ${_${NAME}})
-    add_dependencies(${NAME} ${PRJ})
-    target_link_libraries(${APP_NM} "$<LINK_LIBRARY:WHOLE_ARCHIVE,_LIBDWARFS_COMPRESSION>")
-  endfunction()
-
-# ...................................................................
-# System libraries
-# Each library name given to the NAMES option is first considered
-# as a library file name and then considered with platform-specific
-# prefixes (e.g. lib) and suffixes (e.g. .so). Therefore one may
-# specify library file names such as libfoo.a directly. This can be
-# used to locate static libraries on UNIX-like systems.
-#
-
-  if(IS_WINDOWS)
-    find_package(Boost 1.67 REQUIRED COMPONENTS chrono date_time iostreams filesystem program_options thread)
-  # For Windwos native build these libraries are installed with vcpkg
-    find_library(_LIBGLOG "glog" REQUIRED)
-    if(CMAKE_BUILD_TYPE STREQUAL Release)
-      find_library(_LIBGFLAGS "gflags_static" REQUIRED)
-    else(CMAKE_BUILD_TYPE STREQUAL Release)
-      find_library(_LIBGFLAGS "gflags_static_debug" REQUIRED)
-    endif(CMAKE_BUILD_TYPE STREQUAL Release)
-    find_library(_LIBDC "double-conversion" REQUIRED)
-    find_library(_LIBBROTLICOMMON "brotlicommon")
-    find_library(_LIBBROTLIENC "brotlienc")
-    find_library(_LIBBROTLIDEC "brotlidec")
-    find_library(_LIBLZ4 "lz4")
-    find_library(_LIBEVENT event REQUIRED)
-    find_library(_LIBLZMA lzma REQUIRED)
-    find_library(_LIBZ zlib REQUIRED)
-    find_library(_LIBSSL libssl REQUIRED)
-    find_library(_LIBCRYPTO libcrypto REQUIRED)
-
-# __XXXXX - since we are simulating that these libraries were build
-# by DWARFS project
-    find_library(__LIBZSTD zstd REQUIRED)
-    find_library(__LIBARCHIVE archive REQUIRED)
-    find_library(__LIBXXHASH xxhash REQUIRED)
-    if(CMAKE_BUILD_TYPE STREQUAL Release)
-      find_library(__LIBFMT fmt REQUIRED)
-    else(CMAKE_BUILD_TYPE STREQUAL Release)
-      find_library(__LIBFMT fmtd REQUIRED)
-    endif(CMAKE_BUILD_TYPE STREQUAL Release)
-    set(_LIBEH "")
-else(IS_WINDOWS)
-    if (IS_MSYS)
-      find_package(Boost 1.67 REQUIRED COMPONENTS chrono date_time iostreams filesystem program_options thread)
-      find_library(__LIBXXHASH "libxxhash.a" REQUIRED)
-      if(CMAKE_BUILD_TYPE STREQUAL Release)
-        find_library(__LIBFMT "libfmt.a" REQUIRED)
-      else(CMAKE_BUILD_TYPE STREQUAL Release)
-        find_library(__LIBFMT "libfmtd.a" REQUIRED)
-      endif(CMAKE_BUILD_TYPE STREQUAL Release)
-      find_library(__LIBZSTD "libzstd.a" REQUIRED)
-      set(_LIBEH "")
-      add_compile_definitions(GFLAGS_IS_A_DLL=0)
-    else(IS_MSYS)
-      find_package(Boost 1.67 REQUIRED COMPONENTS chrono date_time iostreams filesystem program_options thread)
-      set(_LIBEH "gcc_eh")
-    endif(IS_MSYS)
-
-    find_library(_LIBEVENT "libevent.a" REQUIRED)
-    find_library(_LIBLZMA "liblzma.a" REQUIRED)
-
-# Starting with MacOS BigSur  '/usr/lib' is replaced with a cache of system libraries
-# So we cannot just look for libz.a, it is not there anymore
-# brew version is keg-only so it cannot be located without a hint
-
-    find_library(_LIBZ "libz.a" REQUIRED HINTS ${DEPS}/lib ${CMAKE_PREFIX_PATH}/opt/zlib/lib)
-
-    if(DEFINED OPENSSL_ROOT_DIR)
-      set(_LIBSSL "${OPENSSL_ROOT_DIR}/lib/libssl.a")
-      set(_LIBCRYPTO "${OPENSSL_ROOT_DIR}/lib/libcrypto.a")
-    else(DEFINED OPENSSL_ROOT_DIR)
-      find_library(_LIBSSL "libssl.a" REQUIRED HINTS ${OPENSSL_ROOT_DIR}/lib)
-      find_library(_LIBCRYPTO "libcrypto.a" REQUIRED HINTS ${OPENSSL_ROOT_DIR}/lib)
-    endif(DEFINED OPENSSL_ROOT_DIR)
-    if(NOT IS_MSYS)
-      find_library(_LIBACL "libacl.a")
-    endif()
-
-#  find_library(_LIBPTHREAD "pthread")
-#  find_library(_LIBDL "dl")
-#  find_library(_LIBC "libc.a")
-#  find_library(_LIBM "libm.a")
-#  find_library(_LIBRT "librt.a")
-
-    find_library(_LIBUNWIND "libunwind.a")
-    find_library(_LIBIBERTY "libiberty.a")
-
-    if (NOT IS_DARWIN)
-      add_link_options(-static-libstdc++)
-      add_link_options(-static-libgcc)
-    endif(NOT IS_DARWIN)
-
-    if (IS_MUSL)
-      add_compile_definitions(__musl__)
-    endif(IS_MUSL)
-  endif(IS_WINDOWS)
-
-  add_executable(wr-bin
-    "include/tebako-pch.h"
-    "include/tebako-defines.h"
-    "include/tebako-io.h"
-    "tests/tests-defines-static.c"
-    "tests/tebako-fs.cpp"
-    "tests/tebako-fs.h"
-    "tests/tests.h"
-  )
-
-# ...................................................................
-# Google test
-
-  file(GLOB TEST_FILES LIST_DIRECTORIES false CONFIGURE_DEPENDS tests/tests-*.cpp)
-
-  add_executable(wr-tests
-    "include/tebako-pch.h"
-    "include/tebako-io.h"
-    ${TEST_FILES}
-    "tests/tebako-fs.cpp"
-    "tests/tebako-fs.h"
-    "tests/tests.h"
-  )
-  add_dependencies(wr-tests PACKAGED_FILESYSTEM_STEP_3)
-
-#  feat: exectable application stub
-# add_dependencies(wr-mount PACKAGED_FILESYSTEM_STEP_1)
-
-if(IS_WINDOWS)
-  target_sources(wr-bin PUBLIC  "tests/tebako-fs0.c" )
-  target_sources(wr-tests PUBLIC "tests/tebako-fs0.c")
-#  feat: exectable application stub
-#  target_sources(wr-mount PUBLIC  "tests/tebako-fs02.c")
-endif(IS_WINDOWS)
-
-if(RB_W32)
-  target_sources(wr-bin PUBLIC  "tests/rb_w32-tebako-tests-mocks.c")
-  target_sources(wr-tests PUBLIC  "tests/rb_w32-tebako-tests-mocks.c")
-endif(RB_W32)
-
-# ...................................................................
-#  IMPORTANT !!!
-#  MUST be in this order otherwise link may fail
-
-  target_link_libraries(wr-bin dwarfs-wr)
-
-  target_compile_options(wr-tests PUBLIC ${GTEST_CFLAGS})
-  target_link_libraries(wr-tests dwarfs-wr ${GTEST_LDFLAGS})
-  gtest_add_tests(TARGET wr-tests SOURCES ${TEST_FILES})
-
-  add_dependencies(wr-bin ${INCBIN_PRJ} PACKAGED_FILESYSTEM_STEP_3)
-  add_dependencies(wr-tests ${INCBIN_PRJ} PACKAGED_FILESYSTEM_STEP_3 wr-bin)
-
-# ...................................................................
-# The libraries that are build by dwarfs project
-# libdwarfs
-# libdwarfs_compression (whole archive needs to be linked)
-# libfmt libarchive libfolly libfsst libxxhash
-# libmetadata_thrift libthrift_light
-  add_dwarfs_library(_LIBDWARFS ${DWARFS_PRJ} wr-bin)
-  add_dwarfs_library_w(_LIBDWARFS_COMPRESSION ${DWARFS_PRJ} wr-bin)
-  add_dwarfs_library(_LIBFSST ${DWARFS_PRJ} wr-bin)
-  add_dwarfs_library(_LIBFOLLY ${DWARFS_PRJ} wr-bin)
-  add_dwarfs_library(_LIBT_METADATA ${DWARFS_PRJ} wr-bin)
-  add_dwarfs_library(_LIBT_LIGHT ${DWARFS_PRJ} wr-bin)
-  add_dwarfs_library(_LIBARCHIVE ${DWARFS_PRJ} wr-bin)
-  add_dwarfs_library(_LIBXXHASH ${DWARFS_PRJ} wr-bin)
-  add_dwarfs_library(_LIBZSTD ${DWARFS_PRJ} wr-bin)
-  add_dwarfs_library(_LIBFMT ${DWARFS_PRJ} wr-bin)
-
-  target_link_libraries(wr-tests _LIBDWARFS "$<LINK_LIBRARY:WHOLE_ARCHIVE,_LIBDWARFS_COMPRESSION>"
-                        _LIBARCHIVE _LIBFSST   _LIBFOLLY _LIBT_METADATA
-                        _LIBT_LIGHT _LIBXXHASH _LIBZSTD  _LIBFMT)
-
-  if(WITH_GLOG_BUILD)
-    add_dwarfs_library(_LIBGLOG ${GLOG_PRJ} wr-bin)
-    target_link_libraries(wr-tests _LIBGLOG)
-  else(WITH_GLOG_BUILD)
-    list(APPEND _LIBRARIES ${_LIBGLOG})
-  endif(WITH_GLOG_BUILD)
-
-  if(WITH_GFLAGS_BUILD)
-    add_dwarfs_library(_LIBGFLAGS ${GFLAGS_PRJ} wr-bin)
-    target_link_libraries(wr-tests _LIBGFLAGS)
-  else(WITH_GFLAGS_BUILD)
-    list(APPEND _LIBRARIES ${_LIBGFLAGS})
-  endif(WITH_GFLAGS_BUILD)
-
-  if(WITH_DC_BUILD)
-    add_dwarfs_library(_LIBDC ${DC_PRJ} wr-bin)
-    target_link_libraries(wr-tests _LIBDC)
-  else(WITH_DC_BUILD)
-    list(APPEND _LIBRARIES ${_LIBDC})
-  endif(WITH_DC_BUILD)
-
-  if(WITH_BROTLI_BUILD)
-    add_dwarfs_library(_LIBBROTLIENC ${BROTLI_PRJ} wr-bin)
-    add_dwarfs_library(_LIBBROTLIDEC ${BROTLI_PRJ} wr-bin)
-    add_dwarfs_library(_LIBBROTLICOMMON ${BROTLI_PRJ} wr-bin)
-    target_link_libraries(wr-tests _LIBBROTLIENC _LIBBROTLIDEC _LIBBROTLICOMMON)
-  elseif(NOT IS_MSYS)
-    list(APPEND _LIBRARIES ${_LIBBROTLIENC} ${_LIBBROTLIDEC} ${_LIBBROTLICOMMON})
-  endif(WITH_BROTLI_BUILD)
-
-  if(WITH_LZ4_BUILD)
-    add_dwarfs_library(_LIBLZ4 ${LZ4_PRJ} wr-bin)
-    target_link_libraries(wr-tests _LIBLZ4)
-  else(WITH_LZ4_BUILD)
-    list(APPEND _LIBRARIES ${_LIBLZ4})
-  endif(WITH_LZ4_BUILD)
-
-  list(APPEND _LIBRARIES ${_LIBSSL})
-  list(APPEND _LIBRARIES ${_LIBCRYPTO})
-  list(APPEND _LIBRARIES ${Boost_LIBRARIES} ${_LIBEVENT})
-
-  if(IS_DARWIN)
-    list(APPEND _LIBRARIES ${_LIBZ} ${_LIBLZMA} c++abi)
-  else(IS_DARWIN)
-  # libgcc_eh shall precede libunwind to aboid duplicate symbols during linking
-  # liblzma shall follow libunwind because it is libunwind dependency
-    list(APPEND _LIBRARIES ${_LIBIBERTY} ${_LIBACL} ${_LIBZ} ${_LIBEH} )
-    if(IS_MSYS)
-      find_library(_LIBDL "libdl.a" REQUIRED)
-      list(APPEND _LIBRARIES ${_LIBLZMA} ${_LIBDL})
-      target_link_options(wr-bin PUBLIC -static-libgcc -static-libstdc++ -Wl,-Bstatic,--whole-archive -lwinpthread -Wl,--no-whole-archive)
-      target_link_options(wr-tests PUBLIC -static-libgcc -static-libstdc++ -Wl,-Bstatic,--whole-archive -lwinpthread -Wl,--no-whole-archive)
-    elseif(NOT IS_WINDOWS)
-      list(APPEND _LIBRARIES ${_LIBUNWIND} ${_LIBLZMA} pthread dl)
-    else()
-      list(APPEND _LIBRARIES dl)
-    endif(IS_MSYS)
-  endif(IS_DARWIN)
-  target_link_libraries(wr-bin ${_LIBRARIES})
-  target_link_libraries(wr-tests ${GTestMain} ${_LIBRARIES})
-
-  if(WITH_JEMALLOC_BUILD)
-    add_dwarfs_library(_LIBJEMALLOC ${JEMALLOC_PRJ} wr-bin)
-    target_link_libraries(wr-tests ${_LIBJEMALLOC})
-  elseif(WITH_JEMALLOC_BUILD)
-    target_link_libraries(wr-bin ${_LIBJEMALLOC})
-    target_link_libraries(wr-tests ${_LIBJEMALLOC})
-  endif(WITH_JEMALLOC_BUILD)
-
-  if(IS_WINDOWS OR IS_MSYS)
-    target_link_libraries(wr-bin crypt32 shlwapi wsock32 ws2_32)
-    target_link_libraries(wr-tests crypt32 shlwapi wsock32 ws2_32)
-  endif(IS_WINDOWS OR IS_MSYS)
-
-endif(WITH_TESTS)
 
 install(TARGETS
-         dwarfs-wr
-         DESTINATION ${CMAKE_INSTALL_LIBDIR}
+         tfs
+         EXPORT libtfsTargets
+         LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+         ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+         INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
 )
 
 install(FILES
@@ -1395,11 +579,6 @@ if(RB_W32)
   )
 endif(RB_W32)
 
-install(FILES
-        ${DEPS_INCLUDE_DIR}/incbin.h
-        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/incbin
-)
-
 if(IS_WINDOWS)
   install(FILES
           ${DEPS_BIN_DIR}/incbin.exe
@@ -1412,6 +591,42 @@ install(FILES
         DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 
+# Install CMake package config files for vcpkg integration
+include(CMakePackageConfigHelpers)
+
+configure_package_config_file(
+  "${CMAKE_CURRENT_SOURCE_DIR}/cmake/libtfsConfig.cmake.in"
+  "${CMAKE_CURRENT_BINARY_DIR}/libtfsConfig.cmake"
+  INSTALL_DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/libtfs"
+)
+
+write_basic_package_version_file(
+  "${CMAKE_CURRENT_BINARY_DIR}/libtfsConfigVersion.cmake"
+  VERSION ${PROJECT_VERSION}
+  COMPATIBILITY SameMajorVersion
+)
+
+install(FILES
+  "${CMAKE_CURRENT_BINARY_DIR}/libtfsConfig.cmake"
+  "${CMAKE_CURRENT_BINARY_DIR}/libtfsConfigVersion.cmake"
+  DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/libtfs"
+)
+
+install(EXPORT libtfsTargets
+  FILE libtfsTargets.cmake
+  NAMESPACE libtfs::
+  DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/libtfs"
+)
+
+# Install public headers for libtfs API
+install(DIRECTORY
+  "include/tebako/fs"
+  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/tebako
+  FILES_MATCHING PATTERN "*.h"
+  PATTERN "internal" EXCLUDE
+  PATTERN "ruby" EXCLUDE
+)
+
 if(IS_WINDOWS OR IS_MSYS)
 #  include(InstallRequiredSystemLibraries)
 
@@ -1421,7 +636,7 @@ if(IS_WINDOWS OR IS_MSYS)
   list(GET VERSION_COMPONENTS 1 VERSION_MINOR)
   list(GET VERSION_COMPONENTS 2 VERSION_PATCH)
 
-  set(CPACK_PACKAGE_NAME "libdwarfs-wr")
+  set(CPACK_PACKAGE_NAME "libtfs")
   set(CPACK_PACKAGE_VENDOR "Ribose Inc.")
   set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Tamatebako libdwarfs wrapper package")
   set(CPACK_PACKAGE_VERSION "${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_PATCH}")
@@ -1438,3 +653,168 @@ if(IS_WINDOWS OR IS_MSYS)
   set(CPACK_GENERATOR "7Z")
   include(CPack)
 endif(IS_WINDOWS OR IS_MSYS)
+
+# ~~~~~~~~~~~~~~~~~~~~~~~~~ Tests ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+if (WITH_TESTS)
+  include_directories(BEFORE ${CMAKE_CURRENT_SOURCE_DIR}/tests)
+  include(CTest)
+  include(GoogleTest)
+
+  # Find GTest using modern CMake
+  find_package(GTest REQUIRED)
+
+  if(RB_W32)
+    enable_testing()
+    add_subdirectory(tests)
+
+    add_dependencies(wr-bin ${INCBIN_PRJ} PACKAGEDFileSYSTEM_STEP_3)
+  endif(RB_W32)
+
+  # Backend factory tests
+  add_executable(test_backend_factory
+    "tests/test_backend_factory.cpp"
+  )
+  target_link_libraries(test_backend_factory PRIVATE
+    tfs
+    tebako_dirent_helper_c
+    GTest::gtest
+    GTest::gtest_main
+  )
+  gtest_add_tests(TARGET test_backend_factory)
+
+  # ZIP Backend tests
+  add_executable(test_zip_backend
+    "tests/test_zip_backend.cpp"
+  )
+  target_link_libraries(test_zip_backend PRIVATE
+    tfs
+    tebako_dirent_helper_c
+    GTest::gtest
+    GTest::gtest_main
+  )
+  gtest_add_tests(TARGET test_zip_backend)
+
+  # ZIP Integration tests
+  add_executable(test_zip_integration
+    "tests/test_zip_integration.cpp"
+  )
+  target_link_libraries(test_zip_integration PRIVATE
+    tfs
+    tebako_dirent_helper_c
+    GTest::gtest
+    GTest::gtest_main
+  )
+  gtest_add_tests(TARGET test_zip_integration)
+
+  # DwarFS Backend tests
+  add_executable(test_dwarfs_backend
+    "tests/test_dwarfs_backend.cpp"
+  )
+  target_link_libraries(test_dwarfs_backend PRIVATE
+    tfs
+    tebako_dirent_helper_c
+    GTest::gtest
+    GTest::gtest_main
+    dwarfs::dwarfs_reader
+    dwarfs::dwarfs_common
+  )
+  gtest_add_tests(TARGET test_dwarfs_backend)
+
+  # DwarFS Integration tests
+  add_executable(test_dwarfs_integration
+    "tests/test_dwarfs_integration.cpp"
+  )
+  target_link_libraries(test_dwarfs_integration PRIVATE
+    tfs
+    tebako_dirent_helper_c
+    GTest::gtest
+    GTest::gtest_main
+    dwarfs::dwarfs_reader
+    dwarfs::dwarfs_common
+  )
+  gtest_add_tests(TARGET test_dwarfs_integration)
+
+  # SquashFS Backend tests
+  # TODO: Re-enable once squashfs-tools-ng is available
+  # add_executable(test_squashfs_backend
+  #   "tests/test_squashfs_backend.cpp"
+  # )
+  # target_compile_options(test_squashfs_backend PUBLIC ${GTEST_CFLAGS})
+  # target_link_libraries(test_squashfs_backend tfs ${GTestMain} ${GTEST_LDFLAGS})
+  # gtest_add_tests(TARGET test_squashfs_backend)
+
+  # SquashFS Integration tests
+  # TODO: Re-enable once squashfs-tools-ng is available
+  # add_executable(test_squashfs_integration
+  #   "tests/test_squashfs_integration.cpp"
+  # )
+  # target_compile_options(test_squashfs_integration PUBLIC ${GTEST_CFLAGS})
+  # target_link_libraries(test_squashfs_integration tfs ${GTestMain} ${GTEST_LDFLAGS})
+  # gtest_add_tests(TARGET test_squashfs_integration)
+
+  # C API tests
+  add_executable(test_c_api
+    "tests/test_c_api.cpp"
+  )
+  target_link_libraries(test_c_api PRIVATE
+    tfs
+    tebako_dirent_helper_c
+    GTest::gtest
+    GTest::gtest_main
+    dwarfs::dwarfs_reader
+    dwarfs::dwarfs_common
+  )
+  gtest_add_tests(TARGET test_c_api)
+
+  # Extraction API tests
+  add_executable(test_extraction
+    "tests/test_extraction.cpp"
+  )
+  target_link_libraries(test_extraction PRIVATE
+    tfs
+    tebako_dirent_helper_c
+    GTest::gtest
+    GTest::gtest_main
+  )
+  gtest_add_tests(TARGET test_extraction)
+
+  # Unified interface tests
+  add_executable(test_unified_interface
+    "tests/test_unified_interface.cpp"
+  )
+  target_link_libraries(test_unified_interface PRIVATE
+    tfs
+    tebako_dirent_helper_c
+    GTest::gtest
+    GTest::gtest_main
+  )
+  gtest_add_tests(TARGET test_unified_interface)
+
+  # Copy test fixtures to build directory
+  file(COPY tests/fixtures/zip DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tests/fixtures)
+  file(COPY tests/fixtures/dwarfs DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tests/fixtures)
+  # file(COPY tests/fixtures/squashfs DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tests/fixtures)  # TODO: Re-enable
+
+endif(WITH_TESTS)
+
+# ~~~~~~~~~~~~~~~~~~~~~~~~~ CLI Tool ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+# tebakofs CLI tool
+add_executable(tebakofs
+  "src/tebakofs_main.cpp"
+  "src/cli/tebakofs.cpp"
+  "include/tebako/fs/cli/tebakofs.h"
+)
+
+target_include_directories(tebakofs PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}/include
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/tebako/fs
+)
+
+target_link_libraries(tebakofs PRIVATE
+  tfs
+  argtable3::argtable3
+)
+
+install(TARGETS tebakofs DESTINATION ${CMAKE_INSTALL_BINDIR})

@@ -30,11 +30,8 @@
 #pragma once
 
 namespace tebako {
-#ifdef _WIN32
+// Forward declarations
 struct tebako_dirent;
-#else
-union tebako_dirent;
-#endif
 
 struct tebako_fd {
   struct stat st;
@@ -64,7 +61,7 @@ typedef std::map<int, std::shared_ptr<tebako_fd>> tebako_fdtable;
 
 class sync_tebako_fdtable {
  private:
-  folly::Synchronized<tebako_fdtable> s_tebako_fdtable;
+  tebako::Synchronized<tebako_fdtable> s_tebako_fdtable;
 
  public:
   static sync_tebako_fdtable& get_tebako_fdtable(void);
