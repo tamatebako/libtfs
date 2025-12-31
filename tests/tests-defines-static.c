@@ -41,7 +41,7 @@
 #include <tebako-defines.h>
 #include "tests-defines.h"
 
-#include <tebako-io.h>
+#include <tebako/fs/io.h>
 
 #include "tebako-fs.h"
 #include "tebako-test-config.h"

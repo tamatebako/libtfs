@@ -28,7 +28,7 @@
  */
 
 #include "tests.h"
-#include <tebako-package-descriptor.h>
+#include <tebako/fs/package_descriptor.h>
 
 namespace tebako {
 

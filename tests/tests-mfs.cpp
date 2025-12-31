@@ -35,7 +35,7 @@
 #include <boost/system/error_code.hpp>
 
 #include <tebako-pch.h>
-#include <tebako-common.h>
+#include <tebako/fs/common.h>
 
 #include <tebako-mfs.h>
 

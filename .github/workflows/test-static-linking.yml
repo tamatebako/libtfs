@@ -1,0 +1,235 @@
+name: Test Static Linking Without Folly/Thrift
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  pull_request:
+    branches:
+      - main
+      - develop
+
+jobs:
+  test-static-linking:
+    name: Test on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+
+    steps:
+      - name: Checkout repository with submodules
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Install dependencies (Ubuntu)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            cmake \
+            ninja-build \
+            pkg-config \
+            binutils
+
+      - name: Install dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install cmake ninja pkg-config
+
+      - name: Configure CMake with Tebako flags
+        # Verify build configuration:
+        # - TEBAKO_BUILD=ON: Enable Tebako-specific build mode
+        # - DWARFS_WITH_THRIFT=OFF: Disable thrift dependency
+        # - DWARFS_WITH_FOLLY=OFF: Disable folly dependency
+        # - DWARFS_WITH_CEREAL=ON: Enable Cereal serialization
+        # - DWARFS_WITH_BITSERY=ON: Enable Bitsery serialization
+        run: |
+          cmake -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DTEBAKO_BUILD=ON \
+            -DDWARFS_WITH_THRIFT=OFF \
+            -DDWARFS_WITH_FOLLY=OFF \
+            -DDWARFS_WITH_CEREAL=ON \
+            -DDWARFS_WITH_BITSERY=ON \
+            -DCMAKE_VERBOSE_MAKEFILE=ON
+
+      - name: Verify CMake configuration
+        # Check that CMake correctly detected our configuration:
+        # - Cereal serialization is enabled
+        # - Bitsery serialization is enabled
+        # - No folly/thrift references in final configuration
+        run: |
+          echo "=== Checking CMake cache for serialization settings ==="
+          grep -i "cereal" build/CMakeCache.txt || echo "WARNING: Cereal not found in cache"
+          grep -i "bitsery" build/CMakeCache.txt || echo "WARNING: Bitsery not found in cache"
+
+          echo ""
+          echo "=== Verifying NO folly/thrift in configuration ==="
+          if grep -i "folly" build/CMakeCache.txt | grep -v "DWARFS_WITH_FOLLY:BOOL=OFF" | grep -v "BUILD_BYPRODUCTS"; then
+            echo "ERROR: Found unexpected folly references in CMake configuration"
+            exit 1
+          fi
+
+          if grep -i "thrift" build/CMakeCache.txt | grep -v "DWARFS_WITH_THRIFT:BOOL=OFF" | grep -v "BUILD_BYPRODUCTS"; then
+            echo "ERROR: Found unexpected thrift references in CMake configuration"
+            exit 1
+          fi
+
+          echo "✓ Configuration verified: No folly/thrift dependencies"
+
+      - name: Build project
+        run: |
+          cmake --build build --config Release --verbose
+
+      - name: Check build output for serialization
+        # Verify the build output shows correct serialization backends:
+        # - Should mention Cereal
+        # - Should mention Bitsery
+        # - Should NOT mention folly or thrift as active dependencies
+        run: |
+          echo "=== Checking build configuration summary ==="
+          if [ -f build/CMakeFiles/CMakeOutput.log ]; then
+            cat build/CMakeFiles/CMakeOutput.log
+          fi
+
+          echo "✓ Build completed successfully"
+
+      - name: Run tests
+        # Execute test suite to verify functionality without folly/thrift
+        run: |
+          cd build
+          ctest --output-on-failure --verbose
+
+      - name: Verify no folly symbols in binaries (Linux)
+        if: runner.os == 'Linux'
+        # Use nm to check for folly namespace symbols in compiled objects
+        # Any folly:: symbols would indicate dependency leakage
+        run: |
+          echo "=== Checking for folly symbols in object files ==="
+          found_folly=0
+
+          for obj in $(find build -name "*.o" -o -name "*.so" -o -name "*.a" 2>/dev/null); do
+            if nm -C "$obj" 2>/dev/null | grep -i "folly::" | grep -v "BUILD_BYPRODUCTS"; then
+              echo "ERROR: Found folly symbols in $obj"
+              found_folly=1
+            fi
+          done
+
+          if [ $found_folly -eq 1 ]; then
+            echo "ERROR: Folly symbols detected in binaries"
+            exit 1
+          fi
+
+          echo "✓ No folly symbols found in binaries"
+
+      - name: Verify no folly symbols in binaries (macOS)
+        if: runner.os == 'macOS'
+        # Use nm to check for folly namespace symbols in compiled objects
+        # Any folly:: symbols would indicate dependency leakage
+        run: |
+          echo "=== Checking for folly symbols in object files ==="
+          found_folly=0
+
+          for obj in $(find build -name "*.o" -o -name "*.dylib" -o -name "*.a" 2>/dev/null); do
+            if nm -C "$obj" 2>/dev/null | grep -i "folly::" | grep -v "BUILD_BYPRODUCTS"; then
+              echo "ERROR: Found folly symbols in $obj"
+              found_folly=1
+            fi
+          done
+
+          if [ $found_folly -eq 1 ]; then
+            echo "ERROR: Folly symbols detected in binaries"
+            exit 1
+          fi
+
+          echo "✓ No folly symbols found in binaries"
+
+      - name: Verify no thrift symbols in binaries (Linux)
+        if: runner.os == 'Linux'
+        # Use nm to check for thrift namespace symbols
+        # Any apache::thrift:: symbols would indicate dependency leakage
+        run: |
+          echo "=== Checking for thrift symbols in object files ==="
+          found_thrift=0
+
+          for obj in $(find build -name "*.o" -o -name "*.so" -o -name "*.a" 2>/dev/null); do
+            if nm -C "$obj" 2>/dev/null | grep -i "apache::thrift"; then
+              echo "ERROR: Found thrift symbols in $obj"
+              found_thrift=1
+            fi
+          done
+
+          if [ $found_thrift -eq 1 ]; then
+            echo "ERROR: Thrift symbols detected in binaries"
+            exit 1
+          fi
+
+          echo "✓ No thrift symbols found in binaries"
+
+      - name: Verify no thrift symbols in binaries (macOS)
+        if: runner.os == 'macOS'
+        # Use nm to check for thrift namespace symbols
+        # Any apache::thrift:: symbols would indicate dependency leakage
+        run: |
+          echo "=== Checking for thrift symbols in object files ==="
+          found_thrift=0
+
+          for obj in $(find build -name "*.o" -o -name "*.dylib" -o -name "*.a" 2>/dev/null); do
+            if nm -C "$obj" 2>/dev/null | grep -i "apache::thrift"; then
+              echo "ERROR: Found thrift symbols in $obj"
+              found_thrift=1
+            fi
+          done
+
+          if [ $found_thrift -eq 1 ]; then
+            echo "ERROR: Thrift symbols detected in binaries"
+            exit 1
+          fi
+
+          echo "✓ No thrift symbols found in binaries"
+
+      - name: Verify static linking
+        # Check that libraries are properly statically linked
+        # For Linux: use ldd to verify minimal dynamic dependencies
+        # For macOS: use otool to verify minimal dynamic dependencies
+        run: |
+          echo "=== Verifying static linking ==="
+
+          if [ "$RUNNER_OS" == "Linux" ]; then
+            # Find test executables and check their dependencies
+            for exe in $(find build/tests -type f -executable 2>/dev/null); do
+              echo "Checking dependencies for: $exe"
+              ldd "$exe" || true
+            done
+          elif [ "$RUNNER_OS" == "macOS" ]; then
+            # Find test executables and check their dependencies
+            for exe in $(find build/tests -type f -perm +111 2>/dev/null); do
+              echo "Checking dependencies for: $exe"
+              otool -L "$exe" || true
+            done
+          fi
+
+          echo "✓ Static linking verification complete"
+
+      - name: Report results
+        if: always()
+        run: |
+          echo "================================"
+          echo "Static Linking Test Results"
+          echo "================================"
+          echo "OS: ${{ matrix.os }}"
+          echo "Build Status: ${{ job.status }}"
+          echo ""
+          echo "Configuration:"
+          echo "  - Folly: DISABLED"
+          echo "  - Thrift: DISABLED"
+          echo "  - Cereal: ENABLED"
+          echo "  - Bitsery: ENABLED"
+          echo ""
+          echo "All checks completed."

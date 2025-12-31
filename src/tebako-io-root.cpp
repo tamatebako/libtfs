@@ -29,16 +29,14 @@
 
 #include <tebako-pch.h>
 #include <tebako-pch-pp.h>
-#include <tebako-common.h>
-#include <tebako-dirent.h>
-#include <tebako-memfs.h>
-#include <tebako-io.h>
+#include <tebako/fs/common.h>
+#include <tebako/fs/dirent.h>
+#include <tebako/fs/memfs.h>
+#include <tebako/fs/internal/memfs_table.h>
+#include <tebako/fs/internal/mount_table.h>
 #include <tebako-io-inner.h>
 #include <tebako-io-root.h>
-#include <tebako-fd.h>
-#include <tebako-mfs.h>
-#include <tebako-memfs-table.h>
-#include <tebako-mount-table.h>
+#include <tebako/fs/internal/fd_table.h>
 
 using namespace dwarfs;
 

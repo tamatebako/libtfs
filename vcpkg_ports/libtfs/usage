@@ -1,0 +1,15 @@
+libtfs provides CMake targets:
+
+    find_package(libtfs CONFIG REQUIRED)
+    target_link_libraries(main PRIVATE libtfs::tfs)
+
+libtfs provides a unified interface for multiple archive formats:
+- DwarFS (.dwarfs)
+- ZIP (.zip)
+- SquashFS (.squashfs)
+
+Example usage:
+    #include <tebako/fs/backend_factory.h>
+
+    auto backend = tebako::fs::BackendFactory::create_from_file("archive.dwarfs");
+    backend->mount(backend->archive_path(), "/mnt");

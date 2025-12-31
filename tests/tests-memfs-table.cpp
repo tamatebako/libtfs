@@ -56,8 +56,8 @@ struct tebako_dirent;
 #undef closedir
 #endif
 
-#include <tebako-memfs.h>
-#include <tebako-memfs-table.h>
+#include <tebako/fs/memfs.h>
+#include <tebako/fs/internal/memfs_table.h>
 
 namespace tebako {
 

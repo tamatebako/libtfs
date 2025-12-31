@@ -54,7 +54,7 @@
 #include <filesystem>
 namespace stdfs = std::filesystem;
 
-#include <folly/Conv.h>
-#include <folly/Synchronized.h>
+#include <tebako/fs/util/synchronized.h>
+#include <tebako-conversions.h>
 
 #include <dwarfs/logger.h>

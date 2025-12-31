@@ -29,13 +29,13 @@
 
 #include <tebako-pch.h>
 #include <tebako-pch-pp.h>
-#include <tebako-common.h>
-#include <tebako-dirent.h>
-#include <tebako-io.h>
+#include <tebako/fs/common.h>
+#include <tebako/fs/dirent.h>
+#include <tebako/fs/io.h>
 #include <tebako-io-inner.h>
-#include <tebako-io-rb-w32-inner.h>
+#include <tebako/fs/ruby/io_rb_w32_inner.h>
 #include <tebako-io-root.h>
-#include <tebako-fd.h>
+#include <tebako/fs/internal/fd_table.h>
 
 using namespace std;
 
@@ -46,12 +46,12 @@ struct tebako_dlerror_data {
   tebako_dlerror_data(void) : err(0), fname(""){};
 };
 
-static folly::Synchronized<tebako_dlerror_data> tebako_dlerror_stash;
+static tebako::Synchronized<tebako_dlerror_data> tebako_dlerror_stash;
 static char tebako_dlerror_msg[TEBAKO_PATH_LENGTH + 1024];
 
 typedef map<string, string> tebako_dltable;
 
-class sync_tebako_dltable : public folly::Synchronized<tebako_dltable*> {
+class sync_tebako_dltable : public tebako::Synchronized<tebako_dltable*> {
  private:
   stdfs::path dl_tmpdir;
 
@@ -89,7 +89,7 @@ class sync_tebako_dltable : public folly::Synchronized<tebako_dltable*> {
   }
 
  public:
-  sync_tebako_dltable(void) : folly::Synchronized<tebako_dltable*>(new tebako_dltable) { create_temporary_directory(); }
+  sync_tebako_dltable(void) : tebako::Synchronized<tebako_dltable*>(new tebako_dltable) { create_temporary_directory(); }
   ~sync_tebako_dltable(void)
   {
     auto p_dltable = *wlock();

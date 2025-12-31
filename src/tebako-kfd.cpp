@@ -30,7 +30,7 @@
 #include <tebako-pch.h>
 #include <tebako-pch-pp.h>
 
-#include <tebako-kfd.h>
+#include <tebako/fs/internal/kfd.h>
 
 namespace tebako {
 

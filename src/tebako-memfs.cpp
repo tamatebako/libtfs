@@ -29,28 +29,35 @@
 
 #include <tebako-pch.h>
 #include <tebako-pch-pp.h>
-#include <tebako-common.h>
-#include <tebako-dirent.h>
-#include <tebako-memfs.h>
-#include <tebako-io.h>
+#include <tebako/fs/common.h>
+#include <tebako/fs/dirent.h>
+#include <tebako/fs/memfs.h>
+#include <tebako/fs/io.h>
 #include <tebako-io-inner.h>
-#include <tebako-mfs.h>
-#include <tebako-memfs-table.h>
-#include <tebako-mount-table.h>
+#include <tebako/fs/internal/memory_file_view.h>
+#include <tebako/fs/internal/memfs_table.h>
+#include <tebako/fs/internal/mount_table.h>
+#include <dwarfs/os_access_generic.h>
+#include <dwarfs/util.h>
+#include <dwarfs/reader/mlock_mode.h>
+
+// Ensure IFTODT is defined (some systems don't have it)
+#ifndef IFTODT
+#define IFTODT(mode) (((mode) & 0170000) >> 12)
+#endif
 
 using namespace dwarfs;
 
 namespace tebako {
 
-filesystem_options& operator<<(filesystem_options& fsopts, tebako::memfs_options& opts)
+dwarfs::reader::filesystem_options& operator<<(dwarfs::reader::filesystem_options& fsopts, tebako::memfs_options& opts)
 {
   fsopts.lock_mode = opts.lock_mode;
   fsopts.block_cache.max_bytes = opts.cachesize;
   fsopts.block_cache.num_workers = opts.workers;
   fsopts.block_cache.decompress_ratio = opts.decompress_ratio;
-  fsopts.block_cache.mm_release = !opts.cache_image;
-  fsopts.block_cache.init_workers = true;
-  fsopts.metadata.enable_nlink = bool(opts.enable_nlink);
+  // Note: mm_release and init_workers removed in DwarFS v0.9+
+  // Note: enable_nlink moved or removed in DwarFS v0.9+
   fsopts.metadata.readonly = bool(opts.readonly);
   return fsopts;
 }
@@ -79,7 +86,18 @@ int memfs::load(const char* image_offset)
 
   try {
     set_image_offset_str(image_offset);
-    fs = filesystem_v2(logger(), std::make_shared<tebako::mfs>(data, size), fsopts, dwarfs_root_inode, nullptr);
+
+    // Create memory file view for modern DwarFS v0.9+ API
+    auto mem_view = std::make_shared<tebako::memory_file_view_impl>(
+        data, size, "/__tebako_memfs__");
+    dwarfs::file_view view{mem_view};
+
+    // Set inode_offset in filesystem_options instead of passing directly
+    fsopts.inode_offset = dwarfs_root_inode;
+
+    // DwarFS v0.9+ requires os_access parameter
+    dwarfs::os_access_generic os;
+    fs = dwarfs::reader::filesystem_v2(logger(), os, view, fsopts);
     LOG_TIMED_INFO << "Filesystem initialized";
   }
 
@@ -101,7 +119,7 @@ int memfs::load(const char* image_offset)
 
 void memfs::set_cachesize(const char* cachesize)
 {
-  options().cachesize = (cachesize != nullptr) ? parse_size_with_unit(cachesize) : (static_cast<size_t>(512) << 20);
+  options().cachesize = (cachesize != nullptr) ? dwarfs::parse_size_with_unit(cachesize) : (static_cast<size_t>(512) << 20);
 }
 
 void memfs::set_debuglevel(const char* debuglevel)
@@ -113,7 +131,7 @@ void memfs::set_debuglevel(const char* debuglevel)
 
 void memfs::set_decompress_ratio(const char* decompress_ratio)
 {
-  options().decompress_ratio = (decompress_ratio != nullptr) ? folly::to<double>(decompress_ratio) : 0.8;
+  options().decompress_ratio = (decompress_ratio != nullptr) ? tebako::util::string_to<double>(decompress_ratio) : 0.8;
   if (options().decompress_ratio < 0.0 || options().decompress_ratio > 1.0) {
     DWARFS_THROW(runtime_error, std::string("decratio must be between 0.0 and 1.0; got ") + decompress_ratio);
   }
@@ -125,7 +143,7 @@ void memfs::set_image_offset_str(const char* image_offset_str)
     std::string image_offset{image_offset_str};
     try {
       fsopts.image_offset =
-          image_offset == "auto" ? filesystem_options::IMAGE_OFFSET_AUTO : folly::to<file_off_t>(image_offset);
+          image_offset == "auto" ? dwarfs::reader::filesystem_options::IMAGE_OFFSET_AUTO : tebako::util::string_to<file_off_t>(image_offset);
     }
     catch (...) {
       DWARFS_THROW(runtime_error, "failed to parse offset: " + image_offset);
@@ -135,12 +153,12 @@ void memfs::set_image_offset_str(const char* image_offset_str)
 
 void memfs::set_lock_mode(const char* mlock)
 {
-  options().lock_mode = (mlock != nullptr) ? parse_mlock_mode(mlock) : mlock_mode::NONE;
+  options().lock_mode = (mlock != nullptr) ? dwarfs::reader::parse_mlock_mode(mlock) : dwarfs::reader::mlock_mode::NONE;
 }
 
 void memfs::set_workers(const char* workers)
 {
-  options().workers = (workers != nullptr) ? folly::to<size_t>(workers) : 2;
+  options().workers = (workers != nullptr) ? tebako::util::string_to<size_t>(workers) : 2;
 }
 
 // *** Now this is the core function ***
@@ -178,7 +196,7 @@ int memfs::find_inode(uint32_t start_from,
 
     auto pi = fs.find(start_from);
     auto p_iterator = p_path.begin();
-    auto m_table = sync_tebako_mount_table::get_tebako_mount_table();
+    auto& m_table = sync_tebako_mount_table::get_tebako_mount_table();
 
     if (pi) {
       ret = process_inode(*pi, &dwarfs_st, follow_last, lnk, p_iterator, p_path);
@@ -223,9 +241,10 @@ int memfs::find_inode(uint32_t start_from,
         }
         else {
           auto pi_prev = pi;
-          pi = fs.find(inode, p_iterator->string().c_str());
+          auto dir_entry = fs.find(inode, p_iterator->string().c_str());
 
-          if (pi) {
+          if (dir_entry) {
+            pi = dir_entry->inode();
             ret = process_inode(*pi, &dwarfs_st, follow_last, lnk, p_iterator, p_path);
             if (ret == DWARFS_S_LINK_RELATIVE || ret == DWARFS_S_LINK_ABSOLUTE) {
               LOG_DEBUG << __func__ << " [ reparse point --> \"" << lnk << "\" ]";
@@ -255,9 +274,9 @@ int memfs::find_inode(uint32_t start_from,
     // Copy the stat structure only if there is no error
     if (ret != DWARFS_IO_ERROR) {
 #if defined(_WIN32)
-      copy_file_stat<false>(st, dwarfs_st);
+      dwarfs_st.copy_to(st);
 #else
-      copy_file_stat<true>(st, dwarfs_st);
+      dwarfs_st.copy_to(st);
 #endif
     }
   }
@@ -377,7 +396,7 @@ int memfs::find_inode_root(const std::string& path, bool follow, std::string& ln
 //  DWARFS_IO_ERROR - error [errno is set]
 //  DWARFS_LINK - symlink or mount point  [lnk is set]
 
-int memfs::process_inode(inode_view& pi,
+int memfs::process_inode(dwarfs::reader::inode_view& pi,
                          dwarfs::file_stat* st,
                          bool follow,
                          std::string& lnk,
@@ -385,13 +404,16 @@ int memfs::process_inode(inode_view& pi,
                          stdfs::path& p_path)
 {
   int ret = DWARFS_IO_CONTINUE;
-  int err = fs.getattr(pi, st);
+  std::error_code ec;
+  *st = fs.getattr(pi, ec);
+  int err = ec ? -ec.value() : 0;
   if (err == 0) {
     // (1) It is symlink
     // (2a) It is not the last element in the path
     // (2b)   or we should follow the last element  (lstat called)
-    if (S_ISLNK(st->mode) && (++p_iterator != p_path.end() || follow)) {
-      err = fs.readlink(pi, &lnk);
+    if (S_ISLNK(st->mode_unchecked()) && (++p_iterator != p_path.end() || follow)) {
+      lnk = fs.readlink(pi, ec);
+      err = ec ? -ec.value() : 0;
       if (err == 0) {
         ret = process_link(lnk, p_iterator, p_path);
       }
@@ -454,14 +476,15 @@ int memfs::access(const std::string& path, int amode, uid_t uid, gid_t gid, std:
   return ret;
 }
 
-int memfs::dwarfs_file_stat(inode_view& inode, struct stat* st)
+int memfs::dwarfs_file_stat(dwarfs::reader::inode_view& inode, struct stat* st)
 {
-  dwarfs::file_stat dwarfs_file_stat;
-  int ret = fs.getattr(inode, &dwarfs_file_stat);
+  std::error_code ec;
+  dwarfs::file_stat dwarfs_file_stat = fs.getattr(inode, ec);
+  int ret = ec ? -ec.value() : 0;
 #if defined(_WIN32)
-  copy_file_stat<false>(st, dwarfs_file_stat);
+  dwarfs_file_stat.copy_to(st);
 #else
-  copy_file_stat<true>(st, dwarfs_file_stat);
+  dwarfs_file_stat.copy_to(st);
 #endif
   if (ret < 0) {
     TEBAKO_SET_LAST_ERROR(-ret);
@@ -522,46 +545,17 @@ int memfs::inode_readdir(uint32_t inode,
           pOK = false;
         }
         else {
-          auto [entry, name_view] = *res;
-          std::string name(std::move(name_view));
+          auto entry_view = *res;
+          std::string name = entry_view.name();
+          auto entry = entry_view.inode();
           struct stat st;
           ret = dwarfs_file_stat(entry, &st);
 
-#ifndef RB_W32
-          cache[cache_size].e.d_ino = st.st_ino;
-#if __MACH__
-          cache[cache_size].e.d_seekoff = cache_start + cache_size;
-#else
-          cache[cache_size].e.d_off = cache_start + cache_size;
-#endif
-          cache[cache_size].e.d_type = IFTODT(st.st_mode);
-          strncpy(cache[cache_size]._e.d_name, name.c_str(), TEBAKO_PATH_LENGTH);
-          cache[cache_size]._e.d_name[TEBAKO_PATH_LENGTH] = '\0';
-          cache[cache_size].e.d_reclen = sizeof(cache[0]);
-#else
-#ifdef _WIN32
-          cache[cache_size].e.d_altname = 0;
-          cache[cache_size].e.d_altlen = 0;
-          cache[cache_size].e.d_name = cache[cache_size].d_name;
-          if (S_ISDIR(st.st_mode)) {
-            cache[cache_size].e.d_type = DT_DIR;
-          }
-          else if (S_ISLNK(st.st_mode)) {
-            cache[cache_size].e.d_type = DT_LNK;
-          }
-          else {
-            cache[cache_size].e.d_type = DT_REG;
-          }
-          cache[cache_size].e.d_namlen = std::min(name.length(), TEBAKO_PATH_LENGTH - 1);
-#else
-          cache[cache_size].e.d_reclen = 0;
-          cache[cache_size].e.d_namlen = std::min(name.length(), sizeof(cache[cache_size].e.d_name) - 1);
-#endif
-          static int dummy = INT_MAX;
-          cache[cache_size].e.d_ino = dummy--;
-          strncpy(cache[cache_size].e.d_name, name.c_str(), cache[cache_size].e.d_namlen);
-          cache[cache_size].e.d_name[cache[cache_size].e.d_namlen] = '\0';
-#endif
+          // Use helper function implemented in tebako-dirent.cpp
+          populate_tebako_dirent(cache[cache_size], st.st_ino,
+                                cache_start + cache_size, st.st_mode,
+                                name.c_str(), std::min(name.length(), TEBAKO_PATH_LENGTH));
+
           ++cache_size;
         }
       }
@@ -582,7 +576,9 @@ int memfs::inode_readlink(uint32_t inode, std::string& lnk) noexcept
   int ret = DWARFS_IO_ERROR;
   auto pi = fs.find(inode);
   if (pi) {
-    int err = fs.readlink(*pi, &lnk);
+    std::error_code ec;
+    lnk = fs.readlink(*pi, ec);
+    int err = ec ? -ec.value() : 0;
     if (err < 0) {
       TEBAKO_SET_LAST_ERROR(-err);
     }
@@ -600,7 +596,7 @@ int memfs::inode_readlink(uint32_t inode, std::string& lnk) noexcept
 int memfs::i_access(int amode, struct stat* st)
 {
   int ret = DWARFS_IO_CONTINUE;
-// WIN32 ?????????
+// WIN32 ????????
 #ifdef _WIN32
   if (amode & W_OK) {
 #else

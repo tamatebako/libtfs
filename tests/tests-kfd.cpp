@@ -28,7 +28,7 @@
  */
 
 #include "tests.h"
-#include <tebako-kfd.h>
+#include <tebako/fs/internal/kfd.h>
 
 namespace tebako {
 

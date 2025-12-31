@@ -1,28 +1,11 @@
 ﻿{
+  "name": "libtfs",
+  "version": "0.1.0",
+  "description": "Tebako Filesystem library - Multi-format archive mounting support",
   "dependencies": [
-    "boost-asio",
-    "boost-chrono",
-    "boost-context",
-    "boost-crc",
-    "boost-filesystem",
-    "boost-iostreams",
-    "boost-multi-index",
-    "boost-process",
-    "boost-program-options",
-    "boost-thread",
-    "boost-variant",
-    "brotli",
-    "double-conversion",
-    "fmt",
-    "glog",
-    "gflags",
-    "libarchive",
-    "libevent",
-    "lz4",
-    "openssl",
-    "pkgconf",
-    "utfcpp",
-    "xxhash",
-    "zstd"
+    "dwarfs",
+    "libzip",
+    "argtable3",
+    "gtest"
   ]
 }

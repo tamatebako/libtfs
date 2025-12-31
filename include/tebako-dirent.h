@@ -1,6 +1,6 @@
 /**
  *
- * Copyright (c) 2021-2025 [Ribose Inc](https://www.ribose.com).
+ * Copyright (c) 2021-2025[Ribose Inc](https://www.ribose.com).
  * All rights reserved.
  * This file is a part of the Tebako project. (dwarfs-wr)
  *
@@ -67,15 +67,21 @@ typedef struct tebako_dirent {
 }  // namespace tebako
 #else
 namespace tebako {
-typedef struct _tebako_dirent {
-  unsigned char padding[offsetof(struct dirent, d_name) / sizeof(unsigned char)];
-  tebako_path_t d_name;
-} _tebako_dirent;
+// Pure buffer approach - no dependency on struct dirent layout
+// Matches the implementation in tebako/fs/dirent.h
+struct tebako_dirent {
+  alignas(8) char buffer[1024];
 
-typedef union tebako_dirent {
-  struct dirent e;
-  struct _tebako_dirent _e;
-} tebako_dirent;
+  struct dirent* as_dirent() {
+    return reinterpret_cast<struct dirent*>(buffer);
+  }
+  const struct dirent* as_dirent() const {
+    return reinterpret_cast<const struct dirent*>(buffer);
+  }
+
+  struct dirent* e() { return as_dirent(); }
+  const struct dirent* e() const { return as_dirent(); }
+};
 }  // namespace tebako
 #endif
 
@@ -105,7 +111,7 @@ typedef std::map<uintptr_t, std::shared_ptr<tebako_ds>> tebako_dstable;
 
 class sync_tebako_dstable {
  private:
-  folly::Synchronized<tebako_dstable> s_tebako_dstable;
+  tebako::Synchronized<tebako_dstable> s_tebako_dstable;
 
  public:
   static sync_tebako_dstable& get_tebako_dstable(void);
