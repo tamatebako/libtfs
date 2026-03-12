@@ -38,8 +38,8 @@
 #include <memory>
 
 // Tebako project headers
-#include <tebako/fs/common.h>              // For tebako_path_t
-#include <tebako/fs/util/synchronized.h>   // For Synchronized template
+#include <tebako/fs/common.h>             // For tebako_path_t
+#include <tebako/fs/util/synchronized.h>  // For Synchronized template
 
 /* The d_name field
     Warning: applications should avoid any dependence on the size of
@@ -73,12 +73,8 @@ struct tebako_dirent {
 
   // Accessor to system dirent (returns void* to avoid header dependency)
   // Use tebako_system_dirent_t typedef from PCH in implementation files
-  void* as_dirent() {
-    return static_cast<void*>(buffer);
-  }
-  const void* as_dirent() const {
-    return static_cast<const void*>(buffer);
-  }
+  void* as_dirent() { return static_cast<void*>(buffer); }
+  const void* as_dirent() const { return static_cast<const void*>(buffer); }
 
   // For backward compatibility with old union interface
   // Returns void* to avoid struct dirent dependency in header
@@ -134,7 +130,11 @@ class sync_tebako_dstable {
 
 // Helper function to populate tebako_dirent structure
 // Implemented in tebako-dirent.cpp where struct dirent is properly accessible
-void populate_tebako_dirent(tebako_dirent& entry, ino_t ino, off_t offset,
-                            mode_t mode, const char* name, size_t name_len);
+void populate_tebako_dirent(tebako_dirent& entry,
+                            ino_t ino,
+                            off_t offset,
+                            mode_t mode,
+                            const char* name,
+                            size_t name_len);
 
 }  // namespace tebako

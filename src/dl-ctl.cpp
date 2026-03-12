@@ -89,7 +89,10 @@ class sync_tebako_dltable : public tebako::Synchronized<tebako_dltable*> {
   }
 
  public:
-  sync_tebako_dltable(void) : tebako::Synchronized<tebako_dltable*>(new tebako_dltable) { create_temporary_directory(); }
+  sync_tebako_dltable(void) : tebako::Synchronized<tebako_dltable*>(new tebako_dltable)
+  {
+    create_temporary_directory();
+  }
   ~sync_tebako_dltable(void)
   {
     auto p_dltable = *wlock();

@@ -17,7 +17,8 @@
 
 using namespace tebako::fs;
 
-int main(int argc, char* argv[]) {
+int main(int argc, char* argv[])
+{
   if (argc < 2) {
     std::cerr << "Usage: " << argv[0] << " <squashfs-file>" << std::endl;
     std::cerr << "Example: " << argv[0] << " test.sqfs" << std::endl;
@@ -59,13 +60,15 @@ int main(int argc, char* argv[]) {
   std::cout << "Test 3: Checking root directory..." << std::endl;
   if (backend->exists(mount_point)) {
     std::cout << "✓ Root exists" << std::endl;
-  } else {
+  }
+  else {
     std::cerr << "ERROR: Root does not exist" << std::endl;
   }
 
   if (backend->is_directory(mount_point)) {
     std::cout << "✓ Root is a directory" << std::endl;
-  } else {
+  }
+  else {
     std::cerr << "ERROR: Root is not a directory" << std::endl;
   }
   std::cout << std::endl;
@@ -75,22 +78,19 @@ int main(int argc, char* argv[]) {
   auto iter = backend->list_directory(mount_point);
   if (!iter) {
     std::cerr << "ERROR: Failed to list root directory" << std::endl;
-  } else {
+  }
+  else {
     std::cout << "Root directory contents:" << std::endl;
     std::cout << std::string(60, '-') << std::endl;
-    std::cout << std::left << std::setw(30) << "Name"
-              << std::setw(10) << "Type"
-              << std::setw(15) << "Size"
+    std::cout << std::left << std::setw(30) << "Name" << std::setw(10) << "Type" << std::setw(15) << "Size"
               << "Modified" << std::endl;
     std::cout << std::string(60, '-') << std::endl;
 
     int count = 0;
     while (iter->has_next()) {
       auto entry = iter->next();
-      std::cout << std::left << std::setw(30) << entry.name
-                << std::setw(10) << (entry.is_directory ? "[DIR]" : "[FILE]")
-                << std::setw(15) << entry.size
-                << entry.mtime << std::endl;
+      std::cout << std::left << std::setw(30) << entry.name << std::setw(10)
+                << (entry.is_directory ? "[DIR]" : "[FILE]") << std::setw(15) << entry.size << entry.mtime << std::endl;
       count++;
     }
     std::cout << std::string(60, '-') << std::endl;
@@ -131,25 +131,27 @@ int main(int argc, char* argv[]) {
 
         handle->close();
         std::cout << "  ✓ File closed" << std::endl;
-      } else {
+      }
+      else {
         std::cout << "  ✗ Failed to open file" << std::endl;
       }
     }
-  } else {
+  }
+  else {
     std::cout << "  Note: Test file '" << test_file << "' not found (this is OK)" << std::endl;
   }
   std::cout << std::endl;
 
   // Test 6: Auto-detection
   std::cout << "Test 6: Testing format auto-detection..." << std::endl;
-  std::cout << "  Is SquashFS format: "
-            << (BackendFactory::is_squashfs_format(archive_path) ? "yes" : "no")
+  std::cout << "  Is SquashFS format: " << (BackendFactory::is_squashfs_format(archive_path) ? "yes" : "no")
             << std::endl;
 
   auto auto_backend = BackendFactory::create_from_file(archive_path);
   if (auto_backend) {
     std::cout << "  ✓ Auto-detected backend: " << auto_backend->backend_name() << std::endl;
-  } else {
+  }
+  else {
     std::cout << "  ✗ Failed to auto-detect format" << std::endl;
   }
   std::cout << std::endl;

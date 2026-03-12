@@ -102,8 +102,7 @@ class SquashFSBackend : public FileSystem {
    *
    * @note Returns false if already mounted or if archive cannot be opened
    */
-  bool mount(const std::string& archive_path,
-             const std::string& mount_point) override;
+  bool mount(const std::string& archive_path, const std::string& mount_point) override;
 
   /**
    * @brief Mount a SquashFS archive from memory buffer
@@ -119,8 +118,7 @@ class SquashFSBackend : public FileSystem {
    * @note Returns false if already mounted or if archive cannot be opened
    * @note The archive_path will be empty for memory-mounted archives
    */
-  bool mount_from_memory(const void* data, size_t size,
-                         const std::string& mount_point) override;
+  bool mount_from_memory(const void* data, size_t size, const std::string& mount_point) override;
 
   /**
    * @brief Unmount the SquashFS archive
@@ -148,8 +146,7 @@ class SquashFSBackend : public FileSystem {
    * @param flags Open flags (only O_RDONLY supported)
    * @return Unique pointer to FileHandle, or nullptr on error
    */
-  std::unique_ptr<FileHandle> open(const std::string& path,
-                                   int flags) override;
+  std::unique_ptr<FileHandle> open(const std::string& path, int flags) override;
 
   /**
    * @brief Check if a path exists in the archive
@@ -185,8 +182,7 @@ class SquashFSBackend : public FileSystem {
    * @param path Absolute path to the directory
    * @return Unique pointer to DirectoryIterator, or nullptr on error
    */
-  std::unique_ptr<DirectoryIterator> list_directory(
-      const std::string& path) override;
+  std::unique_ptr<DirectoryIterator> list_directory(const std::string& path) override;
 
   // ===================================================================
   // Metadata Operations (FileSystem interface)

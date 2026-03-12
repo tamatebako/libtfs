@@ -89,8 +89,7 @@ class BackendFactory {
    * @note Caller must call [`mount()`](filesystem.h:82) on the returned backend
    * @note Returns nullptr for non-existent files or unrecognized formats
    */
-  static std::unique_ptr<FileSystem> create_from_file(
-      const std::string& archive_path);
+  static std::unique_ptr<FileSystem> create_from_file(const std::string& archive_path);
 
   /**
    * @brief Create backend from memory buffer
@@ -106,8 +105,7 @@ class BackendFactory {
    * @note Caller must call mount_from_memory() on the returned backend
    * @note Returns nullptr for invalid data or unrecognized formats
    */
-  static std::unique_ptr<FileSystem> create_from_memory(
-      const void* data, size_t size);
+  static std::unique_ptr<FileSystem> create_from_memory(const void* data, size_t size);
 
   /**
    * @brief Explicitly create DwarFS backend
@@ -205,9 +203,7 @@ class BackendFactory {
    * @param size Number of bytes to read
    * @return true if exactly `size` bytes were read, false otherwise
    */
-  static bool read_magic_bytes(const std::string& path,
-                                uint8_t* buffer,
-                                size_t size);
+  static bool read_magic_bytes(const std::string& path, uint8_t* buffer, size_t size);
 
   /**
    * @brief Check if path has given extension

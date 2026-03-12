@@ -72,12 +72,8 @@ namespace tebako {
 struct tebako_dirent {
   alignas(8) char buffer[1024];
 
-  struct dirent* as_dirent() {
-    return reinterpret_cast<struct dirent*>(buffer);
-  }
-  const struct dirent* as_dirent() const {
-    return reinterpret_cast<const struct dirent*>(buffer);
-  }
+  struct dirent* as_dirent() { return reinterpret_cast<struct dirent*>(buffer); }
+  const struct dirent* as_dirent() const { return reinterpret_cast<const struct dirent*>(buffer); }
 
   struct dirent* e() { return as_dirent(); }
   const struct dirent* e() const { return as_dirent(); }

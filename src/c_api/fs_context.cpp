@@ -23,12 +23,14 @@ namespace c_api {
 // FsContext Implementation
 // ===================================================================
 
-FsContext& FsContext::instance() {
+FsContext& FsContext::instance()
+{
   static FsContext ctx;
   return ctx;
 }
 
-FsContext::~FsContext() {
+FsContext::~FsContext()
+{
   unmount();
 }
 
@@ -43,15 +45,20 @@ namespace {
 /**
  * @brief Check if path starts with mount point
  */
-bool path_is_in_mount(std::string_view path, std::string_view mount) {
-  if (mount.empty()) return false;
-  if (path.size() < mount.size()) return false;
+bool path_is_in_mount(std::string_view path, std::string_view mount)
+{
+  if (mount.empty())
+    return false;
+  if (path.size() < mount.size())
+    return false;
 
   // Check if path starts with mount point
-  if (path.compare(0, mount.size(), mount) != 0) return false;
+  if (path.compare(0, mount.size(), mount) != 0)
+    return false;
 
   // If path is exactly the mount point, it's valid
-  if (path.size() == mount.size()) return true;
+  if (path.size() == mount.size())
+    return true;
 
   // If path is longer, next char must be '/'
   return path[mount.size()] == '/';
@@ -60,13 +67,20 @@ bool path_is_in_mount(std::string_view path, std::string_view mount) {
 /**
  * @brief Convert stat result to dirent type
  */
-unsigned char stat_to_dirent_type(mode_t mode) {
-  if (S_ISREG(mode)) return DT_REG;
-  if (S_ISDIR(mode)) return DT_DIR;
-  if (S_ISLNK(mode)) return DT_LNK;
-  if (S_ISBLK(mode)) return DT_BLK;
-  if (S_ISCHR(mode)) return DT_CHR;
-  if (S_ISFIFO(mode)) return DT_FIFO;
+unsigned char stat_to_dirent_type(mode_t mode)
+{
+  if (S_ISREG(mode))
+    return DT_REG;
+  if (S_ISDIR(mode))
+    return DT_DIR;
+  if (S_ISLNK(mode))
+    return DT_LNK;
+  if (S_ISBLK(mode))
+    return DT_BLK;
+  if (S_ISCHR(mode))
+    return DT_CHR;
+  if (S_ISFIFO(mode))
+    return DT_FIFO;
   return DT_UNKNOWN;
 }
 
@@ -75,7 +89,8 @@ unsigned char stat_to_dirent_type(mode_t mode) {
  */
 thread_local int g_tebako_errno = 0;
 
-inline void set_errno(int err) {
+inline void set_errno(int err)
+{
   g_tebako_errno = err;
   errno = err;
 }
@@ -83,7 +98,8 @@ inline void set_errno(int err) {
 /**
  * @brief Map error code to errno
  */
-inline void map_error_to_errno(const Error& error) {
+inline void map_error_to_errno(const Error& error)
+{
   switch (error.code) {
     case ErrorCode::NotFound:
       set_errno(ENOENT);
@@ -143,7 +159,8 @@ inline void map_error_to_errno(const Error& error) {
 // Lifecycle Operations
 // ===================================================================
 
-int FsContext::mount(std::string_view archive_path, std::string_view mount_point) {
+int FsContext::mount(std::string_view archive_path, std::string_view mount_point)
+{
   std::lock_guard lock(mutex_);
 
   if (mounted_) {
@@ -176,8 +193,8 @@ int FsContext::mount(std::string_view archive_path, std::string_view mount_point
   return 0;
 }
 
-int FsContext::mount_from_memory(const void* data, size_t size,
-                                  std::string_view mount_point) {
+int FsContext::mount_from_memory(const void* data, size_t size, std::string_view mount_point)
+{
   std::lock_guard lock(mutex_);
 
   if (mounted_) {
@@ -195,7 +212,8 @@ int FsContext::mount_from_memory(const void* data, size_t size,
   return 0;
 }
 
-void FsContext::unmount() {
+void FsContext::unmount()
+{
   std::lock_guard lock(mutex_);
 
   if (mounted_) {
@@ -208,7 +226,8 @@ void FsContext::unmount() {
   mount_point_.clear();
 }
 
-bool FsContext::is_mounted() const {
+bool FsContext::is_mounted() const
+{
   std::lock_guard lock(mutex_);
   return mounted_ && filesystem_->is_mounted();
 }
@@ -217,7 +236,8 @@ bool FsContext::is_mounted() const {
 // File Operations
 // ===================================================================
 
-int FsContext::open(std::string_view path, int flags) {
+int FsContext::open(std::string_view path, int flags)
+{
   std::lock_guard lock(mutex_);
 
   if (!mounted_) {
@@ -253,7 +273,8 @@ int FsContext::open(std::string_view path, int flags) {
   return store_handle(std::move(result).unwrap());
 }
 
-ssize_t FsContext::read(int fd, void* buffer, size_t count) {
+ssize_t FsContext::read(int fd, void* buffer, size_t count)
+{
   std::lock_guard lock(mutex_);
 
   auto it = fd_table_.find(fd);
@@ -269,7 +290,8 @@ ssize_t FsContext::read(int fd, void* buffer, size_t count) {
   return bytes_read;
 }
 
-off_t FsContext::lseek(int fd, off_t offset, int whence) {
+off_t FsContext::lseek(int fd, off_t offset, int whence)
+{
   std::lock_guard lock(mutex_);
 
   auto it = fd_table_.find(fd);
@@ -287,7 +309,8 @@ off_t FsContext::lseek(int fd, off_t offset, int whence) {
   return result;
 }
 
-int FsContext::close(int fd) {
+int FsContext::close(int fd)
+{
   std::lock_guard lock(mutex_);
 
   auto it = fd_table_.find(fd);
@@ -305,7 +328,8 @@ int FsContext::close(int fd) {
 // Directory Operations
 // ===================================================================
 
-void* FsContext::opendir(std::string_view path) {
+void* FsContext::opendir(std::string_view path)
+{
   std::lock_guard lock(mutex_);
 
   if (!mounted_) {
@@ -336,7 +360,8 @@ void* FsContext::opendir(std::string_view path) {
   return handle;
 }
 
-tebako_c_dirent* FsContext::readdir(void* dir) {
+tebako_c_dirent* FsContext::readdir(void* dir)
+{
   std::lock_guard lock(mutex_);
 
   auto it = dir_table_.find(dir);
@@ -359,7 +384,8 @@ tebako_c_dirent* FsContext::readdir(void* dir) {
   return &state->current_entry;
 }
 
-int FsContext::closedir(void* dir) {
+int FsContext::closedir(void* dir)
+{
   std::lock_guard lock(mutex_);
 
   auto it = dir_table_.find(dir);
@@ -376,7 +402,8 @@ int FsContext::closedir(void* dir) {
 // Metadata Operations
 // ===================================================================
 
-int FsContext::file_stat(std::string_view path, struct ::stat* st) {
+int FsContext::file_stat(std::string_view path, struct ::stat* st)
+{
   std::lock_guard lock(mutex_);
 
   if (!mounted_) {
@@ -413,7 +440,8 @@ int FsContext::file_stat(std::string_view path, struct ::stat* st) {
   return 0;
 }
 
-int FsContext::fd_stat(int fd, struct ::stat* st) {
+int FsContext::fd_stat(int fd, struct ::stat* st)
+{
   std::lock_guard lock(mutex_);
 
   auto it = fd_table_.find(fd);
@@ -433,17 +461,20 @@ int FsContext::fd_stat(int fd, struct ::stat* st) {
 // Utility Operations
 // ===================================================================
 
-int FsContext::path_is_embedded(std::string_view path) const {
+int FsContext::path_is_embedded(std::string_view path) const
+{
   std::lock_guard lock(mutex_);
   return path_is_in_mount(path, mount_point_) ? 1 : 0;
 }
 
-int FsContext::fd_is_embedded(int fd) const {
+int FsContext::fd_is_embedded(int fd) const
+{
   std::lock_guard lock(mutex_);
   return (fd & 0x7F000000) == 0x7F000000 ? 1 : 0;
 }
 
-int FsContext::extract_all(std::string_view dest_path) {
+int FsContext::extract_all(std::string_view dest_path)
+{
   std::lock_guard lock(mutex_);
 
   if (!mounted_) {
@@ -461,12 +492,14 @@ int FsContext::extract_all(std::string_view dest_path) {
   return 0;
 }
 
-std::string FsContext::archive_path() const {
+std::string FsContext::archive_path() const
+{
   std::lock_guard lock(mutex_);
   return filesystem_ ? filesystem_->archive_path() : "";
 }
 
-std::string FsContext::backend_name() const {
+std::string FsContext::backend_name() const
+{
   std::lock_guard lock(mutex_);
   return filesystem_ ? filesystem_->backend_name() : "";
 }
@@ -475,7 +508,8 @@ std::string FsContext::backend_name() const {
 // Private Methods
 // ===================================================================
 
-std::string FsContext::validate_path(std::string_view path) const {
+std::string FsContext::validate_path(std::string_view path) const
+{
   if (path.empty()) {
     return "";
   }
@@ -509,7 +543,8 @@ std::string FsContext::validate_path(std::string_view path) const {
   return relative;
 }
 
-int FsContext::allocate_fd() {
+int FsContext::allocate_fd()
+{
   // Find next available FD
   while (fd_table_.find(next_fd_) != fd_table_.end()) {
     next_fd_++;
@@ -520,7 +555,8 @@ int FsContext::allocate_fd() {
   return next_fd_++;
 }
 
-int FsContext::store_handle(std::unique_ptr<FileHandle> handle) {
+int FsContext::store_handle(std::unique_ptr<FileHandle> handle)
+{
   int fd = allocate_fd();
   fd_table_[fd] = std::move(handle);
   return fd;

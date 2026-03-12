@@ -50,11 +50,10 @@ using namespace tebako::fs;
  */
 class ZipBackendTest : public ::testing::Test {
  protected:
-  void SetUp() override {
-    backend = std::make_unique<ZipBackend>();
-  }
+  void SetUp() override { backend = std::make_unique<ZipBackend>(); }
 
-  void TearDown() override {
+  void TearDown() override
+  {
     if (backend && backend->is_mounted()) {
       backend->unmount();
     }
@@ -70,7 +69,8 @@ class ZipBackendTest : public ::testing::Test {
  */
 class ZipBackendMountedTest : public ZipBackendTest {
  protected:
-  void SetUp() override {
+  void SetUp() override
+  {
     ZipBackendTest::SetUp();
     std::string archive = fixtures_path + "simple.zip";
     auto mount_result = backend->mount(archive, mount_point);
@@ -82,18 +82,21 @@ class ZipBackendMountedTest : public ZipBackendTest {
 // 1. Lifecycle Tests (8 tests)
 // ===================================================================
 
-TEST_F(ZipBackendTest, ConstructorCreatesUnmountedBackend) {
+TEST_F(ZipBackendTest, ConstructorCreatesUnmountedBackend)
+{
   EXPECT_FALSE(backend->is_mounted());
   EXPECT_EQ(backend->archive_path(), "");
   EXPECT_EQ(backend->mount_point(), "");
 }
 
-TEST_F(ZipBackendTest, BackendInfoCorrect) {
+TEST_F(ZipBackendTest, BackendInfoCorrect)
+{
   EXPECT_EQ(backend->backend_name(), "ZIP");
   EXPECT_FALSE(backend->backend_version().empty());
 }
 
-TEST_F(ZipBackendTest, MountValidArchiveSucceeds) {
+TEST_F(ZipBackendTest, MountValidArchiveSucceeds)
+{
   std::string archive = fixtures_path + "simple.zip";
   EXPECT_TRUE(backend->mount(archive, mount_point));
   EXPECT_TRUE(backend->is_mounted());
@@ -101,19 +104,22 @@ TEST_F(ZipBackendTest, MountValidArchiveSucceeds) {
   EXPECT_EQ(backend->mount_point(), mount_point);
 }
 
-TEST_F(ZipBackendTest, MountNonexistentArchiveFails) {
+TEST_F(ZipBackendTest, MountNonexistentArchiveFails)
+{
   std::string archive = fixtures_path + "nonexistent.zip";
   EXPECT_FALSE(backend->mount(archive, mount_point));
   EXPECT_FALSE(backend->is_mounted());
 }
 
-TEST_F(ZipBackendTest, MountCorruptedArchiveFails) {
+TEST_F(ZipBackendTest, MountCorruptedArchiveFails)
+{
   std::string archive = fixtures_path + "corrupted.zip";
   EXPECT_FALSE(backend->mount(archive, mount_point));
   EXPECT_FALSE(backend->is_mounted());
 }
 
-TEST_F(ZipBackendMountedTest, DoubleMountFails) {
+TEST_F(ZipBackendMountedTest, DoubleMountFails)
+{
   std::string another_archive = fixtures_path + "nested.zip";
   EXPECT_FALSE(backend->mount(another_archive, "/mnt/another"));
   // Should still be mounted to original archive
@@ -121,14 +127,16 @@ TEST_F(ZipBackendMountedTest, DoubleMountFails) {
   EXPECT_EQ(backend->archive_path(), fixtures_path + "simple.zip");
 }
 
-TEST_F(ZipBackendMountedTest, UnmountClearsState) {
+TEST_F(ZipBackendMountedTest, UnmountClearsState)
+{
   backend->unmount();
   EXPECT_FALSE(backend->is_mounted());
   EXPECT_EQ(backend->archive_path(), "");
   EXPECT_EQ(backend->mount_point(), "");
 }
 
-TEST_F(ZipBackendTest, UnmountWithoutMountIsNoOp) {
+TEST_F(ZipBackendTest, UnmountWithoutMountIsNoOp)
+{
   EXPECT_NO_THROW(backend->unmount());
   EXPECT_FALSE(backend->is_mounted());
 }
@@ -137,33 +145,39 @@ TEST_F(ZipBackendTest, UnmountWithoutMountIsNoOp) {
 // 2. File Existence Tests (6 tests)
 // ===================================================================
 
-TEST_F(ZipBackendMountedTest, ExistsReturnsTrueForValidFile) {
+TEST_F(ZipBackendMountedTest, ExistsReturnsTrueForValidFile)
+{
   EXPECT_TRUE(backend->exists(mount_point + "/test.txt"));
   EXPECT_TRUE(backend->exists(mount_point + "/file2.txt"));
 }
 
-TEST_F(ZipBackendMountedTest, ExistsReturnsFalseForInvalidFile) {
+TEST_F(ZipBackendMountedTest, ExistsReturnsFalseForInvalidFile)
+{
   EXPECT_FALSE(backend->exists(mount_point + "/nonexistent.txt"));
   EXPECT_FALSE(backend->exists(mount_point + "/missing/file.txt"));
 }
 
-TEST_F(ZipBackendMountedTest, IsFileCorrectForFiles) {
+TEST_F(ZipBackendMountedTest, IsFileCorrectForFiles)
+{
   EXPECT_TRUE(backend->is_file(mount_point + "/test.txt"));
   EXPECT_TRUE(backend->is_file(mount_point + "/file2.txt"));
 }
 
-TEST_F(ZipBackendMountedTest, IsFileFalseForDirectories) {
+TEST_F(ZipBackendMountedTest, IsFileFalseForDirectories)
+{
   // Root should be treated as directory
   EXPECT_FALSE(backend->is_file(mount_point));
   EXPECT_FALSE(backend->is_file(mount_point + "/"));
 }
 
-TEST_F(ZipBackendMountedTest, IsDirectoryCorrectForRoot) {
+TEST_F(ZipBackendMountedTest, IsDirectoryCorrectForRoot)
+{
   EXPECT_TRUE(backend->is_directory(mount_point));
   EXPECT_TRUE(backend->is_directory(mount_point + "/"));
 }
 
-TEST_F(ZipBackendTest, IsDirectoryCorrectForNestedDirs) {
+TEST_F(ZipBackendTest, IsDirectoryCorrectForNestedDirs)
+{
   std::string archive = fixtures_path + "nested.zip";
   ASSERT_TRUE(backend->mount(archive, mount_point));
 
@@ -176,24 +190,28 @@ TEST_F(ZipBackendTest, IsDirectoryCorrectForNestedDirs) {
 // 3. File Reading Tests (12 tests)
 // ===================================================================
 
-TEST_F(ZipBackendMountedTest, OpenValidFileSucceeds) {
+TEST_F(ZipBackendMountedTest, OpenValidFileSucceeds)
+{
   auto result = backend->open(mount_point + "/test.txt", O_RDONLY);
   ASSERT_TRUE(result.is_ok());
   auto handle = std::move(result).unwrap();
   EXPECT_EQ(handle->path(), mount_point + "/test.txt");
 }
 
-TEST_F(ZipBackendMountedTest, OpenInvalidFileFails) {
+TEST_F(ZipBackendMountedTest, OpenInvalidFileFails)
+{
   auto result = backend->open(mount_point + "/nonexistent.txt", O_RDONLY);
   EXPECT_TRUE(result.is_err());
 }
 
-TEST_F(ZipBackendMountedTest, OpenDirectoryFails) {
+TEST_F(ZipBackendMountedTest, OpenDirectoryFails)
+{
   auto result = backend->open(mount_point, O_RDONLY);
   EXPECT_TRUE(result.is_err());
 }
 
-TEST_F(ZipBackendMountedTest, ReadFileContentsCorrect) {
+TEST_F(ZipBackendMountedTest, ReadFileContentsCorrect)
+{
   auto result = backend->open(mount_point + "/test.txt", O_RDONLY);
   ASSERT_TRUE(result.is_ok());
   auto handle = std::move(result).unwrap();
@@ -206,7 +224,8 @@ TEST_F(ZipBackendMountedTest, ReadFileContentsCorrect) {
   EXPECT_EQ(content, "Hello from ZIP!\n");
 }
 
-TEST_F(ZipBackendMountedTest, ReadIncrementsPosition) {
+TEST_F(ZipBackendMountedTest, ReadIncrementsPosition)
+{
   auto result = backend->open(mount_point + "/test.txt", O_RDONLY);
   ASSERT_TRUE(result.is_ok());
   auto handle = std::move(result).unwrap();
@@ -219,7 +238,8 @@ TEST_F(ZipBackendMountedTest, ReadIncrementsPosition) {
   EXPECT_EQ(handle->tell(), 5);
 }
 
-TEST_F(ZipBackendMountedTest, ReadSetsEofFlag) {
+TEST_F(ZipBackendMountedTest, ReadSetsEofFlag)
+{
   auto result = backend->open(mount_point + "/test.txt", O_RDONLY);
   ASSERT_TRUE(result.is_ok());
   auto handle = std::move(result).unwrap();
@@ -235,7 +255,8 @@ TEST_F(ZipBackendMountedTest, ReadSetsEofFlag) {
   EXPECT_TRUE(handle->eof());
 }
 
-TEST_F(ZipBackendMountedTest, SeekSetPositionsCorrectly) {
+TEST_F(ZipBackendMountedTest, SeekSetPositionsCorrectly)
+{
   auto result = backend->open(mount_point + "/test.txt", O_RDONLY);
   ASSERT_TRUE(result.is_ok());
   auto handle = std::move(result).unwrap();
@@ -245,7 +266,8 @@ TEST_F(ZipBackendMountedTest, SeekSetPositionsCorrectly) {
   EXPECT_EQ(handle->tell(), 5);
 }
 
-TEST_F(ZipBackendMountedTest, SeekCurPositionsCorrectly) {
+TEST_F(ZipBackendMountedTest, SeekCurPositionsCorrectly)
+{
   auto result = backend->open(mount_point + "/test.txt", O_RDONLY);
   ASSERT_TRUE(result.is_ok());
   auto handle = std::move(result).unwrap();
@@ -256,7 +278,8 @@ TEST_F(ZipBackendMountedTest, SeekCurPositionsCorrectly) {
   EXPECT_EQ(handle->tell(), 8);
 }
 
-TEST_F(ZipBackendMountedTest, SeekEndPositionsCorrectly) {
+TEST_F(ZipBackendMountedTest, SeekEndPositionsCorrectly)
+{
   auto result = backend->open(mount_point + "/test.txt", O_RDONLY);
   ASSERT_TRUE(result.is_ok());
   auto handle = std::move(result).unwrap();
@@ -267,7 +290,8 @@ TEST_F(ZipBackendMountedTest, SeekEndPositionsCorrectly) {
   EXPECT_EQ(handle->tell(), file_size);
 }
 
-TEST_F(ZipBackendMountedTest, SeekBeyondBoundsFails) {
+TEST_F(ZipBackendMountedTest, SeekBeyondBoundsFails)
+{
   auto result = backend->open(mount_point + "/test.txt", O_RDONLY);
   ASSERT_TRUE(result.is_ok());
   auto handle = std::move(result).unwrap();
@@ -277,7 +301,8 @@ TEST_F(ZipBackendMountedTest, SeekBeyondBoundsFails) {
   EXPECT_EQ(result_pos, -1);
 }
 
-TEST_F(ZipBackendMountedTest, CloseReleasesResource) {
+TEST_F(ZipBackendMountedTest, CloseReleasesResource)
+{
   auto result = backend->open(mount_point + "/test.txt", O_RDONLY);
   ASSERT_TRUE(result.is_ok());
   auto handle = std::move(result).unwrap();
@@ -290,7 +315,8 @@ TEST_F(ZipBackendMountedTest, CloseReleasesResource) {
   EXPECT_EQ(res, -1);
 }
 
-TEST_F(ZipBackendMountedTest, OperationsAfterCloseFail) {
+TEST_F(ZipBackendMountedTest, OperationsAfterCloseFail)
+{
   auto result = backend->open(mount_point + "/test.txt", O_RDONLY);
   ASSERT_TRUE(result.is_ok());
   auto handle = std::move(result).unwrap();
@@ -309,7 +335,8 @@ TEST_F(ZipBackendMountedTest, OperationsAfterCloseFail) {
 // 4. Directory Listing Tests (5 tests)
 // ===================================================================
 
-TEST_F(ZipBackendMountedTest, ListDirectoryReturnsAllEntries) {
+TEST_F(ZipBackendMountedTest, ListDirectoryReturnsAllEntries)
+{
   auto result = backend->list_directory(mount_point);
   ASSERT_TRUE(result.is_ok());
   auto iter = std::move(result).unwrap();
@@ -324,7 +351,8 @@ TEST_F(ZipBackendMountedTest, ListDirectoryReturnsAllEntries) {
   EXPECT_NE(std::find(entries.begin(), entries.end(), "file2.txt"), entries.end());
 }
 
-TEST_F(ZipBackendMountedTest, DirectoryEntryHasCorrectMetadata) {
+TEST_F(ZipBackendMountedTest, DirectoryEntryHasCorrectMetadata)
+{
   auto result = backend->list_directory(mount_point);
   ASSERT_TRUE(result.is_ok());
   auto iter = std::move(result).unwrap();
@@ -337,7 +365,8 @@ TEST_F(ZipBackendMountedTest, DirectoryEntryHasCorrectMetadata) {
   EXPECT_GT(entry.size, 0);
 }
 
-TEST_F(ZipBackendMountedTest, IteratorResetWorks) {
+TEST_F(ZipBackendMountedTest, IteratorResetWorks)
+{
   auto result = backend->list_directory(mount_point);
   ASSERT_TRUE(result.is_ok());
   auto iter = std::move(result).unwrap();
@@ -354,7 +383,8 @@ TEST_F(ZipBackendMountedTest, IteratorResetWorks) {
   EXPECT_EQ(first_name, first_name_again);
 }
 
-TEST_F(ZipBackendTest, ListNestedDirectoryWorks) {
+TEST_F(ZipBackendTest, ListNestedDirectoryWorks)
+{
   std::string archive = fixtures_path + "nested.zip";
   auto mount_result = backend->mount(archive, mount_point);
   ASSERT_TRUE(mount_result.is_ok());
@@ -372,7 +402,8 @@ TEST_F(ZipBackendTest, ListNestedDirectoryWorks) {
   EXPECT_GE(entries.size(), 1);
 }
 
-TEST_F(ZipBackendTest, ListEmptyDirectoryReturnsNoEntries) {
+TEST_F(ZipBackendTest, ListEmptyDirectoryReturnsNoEntries)
+{
   std::string archive = fixtures_path + "empty.zip";
   auto mount_result = backend->mount(archive, mount_point);
   ASSERT_TRUE(mount_result.is_ok());
@@ -394,24 +425,28 @@ TEST_F(ZipBackendTest, ListEmptyDirectoryReturnsNoEntries) {
 // 5. Metadata Tests (4 tests)
 // ===================================================================
 
-TEST_F(ZipBackendMountedTest, FileSizeCorrect) {
+TEST_F(ZipBackendMountedTest, FileSizeCorrect)
+{
   auto result = backend->file_size(mount_point + "/test.txt");
   ASSERT_TRUE(result.is_ok());
   EXPECT_EQ(result.unwrap(), 16);  // "Hello from ZIP!\n" = 16 bytes
 }
 
-TEST_F(ZipBackendMountedTest, FileSizeInvalidFileReturnsError) {
+TEST_F(ZipBackendMountedTest, FileSizeInvalidFileReturnsError)
+{
   auto result = backend->file_size(mount_point + "/nonexistent.txt");
   EXPECT_TRUE(result.is_err());
 }
 
-TEST_F(ZipBackendMountedTest, ModificationTimeNonZero) {
+TEST_F(ZipBackendMountedTest, ModificationTimeNonZero)
+{
   auto result = backend->modification_time(mount_point + "/test.txt");
   ASSERT_TRUE(result.is_ok());
   EXPECT_GT(result.unwrap(), 0);
 }
 
-TEST_F(ZipBackendMountedTest, PermissionsDefaultForFileAndDirectory) {
+TEST_F(ZipBackendMountedTest, PermissionsDefaultForFileAndDirectory)
+{
   // Files should have 0644
   auto file_result = backend->permissions(mount_point + "/test.txt");
   ASSERT_TRUE(file_result.is_ok());
@@ -427,7 +462,8 @@ TEST_F(ZipBackendMountedTest, PermissionsDefaultForFileAndDirectory) {
 // 6. Nested Directory Tests (3 tests)
 // ===================================================================
 
-TEST_F(ZipBackendTest, NestedDirectoryExists) {
+TEST_F(ZipBackendTest, NestedDirectoryExists)
+{
   std::string archive = fixtures_path + "nested.zip";
   auto mount_result = backend->mount(archive, mount_point);
   ASSERT_TRUE(mount_result.is_ok());
@@ -436,7 +472,8 @@ TEST_F(ZipBackendTest, NestedDirectoryExists) {
   EXPECT_TRUE(backend->exists(mount_point + "/dir1/subdir"));
 }
 
-TEST_F(ZipBackendTest, NestedFileExists) {
+TEST_F(ZipBackendTest, NestedFileExists)
+{
   std::string archive = fixtures_path + "nested.zip";
   auto mount_result = backend->mount(archive, mount_point);
   ASSERT_TRUE(mount_result.is_ok());
@@ -446,7 +483,8 @@ TEST_F(ZipBackendTest, NestedFileExists) {
   EXPECT_TRUE(backend->exists(mount_point + "/dir2/file3.txt"));
 }
 
-TEST_F(ZipBackendTest, CanListNestedDirectory) {
+TEST_F(ZipBackendTest, CanListNestedDirectory)
+{
   std::string archive = fixtures_path + "nested.zip";
   auto mount_result = backend->mount(archive, mount_point);
   ASSERT_TRUE(mount_result.is_ok());
@@ -470,7 +508,8 @@ TEST_F(ZipBackendTest, CanListNestedDirectory) {
 // 7. Edge Case Tests (3 tests)
 // ===================================================================
 
-TEST_F(ZipBackendTest, EmptyFileHasZeroSize) {
+TEST_F(ZipBackendTest, EmptyFileHasZeroSize)
+{
   std::string archive = fixtures_path + "empty.zip";
   auto mount_result = backend->mount(archive, mount_point);
   ASSERT_TRUE(mount_result.is_ok());
@@ -480,7 +519,8 @@ TEST_F(ZipBackendTest, EmptyFileHasZeroSize) {
   EXPECT_EQ(result.unwrap(), 0);
 }
 
-TEST_F(ZipBackendTest, ReadEmptyFileReturnsZero) {
+TEST_F(ZipBackendTest, ReadEmptyFileReturnsZero)
+{
   std::string archive = fixtures_path + "empty.zip";
   auto mount_result = backend->mount(archive, mount_point);
   ASSERT_TRUE(mount_result.is_ok());
@@ -495,7 +535,8 @@ TEST_F(ZipBackendTest, ReadEmptyFileReturnsZero) {
   EXPECT_TRUE(handle->eof());
 }
 
-TEST_F(ZipBackendTest, EmptyDirectoryListsNoEntries) {
+TEST_F(ZipBackendTest, EmptyDirectoryListsNoEntries)
+{
   std::string archive = fixtures_path + "empty.zip";
   auto mount_result = backend->mount(archive, mount_point);
   ASSERT_TRUE(mount_result.is_ok());
@@ -511,7 +552,8 @@ TEST_F(ZipBackendTest, EmptyDirectoryListsNoEntries) {
 // 8. Thread Safety Tests (2 tests)
 // ===================================================================
 
-TEST_F(ZipBackendMountedTest, ConcurrentReadsSucceed) {
+TEST_F(ZipBackendMountedTest, ConcurrentReadsSucceed)
+{
   // NOTE: libzip has internal limitations with concurrent zip_fopen_index() calls
   // We serialize file opening but allow concurrent reading to test our thread safety
   const int num_threads = 4;
@@ -546,7 +588,8 @@ TEST_F(ZipBackendMountedTest, ConcurrentReadsSucceed) {
   EXPECT_EQ(success_count, num_threads);
 }
 
-TEST_F(ZipBackendMountedTest, ConcurrentDirectoryListsSucceed) {
+TEST_F(ZipBackendMountedTest, ConcurrentDirectoryListsSucceed)
+{
   const int num_threads = 4;  // Reduced from 10 to avoid libzip race conditions
   std::atomic<int> success_count{0};
   std::vector<std::thread> threads;
@@ -575,7 +618,8 @@ TEST_F(ZipBackendMountedTest, ConcurrentDirectoryListsSucceed) {
 // 9. Error Handling Tests (2 tests)
 // ===================================================================
 
-TEST_F(ZipBackendTest, OperationsOnUnmountedBackendFail) {
+TEST_F(ZipBackendTest, OperationsOnUnmountedBackendFail)
+{
   EXPECT_FALSE(backend->exists(mount_point + "/test.txt"));
   EXPECT_FALSE(backend->is_file(mount_point + "/test.txt"));
   EXPECT_FALSE(backend->is_directory(mount_point));
@@ -584,7 +628,8 @@ TEST_F(ZipBackendTest, OperationsOnUnmountedBackendFail) {
   EXPECT_TRUE(backend->list_directory(mount_point).is_err());
 }
 
-TEST_F(ZipBackendMountedTest, InvalidOperationsReturnProperErrors) {
+TEST_F(ZipBackendMountedTest, InvalidOperationsReturnProperErrors)
+{
   // Open with write flags should fail (read-only archive)
   EXPECT_TRUE(backend->open(mount_point + "/test.txt", O_WRONLY).is_err());
   EXPECT_TRUE(backend->open(mount_point + "/test.txt", O_RDWR).is_err());
@@ -600,7 +645,8 @@ TEST_F(ZipBackendMountedTest, InvalidOperationsReturnProperErrors) {
 // 10. Performance Tests (2 tests - optional with GTEST_SKIP)
 // ===================================================================
 
-TEST_F(ZipBackendTest, ReadLargeFilePerformance) {
+TEST_F(ZipBackendTest, ReadLargeFilePerformance)
+{
   std::string archive = fixtures_path + "large.zip";
   auto mount_result = backend->mount(archive, mount_point);
   if (mount_result.is_err()) {
@@ -617,7 +663,8 @@ TEST_F(ZipBackendTest, ReadLargeFilePerformance) {
   int64_t total_read = 0;
   while (true) {
     ssize_t bytes_read = handle->read(buffer, sizeof(buffer));
-    if (bytes_read <= 0) break;
+    if (bytes_read <= 0)
+      break;
     total_read += bytes_read;
   }
 
@@ -631,7 +678,8 @@ TEST_F(ZipBackendTest, ReadLargeFilePerformance) {
   EXPECT_LT(duration.count(), 5000) << "Reading 10MB took " << duration.count() << "ms";
 }
 
-TEST_F(ZipBackendTest, ListManyFilesPerformance) {
+TEST_F(ZipBackendTest, ListManyFilesPerformance)
+{
   std::string archive = fixtures_path + "large.zip";
   auto mount_result = backend->mount(archive, mount_point);
   if (mount_result.is_err()) {

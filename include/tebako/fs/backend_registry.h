@@ -28,10 +28,10 @@ namespace fs {
  * @brief Backend metadata for registration
  */
 struct BackendInfo {
-  std::string name;                    ///< Backend name (e.g., "zip", "dwarfs")
-  std::string description;             ///< Human-readable description
-  std::vector<std::string> extensions; ///< Supported file extensions (e.g., ".zip", ".jar")
-  int priority = 0;                    ///< Detection priority (higher = checked first)
+  std::string name;                     ///< Backend name (e.g., "zip", "dwarfs")
+  std::string description;              ///< Human-readable description
+  std::vector<std::string> extensions;  ///< Supported file extensions (e.g., ".zip", ".jar")
+  int priority = 0;                     ///< Detection priority (higher = checked first)
 };
 
 /**
@@ -172,9 +172,10 @@ class BackendRegistrar {
   BackendRegistrar(const BackendInfo& info,
                    BackendRegistry::Factory factory,
                    BackendRegistry::MemoryDetector memory_detector = nullptr,
-                   BackendRegistry::FileDetector file_detector = nullptr) {
-    BackendRegistry::instance().register_backend(
-        info, std::move(factory), std::move(memory_detector), std::move(file_detector));
+                   BackendRegistry::FileDetector file_detector = nullptr)
+  {
+    BackendRegistry::instance().register_backend(info, std::move(factory), std::move(memory_detector),
+                                                 std::move(file_detector));
   }
 };
 
@@ -210,5 +211,4 @@ class BackendRegistrar {
  * @endcode
  */
 #define TEBAKO_REGISTER_BACKEND(name, info, factory, ...) \
-  static ::tebako::fs::BackendRegistrar \
-      _tebako_backend_registrar_##name((info), (factory), ##__VA_ARGS__)
+  static ::tebako::fs::BackendRegistrar _tebako_backend_registrar_##name((info), (factory), ##__VA_ARGS__)

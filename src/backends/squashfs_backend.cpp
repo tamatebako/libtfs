@@ -69,9 +69,7 @@ class SquashFSFileHandle : public FileHandle {
    * @param inode File inode
    * @param path Full path to the file
    */
-  SquashFSFileHandle(sqfs_data_reader_t* data_reader,
-                     sqfs_inode_generic_t* inode,
-                     const std::string& path)
+  SquashFSFileHandle(sqfs_data_reader_t* data_reader, sqfs_inode_generic_t* inode, const std::string& path)
       : data_reader_(data_reader),
         inode_(inode),
         path_(path),
@@ -79,7 +77,8 @@ class SquashFSFileHandle : public FileHandle {
         current_pos_(0),
         eof_(false),
         buffer_(nullptr),
-        buffer_size_(0) {
+        buffer_size_(0)
+  {
     if (!data_reader_ || !inode_) {
       throw std::invalid_argument("SquashFSFileHandle: invalid parameters");
     }
@@ -95,14 +94,13 @@ class SquashFSFileHandle : public FileHandle {
   /**
    * @brief Destructor - ensures resources are freed
    */
-  ~SquashFSFileHandle() override {
-    close();
-  }
+  ~SquashFSFileHandle() override { close(); }
 
   /**
    * @brief Read data from the file
    */
-  ssize_t read(void* buffer, size_t count) override {
+  ssize_t read(void* buffer, size_t count) override
+  {
     if (!data_reader_ || eof_) {
       return eof_ ? 0 : -1;
     }
@@ -123,8 +121,7 @@ class SquashFSFileHandle : public FileHandle {
     }
 
     // Read from SquashFS using data reader
-    sqfs_s32 bytes_read = sqfs_data_reader_read(data_reader_, inode_,
-                                                  current_pos_, buffer, to_read);
+    sqfs_s32 bytes_read = sqfs_data_reader_read(data_reader_, inode_, current_pos_, buffer, to_read);
     if (bytes_read < 0) {
       return -1;
     }
@@ -142,7 +139,8 @@ class SquashFSFileHandle : public FileHandle {
    *
    * SquashFS supports native seeking, so this is straightforward.
    */
-  off_t seek(off_t offset, int whence) override {
+  off_t seek(off_t offset, int whence) override
+  {
     if (!data_reader_) {
       return -1;
     }
@@ -178,21 +176,18 @@ class SquashFSFileHandle : public FileHandle {
   /**
    * @brief Get current position in the file
    */
-  off_t tell() const override {
-    return current_pos_;
-  }
+  off_t tell() const override { return current_pos_; }
 
   /**
    * @brief Check if at end of file
    */
-  bool eof() const override {
-    return eof_;
-  }
+  bool eof() const override { return eof_; }
 
   /**
    * @brief Close the file handle
    */
-  void close() override {
+  void close() override
+  {
     if (buffer_) {
       delete[] buffer_;
       buffer_ = nullptr;
@@ -204,16 +199,12 @@ class SquashFSFileHandle : public FileHandle {
   /**
    * @brief Get the file path
    */
-  std::string path() const override {
-    return path_;
-  }
+  std::string path() const override { return path_; }
 
   /**
    * @brief Get the file size
    */
-  int64_t size() const override {
-    return size_;
-  }
+  int64_t size() const override { return size_; }
 
  private:
   sqfs_data_reader_t* data_reader_;  ///< SquashFS data reader
@@ -243,12 +234,9 @@ class SquashFSDirectoryIterator : public DirectoryIterator {
    * @param dir_reader SquashFS directory reader
    * @param inode Directory inode
    */
-  SquashFSDirectoryIterator(sqfs_dir_reader_t* dir_reader,
-                            sqfs_inode_generic_t* inode)
-      : dir_reader_(dir_reader),
-        inode_(inode),
-        current_index_(0),
-        state_(nullptr) {
+  SquashFSDirectoryIterator(sqfs_dir_reader_t* dir_reader, sqfs_inode_generic_t* inode)
+      : dir_reader_(dir_reader), inode_(inode), current_index_(0), state_(nullptr)
+  {
     if (!dir_reader_ || !inode_) {
       return;
     }
@@ -267,15 +255,13 @@ class SquashFSDirectoryIterator : public DirectoryIterator {
 
       DirectoryEntry dir_entry;
       dir_entry.name = std::string(entry->name);
-      dir_entry.is_directory = (entry->type == SQFS_INODE_DIR ||
-                                entry->type == SQFS_INODE_EXT_DIR);
+      dir_entry.is_directory = (entry->type == SQFS_INODE_DIR || entry->type == SQFS_INODE_EXT_DIR);
 
       // Get inode for metadata
       sqfs_inode_generic_t* entry_inode;
       if (sqfs_dir_reader_get_inode(dir_reader_, entry, &entry_inode) == 0) {
         if (entry_inode) {
-          dir_entry.size = static_cast<int64_t>(
-              sqfs_inode_get_file_size(entry_inode));
+          dir_entry.size = static_cast<int64_t>(sqfs_inode_get_file_size(entry_inode));
           dir_entry.mtime = static_cast<time_t>(entry_inode->base.mod_time);
           free(entry_inode);
         }
@@ -289,21 +275,21 @@ class SquashFSDirectoryIterator : public DirectoryIterator {
   /**
    * @brief Destructor
    */
-  ~SquashFSDirectoryIterator() override {
+  ~SquashFSDirectoryIterator() override
+  {
     // Nothing to clean up
   }
 
   /**
    * @brief Check if there are more entries
    */
-  bool has_next() const override {
-    return current_index_ < entries_.size();
-  }
+  bool has_next() const override { return current_index_ < entries_.size(); }
 
   /**
    * @brief Get the next directory entry
    */
-  DirectoryEntry next() override {
+  DirectoryEntry next() override
+  {
     if (!has_next()) {
       throw std::runtime_error("No more directory entries");
     }
@@ -313,9 +299,7 @@ class SquashFSDirectoryIterator : public DirectoryIterator {
   /**
    * @brief Reset the iterator to the beginning
    */
-  void reset() override {
-    current_index_ = 0;
-  }
+  void reset() override { current_index_ = 0; }
 
  private:
   sqfs_dir_reader_t* dir_reader_;        ///< SquashFS directory reader
@@ -329,17 +313,15 @@ class SquashFSDirectoryIterator : public DirectoryIterator {
 // SquashFSBackend Implementation
 // ===================================================================
 
-SquashFSBackend::SquashFSBackend()
-    : sqfs_file_(nullptr),
-      sqfs_super_(nullptr),
-      sqfs_dir_reader_(nullptr) {}
+SquashFSBackend::SquashFSBackend() : sqfs_file_(nullptr), sqfs_super_(nullptr), sqfs_dir_reader_(nullptr) {}
 
-SquashFSBackend::~SquashFSBackend() {
+SquashFSBackend::~SquashFSBackend()
+{
   unmount();
 }
 
-bool SquashFSBackend::mount(const std::string& archive_path,
-                            const std::string& mount_point) {
+bool SquashFSBackend::mount(const std::string& archive_path, const std::string& mount_point)
+{
   std::unique_lock lock(mutex_);
 
   if (sqfs_file_) {
@@ -394,8 +376,8 @@ bool SquashFSBackend::mount(const std::string& archive_path,
   return true;
 }
 
-bool SquashFSBackend::mount_from_memory(const void* data, size_t size,
-                                         const std::string& mount_point) {
+bool SquashFSBackend::mount_from_memory(const void* data, size_t size, const std::string& mount_point)
+{
   std::unique_lock lock(mutex_);
 
   if (is_mounted_) {
@@ -439,7 +421,8 @@ bool SquashFSBackend::mount_from_memory(const void* data, size_t size,
   return true;
 }
 
-void SquashFSBackend::unmount() {
+void SquashFSBackend::unmount()
+{
   std::unique_lock lock(mutex_);
 
   if (sqfs_dir_reader_) {
@@ -461,13 +444,14 @@ void SquashFSBackend::unmount() {
   mount_point_.clear();
 }
 
-bool SquashFSBackend::is_mounted() const {
+bool SquashFSBackend::is_mounted() const
+{
   std::shared_lock lock(mutex_);
   return sqfs_file_ != nullptr;
 }
 
-std::unique_ptr<FileHandle> SquashFSBackend::open(const std::string& path,
-                                                  int flags) {
+std::unique_ptr<FileHandle> SquashFSBackend::open(const std::string& path, int flags)
+{
   std::shared_lock lock(mutex_);
 
   if (!sqfs_file_) {
@@ -486,8 +470,7 @@ std::unique_ptr<FileHandle> SquashFSBackend::open(const std::string& path,
   }
 
   // Verify it's a file, not a directory
-  if (inode->base.type == SQFS_INODE_DIR ||
-      inode->base.type == SQFS_INODE_EXT_DIR) {
+  if (inode->base.type == SQFS_INODE_DIR || inode->base.type == SQFS_INODE_EXT_DIR) {
     free(inode);
     return nullptr;
   }
@@ -495,8 +478,7 @@ std::unique_ptr<FileHandle> SquashFSBackend::open(const std::string& path,
   // Create data reader
   sqfs_compressor_config_t cfg;
   sqfs_compressor_t* cmp = sqfs_compressor_create(&cfg);
-  sqfs_data_reader_t* data_reader = sqfs_data_reader_create(
-      sqfs_file_, sqfs_super_->block_size, cmp, 0);
+  sqfs_data_reader_t* data_reader = sqfs_data_reader_create(sqfs_file_, sqfs_super_->block_size, cmp, 0);
   sqfs_drop(cmp);
 
   if (!data_reader) {
@@ -507,14 +489,16 @@ std::unique_ptr<FileHandle> SquashFSBackend::open(const std::string& path,
   try {
     auto handle = std::make_unique<SquashFSFileHandle>(data_reader, inode, path);
     return handle;
-  } catch (...) {
+  }
+  catch (...) {
     sqfs_drop(data_reader);
     free(inode);
     return nullptr;
   }
 }
 
-bool SquashFSBackend::exists(const std::string& path) const {
+bool SquashFSBackend::exists(const std::string& path) const
+{
   std::shared_lock lock(mutex_);
 
   if (!sqfs_file_) {
@@ -530,7 +514,8 @@ bool SquashFSBackend::exists(const std::string& path) const {
   return false;
 }
 
-bool SquashFSBackend::is_file(const std::string& path) const {
+bool SquashFSBackend::is_file(const std::string& path) const
+{
   std::shared_lock lock(mutex_);
 
   if (!sqfs_file_) {
@@ -543,13 +528,13 @@ bool SquashFSBackend::is_file(const std::string& path) const {
     return false;
   }
 
-  bool result = (inode->base.type != SQFS_INODE_DIR &&
-                 inode->base.type != SQFS_INODE_EXT_DIR);
+  bool result = (inode->base.type != SQFS_INODE_DIR && inode->base.type != SQFS_INODE_EXT_DIR);
   free(inode);
   return result;
 }
 
-bool SquashFSBackend::is_directory(const std::string& path) const {
+bool SquashFSBackend::is_directory(const std::string& path) const
+{
   std::shared_lock lock(mutex_);
 
   if (!sqfs_file_) {
@@ -568,14 +553,13 @@ bool SquashFSBackend::is_directory(const std::string& path) const {
     return false;
   }
 
-  bool result = (inode->base.type == SQFS_INODE_DIR ||
-                 inode->base.type == SQFS_INODE_EXT_DIR);
+  bool result = (inode->base.type == SQFS_INODE_DIR || inode->base.type == SQFS_INODE_EXT_DIR);
   free(inode);
   return result;
 }
 
-std::unique_ptr<DirectoryIterator> SquashFSBackend::list_directory(
-    const std::string& path) {
+std::unique_ptr<DirectoryIterator> SquashFSBackend::list_directory(const std::string& path)
+{
   std::shared_lock lock(mutex_);
 
   if (!sqfs_file_) {
@@ -595,7 +579,8 @@ std::unique_ptr<DirectoryIterator> SquashFSBackend::list_directory(
   return std::make_unique<SquashFSDirectoryIterator>(sqfs_dir_reader_, inode);
 }
 
-int64_t SquashFSBackend::file_size(const std::string& path) const {
+int64_t SquashFSBackend::file_size(const std::string& path) const
+{
   std::shared_lock lock(mutex_);
 
   if (!sqfs_file_) {
@@ -613,7 +598,8 @@ int64_t SquashFSBackend::file_size(const std::string& path) const {
   return size;
 }
 
-time_t SquashFSBackend::modification_time(const std::string& path) const {
+time_t SquashFSBackend::modification_time(const std::string& path) const
+{
   std::shared_lock lock(mutex_);
 
   if (!sqfs_file_) {
@@ -631,7 +617,8 @@ time_t SquashFSBackend::modification_time(const std::string& path) const {
   return mtime;
 }
 
-mode_t SquashFSBackend::permissions(const std::string& path) const {
+mode_t SquashFSBackend::permissions(const std::string& path) const
+{
   std::shared_lock lock(mutex_);
 
   if (!sqfs_file_) {
@@ -649,7 +636,8 @@ mode_t SquashFSBackend::permissions(const std::string& path) const {
   return mode;
 }
 
-std::string SquashFSBackend::backend_version() const {
+std::string SquashFSBackend::backend_version() const
+{
   // Return squashfs-tools-ng version
   return "squashfs-tools-ng 1.3.0";  // Update with actual version detection
 }
@@ -658,8 +646,8 @@ std::string SquashFSBackend::backend_version() const {
 // Private Helper Methods
 // ===================================================================
 
-sqfs_inode_generic_t* SquashFSBackend::lookup_inode(
-    const std::string& path) const {
+sqfs_inode_generic_t* SquashFSBackend::lookup_inode(const std::string& path) const
+{
   if (!sqfs_dir_reader_) {
     return nullptr;
   }
@@ -677,15 +665,15 @@ sqfs_inode_generic_t* SquashFSBackend::lookup_inode(
 
   // Lookup by path
   sqfs_inode_generic_t* inode;
-  if (sqfs_dir_reader_find_by_path(sqfs_dir_reader_, normalized.c_str(),
-                                     &inode) == 0) {
+  if (sqfs_dir_reader_find_by_path(sqfs_dir_reader_, normalized.c_str(), &inode) == 0) {
     return inode;
   }
 
   return nullptr;
 }
 
-std::string SquashFSBackend::strip_mount_point(const std::string& path) const {
+std::string SquashFSBackend::strip_mount_point(const std::string& path) const
+{
   if (path.size() < mount_point_.size()) {
     return path;
   }
@@ -702,7 +690,8 @@ std::string SquashFSBackend::strip_mount_point(const std::string& path) const {
   return path;
 }
 
-std::string SquashFSBackend::normalize_path(const std::string& path) const {
+std::string SquashFSBackend::normalize_path(const std::string& path) const
+{
   std::string result = path;
 
   // Remove leading slash

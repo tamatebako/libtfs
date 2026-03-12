@@ -18,7 +18,8 @@ namespace fs {
 // Singleton Instance
 // ===================================================================
 
-BackendRegistry& BackendRegistry::instance() {
+BackendRegistry& BackendRegistry::instance()
+{
   static BackendRegistry registry;
   return registry;
 }
@@ -30,7 +31,8 @@ BackendRegistry& BackendRegistry::instance() {
 void BackendRegistry::register_backend(const BackendInfo& info,
                                        Factory factory,
                                        MemoryDetector memory_detector,
-                                       FileDetector file_detector) {
+                                       FileDetector file_detector)
+{
   std::lock_guard lock(mutex_);
 
   // Check if already registered
@@ -40,8 +42,7 @@ void BackendRegistry::register_backend(const BackendInfo& info,
     }
   }
 
-  backends_.push_back({info, std::move(factory),
-                       std::move(memory_detector), std::move(file_detector)});
+  backends_.push_back({info, std::move(factory), std::move(memory_detector), std::move(file_detector)});
   sort_by_priority();
 }
 
@@ -49,8 +50,8 @@ void BackendRegistry::register_backend(const BackendInfo& info,
 // Factory Methods
 // ===================================================================
 
-std::unique_ptr<FileSystem> BackendRegistry::create_from_memory(
-    const void* data, size_t size) {
+std::unique_ptr<FileSystem> BackendRegistry::create_from_memory(const void* data, size_t size)
+{
   std::lock_guard lock(mutex_);
 
   for (const auto& backend : backends_) {
@@ -62,8 +63,8 @@ std::unique_ptr<FileSystem> BackendRegistry::create_from_memory(
   return nullptr;
 }
 
-std::unique_ptr<FileSystem> BackendRegistry::create_from_file(
-    const std::string& path) {
+std::unique_ptr<FileSystem> BackendRegistry::create_from_file(const std::string& path)
+{
   std::lock_guard lock(mutex_);
 
   // First try file detection (magic numbers)
@@ -77,8 +78,8 @@ std::unique_ptr<FileSystem> BackendRegistry::create_from_file(
   return create_by_extension(path);
 }
 
-std::unique_ptr<FileSystem> BackendRegistry::create_by_name(
-    std::string_view name) {
+std::unique_ptr<FileSystem> BackendRegistry::create_by_name(std::string_view name)
+{
   std::lock_guard lock(mutex_);
 
   for (const auto& backend : backends_) {
@@ -90,8 +91,8 @@ std::unique_ptr<FileSystem> BackendRegistry::create_by_name(
   return nullptr;
 }
 
-std::unique_ptr<FileSystem> BackendRegistry::create_by_extension(
-    const std::string& path) {
+std::unique_ptr<FileSystem> BackendRegistry::create_by_extension(const std::string& path)
+{
   std::lock_guard lock(mutex_);
 
   // Extract extension from path
@@ -126,7 +127,8 @@ std::unique_ptr<FileSystem> BackendRegistry::create_by_extension(
 // Query Methods
 // ===================================================================
 
-std::vector<std::string> BackendRegistry::backend_names() const {
+std::vector<std::string> BackendRegistry::backend_names() const
+{
   std::lock_guard lock(mutex_);
 
   std::vector<std::string> names;
@@ -137,7 +139,8 @@ std::vector<std::string> BackendRegistry::backend_names() const {
   return names;
 }
 
-const BackendInfo* BackendRegistry::get_info(std::string_view name) const {
+const BackendInfo* BackendRegistry::get_info(std::string_view name) const
+{
   std::lock_guard lock(mutex_);
 
   for (const auto& backend : backends_) {
@@ -148,7 +151,8 @@ const BackendInfo* BackendRegistry::get_info(std::string_view name) const {
   return nullptr;
 }
 
-bool BackendRegistry::has_backend(std::string_view name) const {
+bool BackendRegistry::has_backend(std::string_view name) const
+{
   std::lock_guard lock(mutex_);
 
   for (const auto& backend : backends_) {
@@ -159,7 +163,8 @@ bool BackendRegistry::has_backend(std::string_view name) const {
   return false;
 }
 
-void BackendRegistry::clear() {
+void BackendRegistry::clear()
+{
   std::lock_guard lock(mutex_);
   backends_.clear();
 }
@@ -168,12 +173,11 @@ void BackendRegistry::clear() {
 // Private Methods
 // ===================================================================
 
-void BackendRegistry::sort_by_priority() {
+void BackendRegistry::sort_by_priority()
+{
   // Sort by priority descending (highest priority first)
   std::sort(backends_.begin(), backends_.end(),
-            [](const RegisteredBackend& a, const RegisteredBackend& b) {
-              return a.info.priority > b.info.priority;
-            });
+            [](const RegisteredBackend& a, const RegisteredBackend& b) { return a.info.priority > b.info.priority; });
 }
 
 }  // namespace fs

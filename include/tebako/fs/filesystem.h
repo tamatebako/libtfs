@@ -112,8 +112,7 @@ class FileSystem {
    * @note Only one archive can be mounted at a time
    * @note The archive path will be empty for memory-mounted filesystems
    */
-  virtual Result<void> mount_from_memory(const void* data, size_t size,
-                                          std::string_view mount_point) = 0;
+  virtual Result<void> mount_from_memory(const void* data, size_t size, std::string_view mount_point) = 0;
 
   /**
    * @brief Unmount the filesystem

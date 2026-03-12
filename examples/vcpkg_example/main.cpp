@@ -18,7 +18,8 @@ using namespace tebako::fs;
 /**
  * @brief Display file information
  */
-void print_file_info(Backend& backend, const std::string& path) {
+void print_file_info(Backend& backend, const std::string& path)
+{
   if (backend.is_file(path)) {
     auto size = backend.file_size(path);
     auto mtime = backend.modification_time(path);
@@ -34,7 +35,8 @@ void print_file_info(Backend& backend, const std::string& path) {
 /**
  * @brief List directory contents recursively
  */
-void list_directory(Backend& backend, const std::string& path, int depth = 0) {
+void list_directory(Backend& backend, const std::string& path, int depth = 0)
+{
   std::string indent(depth * 2, ' ');
 
   auto iter = backend.list_directory(path);
@@ -50,9 +52,9 @@ void list_directory(Backend& backend, const std::string& path, int depth = 0) {
     if (entry.is_directory) {
       std::cout << indent << "[DIR]  " << entry.name << "\n";
       list_directory(backend, full_path, depth + 1);
-    } else {
-      std::cout << indent << "[FILE] " << entry.name
-                << " (" << entry.size << " bytes)\n";
+    }
+    else {
+      std::cout << indent << "[FILE] " << entry.name << " (" << entry.size << " bytes)\n";
     }
   }
 }
@@ -60,7 +62,8 @@ void list_directory(Backend& backend, const std::string& path, int depth = 0) {
 /**
  * @brief Read and display file contents
  */
-void read_file(Backend& backend, const std::string& path) {
+void read_file(Backend& backend, const std::string& path)
+{
   auto handle = backend.open(path, O_RDONLY);
   if (!handle) {
     std::cerr << "Failed to open file: " << path << "\n";
@@ -82,7 +85,8 @@ void read_file(Backend& backend, const std::string& path) {
 /**
  * @brief Process a single archive file
  */
-void process_archive(const std::string& archive_path) {
+void process_archive(const std::string& archive_path)
+{
   std::cout << "\n" << std::string(70, '=') << "\n";
   std::cout << "Processing: " << archive_path << "\n";
   std::cout << std::string(70, '=') << "\n";
@@ -148,7 +152,8 @@ void process_archive(const std::string& archive_path) {
   std::cout << "\nUnmounted successfully.\n";
 }
 
-int main(int argc, char* argv[]) {
+int main(int argc, char* argv[])
+{
   std::cout << "libtfs Example - Unified Archive Interface\n";
   std::cout << "==========================================\n";
 
@@ -159,19 +164,18 @@ int main(int argc, char* argv[]) {
     for (int i = 1; i < argc; ++i) {
       archives.push_back(argv[i]);
     }
-  } else {
+  }
+  else {
     // Use built-in test archives
-    archives = {
-      "test_archives/sample.dwarfs",
-      "test_archives/sample.zip"
-    };
+    archives = {"test_archives/sample.dwarfs", "test_archives/sample.zip"};
   }
 
   // Process each archive
   for (const auto& archive : archives) {
     try {
       process_archive(archive);
-    } catch (const std::exception& e) {
+    }
+    catch (const std::exception& e) {
       std::cerr << "ERROR: Exception processing " << archive << ": " << e.what() << "\n";
     }
   }

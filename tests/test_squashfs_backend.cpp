@@ -49,11 +49,10 @@ using namespace tebako::fs;
  */
 class SquashFSBackendTest : public ::testing::Test {
  protected:
-  void SetUp() override {
-    backend = std::make_unique<SquashFSBackend>();
-  }
+  void SetUp() override { backend = std::make_unique<SquashFSBackend>(); }
 
-  void TearDown() override {
+  void TearDown() override
+  {
     if (backend && backend->is_mounted()) {
       backend->unmount();
     }
@@ -69,7 +68,8 @@ class SquashFSBackendTest : public ::testing::Test {
  */
 class SquashFSBackendMountedTest : public SquashFSBackendTest {
  protected:
-  void SetUp() override {
+  void SetUp() override
+  {
     SquashFSBackendTest::SetUp();
     std::string archive = fixtures_path + "simple.sqfs";
     ASSERT_TRUE(backend->mount(archive, mount_point));
@@ -80,18 +80,21 @@ class SquashFSBackendMountedTest : public SquashFSBackendTest {
 // 1. Lifecycle Tests (8 tests)
 // ===================================================================
 
-TEST_F(SquashFSBackendTest, ConstructorCreatesUnmountedBackend) {
+TEST_F(SquashFSBackendTest, ConstructorCreatesUnmountedBackend)
+{
   EXPECT_FALSE(backend->is_mounted());
   EXPECT_EQ(backend->archive_path(), "");
   EXPECT_EQ(backend->mount_point(), "");
 }
 
-TEST_F(SquashFSBackendTest, BackendInfoCorrect) {
+TEST_F(SquashFSBackendTest, BackendInfoCorrect)
+{
   EXPECT_EQ(backend->backend_name(), "SquashFS");
   EXPECT_FALSE(backend->backend_version().empty());
 }
 
-TEST_F(SquashFSBackendTest, MountValidArchiveSucceeds) {
+TEST_F(SquashFSBackendTest, MountValidArchiveSucceeds)
+{
   std::string archive = fixtures_path + "simple.sqfs";
   EXPECT_TRUE(backend->mount(archive, mount_point));
   EXPECT_TRUE(backend->is_mounted());
@@ -99,19 +102,22 @@ TEST_F(SquashFSBackendTest, MountValidArchiveSucceeds) {
   EXPECT_EQ(backend->mount_point(), mount_point);
 }
 
-TEST_F(SquashFSBackendTest, MountNonexistentArchiveFails) {
+TEST_F(SquashFSBackendTest, MountNonexistentArchiveFails)
+{
   std::string archive = fixtures_path + "nonexistent.sqfs";
   EXPECT_FALSE(backend->mount(archive, mount_point));
   EXPECT_FALSE(backend->is_mounted());
 }
 
-TEST_F(SquashFSBackendTest, MountCorruptedArchiveFails) {
+TEST_F(SquashFSBackendTest, MountCorruptedArchiveFails)
+{
   std::string archive = fixtures_path + "corrupted.sqfs";
   EXPECT_FALSE(backend->mount(archive, mount_point));
   EXPECT_FALSE(backend->is_mounted());
 }
 
-TEST_F(SquashFSBackendMountedTest, DoubleMountFails) {
+TEST_F(SquashFSBackendMountedTest, DoubleMountFails)
+{
   std::string another_archive = fixtures_path + "nested.sqfs";
   EXPECT_FALSE(backend->mount(another_archive, "/mnt/another"));
   // Should still be mounted to original archive
@@ -119,14 +125,16 @@ TEST_F(SquashFSBackendMountedTest, DoubleMountFails) {
   EXPECT_EQ(backend->archive_path(), fixtures_path + "simple.sqfs");
 }
 
-TEST_F(SquashFSBackendMountedTest, UnmountClearsState) {
+TEST_F(SquashFSBackendMountedTest, UnmountClearsState)
+{
   backend->unmount();
   EXPECT_FALSE(backend->is_mounted());
   EXPECT_EQ(backend->archive_path(), "");
   EXPECT_EQ(backend->mount_point(), "");
 }
 
-TEST_F(SquashFSBackendTest, UnmountWithoutMountIsNoOp) {
+TEST_F(SquashFSBackendTest, UnmountWithoutMountIsNoOp)
+{
   EXPECT_NO_THROW(backend->unmount());
   EXPECT_FALSE(backend->is_mounted());
 }
@@ -135,33 +143,39 @@ TEST_F(SquashFSBackendTest, UnmountWithoutMountIsNoOp) {
 // 2. File Existence Tests (6 tests)
 // ===================================================================
 
-TEST_F(SquashFSBackendMountedTest, ExistsReturnsTrueForValidFile) {
+TEST_F(SquashFSBackendMountedTest, ExistsReturnsTrueForValidFile)
+{
   EXPECT_TRUE(backend->exists(mount_point + "/test.txt"));
   EXPECT_TRUE(backend->exists(mount_point + "/file2.txt"));
 }
 
-TEST_F(SquashFSBackendMountedTest, ExistsReturnsFalseForInvalidFile) {
+TEST_F(SquashFSBackendMountedTest, ExistsReturnsFalseForInvalidFile)
+{
   EXPECT_FALSE(backend->exists(mount_point + "/nonexistent.txt"));
   EXPECT_FALSE(backend->exists(mount_point + "/missing/file.txt"));
 }
 
-TEST_F(SquashFSBackendMountedTest, IsFileCorrectForFiles) {
+TEST_F(SquashFSBackendMountedTest, IsFileCorrectForFiles)
+{
   EXPECT_TRUE(backend->is_file(mount_point + "/test.txt"));
   EXPECT_TRUE(backend->is_file(mount_point + "/file2.txt"));
 }
 
-TEST_F(SquashFSBackendMountedTest, IsFileFalseForDirectories) {
+TEST_F(SquashFSBackendMountedTest, IsFileFalseForDirectories)
+{
   // Root should be treated as directory
   EXPECT_FALSE(backend->is_file(mount_point));
   EXPECT_FALSE(backend->is_file(mount_point + "/"));
 }
 
-TEST_F(SquashFSBackendMountedTest, IsDirectoryCorrectForRoot) {
+TEST_F(SquashFSBackendMountedTest, IsDirectoryCorrectForRoot)
+{
   EXPECT_TRUE(backend->is_directory(mount_point));
   EXPECT_TRUE(backend->is_directory(mount_point + "/"));
 }
 
-TEST_F(SquashFSBackendTest, IsDirectoryCorrectForNestedDirs) {
+TEST_F(SquashFSBackendTest, IsDirectoryCorrectForNestedDirs)
+{
   std::string archive = fixtures_path + "nested.sqfs";
   ASSERT_TRUE(backend->mount(archive, mount_point));
 
@@ -174,23 +188,27 @@ TEST_F(SquashFSBackendTest, IsDirectoryCorrectForNestedDirs) {
 // 3. File Reading Tests (12 tests)
 // ===================================================================
 
-TEST_F(SquashFSBackendMountedTest, OpenValidFileSucceeds) {
+TEST_F(SquashFSBackendMountedTest, OpenValidFileSucceeds)
+{
   auto handle = backend->open(mount_point + "/test.txt", O_RDONLY);
   ASSERT_NE(handle, nullptr);
   EXPECT_EQ(handle->path(), mount_point + "/test.txt");
 }
 
-TEST_F(SquashFSBackendMountedTest, OpenInvalidFileFails) {
+TEST_F(SquashFSBackendMountedTest, OpenInvalidFileFails)
+{
   auto handle = backend->open(mount_point + "/nonexistent.txt", O_RDONLY);
   EXPECT_EQ(handle, nullptr);
 }
 
-TEST_F(SquashFSBackendMountedTest, OpenDirectoryFails) {
+TEST_F(SquashFSBackendMountedTest, OpenDirectoryFails)
+{
   auto handle = backend->open(mount_point, O_RDONLY);
   EXPECT_EQ(handle, nullptr);
 }
 
-TEST_F(SquashFSBackendMountedTest, ReadFileContentsCorrect) {
+TEST_F(SquashFSBackendMountedTest, ReadFileContentsCorrect)
+{
   auto handle = backend->open(mount_point + "/test.txt", O_RDONLY);
   ASSERT_NE(handle, nullptr);
 
@@ -202,7 +220,8 @@ TEST_F(SquashFSBackendMountedTest, ReadFileContentsCorrect) {
   EXPECT_EQ(content, "Hello from SquashFS!\n");
 }
 
-TEST_F(SquashFSBackendMountedTest, ReadIncrementsPosition) {
+TEST_F(SquashFSBackendMountedTest, ReadIncrementsPosition)
+{
   auto handle = backend->open(mount_point + "/test.txt", O_RDONLY);
   ASSERT_NE(handle, nullptr);
 
@@ -214,7 +233,8 @@ TEST_F(SquashFSBackendMountedTest, ReadIncrementsPosition) {
   EXPECT_EQ(handle->tell(), 5);
 }
 
-TEST_F(SquashFSBackendMountedTest, ReadSetsEofFlag) {
+TEST_F(SquashFSBackendMountedTest, ReadSetsEofFlag)
+{
   auto handle = backend->open(mount_point + "/test.txt", O_RDONLY);
   ASSERT_NE(handle, nullptr);
 
@@ -229,7 +249,8 @@ TEST_F(SquashFSBackendMountedTest, ReadSetsEofFlag) {
   EXPECT_TRUE(handle->eof());
 }
 
-TEST_F(SquashFSBackendMountedTest, SeekSetPositionsCorrectly) {
+TEST_F(SquashFSBackendMountedTest, SeekSetPositionsCorrectly)
+{
   auto handle = backend->open(mount_point + "/test.txt", O_RDONLY);
   ASSERT_NE(handle, nullptr);
 
@@ -238,7 +259,8 @@ TEST_F(SquashFSBackendMountedTest, SeekSetPositionsCorrectly) {
   EXPECT_EQ(handle->tell(), 5);
 }
 
-TEST_F(SquashFSBackendMountedTest, SeekCurPositionsCorrectly) {
+TEST_F(SquashFSBackendMountedTest, SeekCurPositionsCorrectly)
+{
   auto handle = backend->open(mount_point + "/test.txt", O_RDONLY);
   ASSERT_NE(handle, nullptr);
 
@@ -248,7 +270,8 @@ TEST_F(SquashFSBackendMountedTest, SeekCurPositionsCorrectly) {
   EXPECT_EQ(handle->tell(), 8);
 }
 
-TEST_F(SquashFSBackendMountedTest, SeekEndPositionsCorrectly) {
+TEST_F(SquashFSBackendMountedTest, SeekEndPositionsCorrectly)
+{
   auto handle = backend->open(mount_point + "/test.txt", O_RDONLY);
   ASSERT_NE(handle, nullptr);
 
@@ -258,7 +281,8 @@ TEST_F(SquashFSBackendMountedTest, SeekEndPositionsCorrectly) {
   EXPECT_EQ(handle->tell(), file_size);
 }
 
-TEST_F(SquashFSBackendMountedTest, SeekBeyondBoundsFails) {
+TEST_F(SquashFSBackendMountedTest, SeekBeyondBoundsFails)
+{
   auto handle = backend->open(mount_point + "/test.txt", O_RDONLY);
   ASSERT_NE(handle, nullptr);
 
@@ -267,7 +291,8 @@ TEST_F(SquashFSBackendMountedTest, SeekBeyondBoundsFails) {
   EXPECT_EQ(result, -1);
 }
 
-TEST_F(SquashFSBackendMountedTest, CloseReleasesResource) {
+TEST_F(SquashFSBackendMountedTest, CloseReleasesResource)
+{
   auto handle = backend->open(mount_point + "/test.txt", O_RDONLY);
   ASSERT_NE(handle, nullptr);
 
@@ -279,7 +304,8 @@ TEST_F(SquashFSBackendMountedTest, CloseReleasesResource) {
   EXPECT_EQ(result, -1);
 }
 
-TEST_F(SquashFSBackendMountedTest, OperationsAfterCloseFail) {
+TEST_F(SquashFSBackendMountedTest, OperationsAfterCloseFail)
+{
   auto handle = backend->open(mount_point + "/test.txt", O_RDONLY);
   ASSERT_NE(handle, nullptr);
 
@@ -297,7 +323,8 @@ TEST_F(SquashFSBackendMountedTest, OperationsAfterCloseFail) {
 // 4. Directory Listing Tests (5 tests)
 // ===================================================================
 
-TEST_F(SquashFSBackendMountedTest, ListDirectoryReturnsAllEntries) {
+TEST_F(SquashFSBackendMountedTest, ListDirectoryReturnsAllEntries)
+{
   auto iter = backend->list_directory(mount_point);
   ASSERT_NE(iter, nullptr);
 
@@ -311,7 +338,8 @@ TEST_F(SquashFSBackendMountedTest, ListDirectoryReturnsAllEntries) {
   EXPECT_NE(std::find(entries.begin(), entries.end(), "file2.txt"), entries.end());
 }
 
-TEST_F(SquashFSBackendMountedTest, DirectoryEntryHasCorrectMetadata) {
+TEST_F(SquashFSBackendMountedTest, DirectoryEntryHasCorrectMetadata)
+{
   auto iter = backend->list_directory(mount_point);
   ASSERT_NE(iter, nullptr);
 
@@ -324,7 +352,8 @@ TEST_F(SquashFSBackendMountedTest, DirectoryEntryHasCorrectMetadata) {
   EXPECT_GT(entry.mtime, 0);
 }
 
-TEST_F(SquashFSBackendMountedTest, IteratorResetWorks) {
+TEST_F(SquashFSBackendMountedTest, IteratorResetWorks)
+{
   auto iter = backend->list_directory(mount_point);
   ASSERT_NE(iter, nullptr);
 
@@ -340,7 +369,8 @@ TEST_F(SquashFSBackendMountedTest, IteratorResetWorks) {
   EXPECT_EQ(first_name, first_name_again);
 }
 
-TEST_F(SquashFSBackendTest, ListNestedDirectoryWorks) {
+TEST_F(SquashFSBackendTest, ListNestedDirectoryWorks)
+{
   std::string archive = fixtures_path + "nested.sqfs";
   ASSERT_TRUE(backend->mount(archive, mount_point));
 
@@ -356,7 +386,8 @@ TEST_F(SquashFSBackendTest, ListNestedDirectoryWorks) {
   EXPECT_GE(entries.size(), 1);
 }
 
-TEST_F(SquashFSBackendTest, ListEmptyDirectoryReturnsNoEntries) {
+TEST_F(SquashFSBackendTest, ListEmptyDirectoryReturnsNoEntries)
+{
   std::string archive = fixtures_path + "empty.sqfs";
   ASSERT_TRUE(backend->mount(archive, mount_point));
 
@@ -376,22 +407,26 @@ TEST_F(SquashFSBackendTest, ListEmptyDirectoryReturnsNoEntries) {
 // 5. Metadata Tests (4 tests)
 // ===================================================================
 
-TEST_F(SquashFSBackendMountedTest, FileSizeCorrect) {
+TEST_F(SquashFSBackendMountedTest, FileSizeCorrect)
+{
   int64_t size = backend->file_size(mount_point + "/test.txt");
   EXPECT_EQ(size, 21);  // "Hello from SquashFS!\n" = 21 bytes
 }
 
-TEST_F(SquashFSBackendMountedTest, FileSizeInvalidFileReturnsNegative) {
+TEST_F(SquashFSBackendMountedTest, FileSizeInvalidFileReturnsNegative)
+{
   int64_t size = backend->file_size(mount_point + "/nonexistent.txt");
   EXPECT_EQ(size, -1);
 }
 
-TEST_F(SquashFSBackendMountedTest, ModificationTimeNonZero) {
+TEST_F(SquashFSBackendMountedTest, ModificationTimeNonZero)
+{
   time_t mtime = backend->modification_time(mount_point + "/test.txt");
   EXPECT_GT(mtime, 0);
 }
 
-TEST_F(SquashFSBackendTest, PermissionsPreservedCorrectly) {
+TEST_F(SquashFSBackendTest, PermissionsPreservedCorrectly)
+{
   std::string archive = fixtures_path + "permissions.sqfs";
   ASSERT_TRUE(backend->mount(archive, mount_point));
 
@@ -416,7 +451,8 @@ TEST_F(SquashFSBackendTest, PermissionsPreservedCorrectly) {
 // 6. Nested Directory Tests (3 tests)
 // ===================================================================
 
-TEST_F(SquashFSBackendTest, NestedDirectoryExists) {
+TEST_F(SquashFSBackendTest, NestedDirectoryExists)
+{
   std::string archive = fixtures_path + "nested.sqfs";
   ASSERT_TRUE(backend->mount(archive, mount_point));
 
@@ -424,7 +460,8 @@ TEST_F(SquashFSBackendTest, NestedDirectoryExists) {
   EXPECT_TRUE(backend->exists(mount_point + "/dir1/subdir"));
 }
 
-TEST_F(SquashFSBackendTest, NestedFileExists) {
+TEST_F(SquashFSBackendTest, NestedFileExists)
+{
   std::string archive = fixtures_path + "nested.sqfs";
   ASSERT_TRUE(backend->mount(archive, mount_point));
 
@@ -433,7 +470,8 @@ TEST_F(SquashFSBackendTest, NestedFileExists) {
   EXPECT_TRUE(backend->exists(mount_point + "/dir2/file3.txt"));
 }
 
-TEST_F(SquashFSBackendTest, CanListNestedDirectory) {
+TEST_F(SquashFSBackendTest, CanListNestedDirectory)
+{
   std::string archive = fixtures_path + "nested.sqfs";
   ASSERT_TRUE(backend->mount(archive, mount_point));
 
@@ -455,7 +493,8 @@ TEST_F(SquashFSBackendTest, CanListNestedDirectory) {
 // 7. Edge Case Tests (3 tests)
 // ===================================================================
 
-TEST_F(SquashFSBackendTest, EmptyFileHasZeroSize) {
+TEST_F(SquashFSBackendTest, EmptyFileHasZeroSize)
+{
   std::string archive = fixtures_path + "empty.sqfs";
   ASSERT_TRUE(backend->mount(archive, mount_point));
 
@@ -463,7 +502,8 @@ TEST_F(SquashFSBackendTest, EmptyFileHasZeroSize) {
   EXPECT_EQ(size, 0);
 }
 
-TEST_F(SquashFSBackendTest, ReadEmptyFileReturnsZero) {
+TEST_F(SquashFSBackendTest, ReadEmptyFileReturnsZero)
+{
   std::string archive = fixtures_path + "empty.sqfs";
   ASSERT_TRUE(backend->mount(archive, mount_point));
 
@@ -476,7 +516,8 @@ TEST_F(SquashFSBackendTest, ReadEmptyFileReturnsZero) {
   EXPECT_TRUE(handle->eof());
 }
 
-TEST_F(SquashFSBackendTest, EmptyDirectoryListsNoEntries) {
+TEST_F(SquashFSBackendTest, EmptyDirectoryListsNoEntries)
+{
   std::string archive = fixtures_path + "empty.sqfs";
   ASSERT_TRUE(backend->mount(archive, mount_point));
 
@@ -490,7 +531,8 @@ TEST_F(SquashFSBackendTest, EmptyDirectoryListsNoEntries) {
 // 8. Thread Safety Tests (2 tests)
 // ===================================================================
 
-TEST_F(SquashFSBackendMountedTest, ConcurrentReadsSucceed) {
+TEST_F(SquashFSBackendMountedTest, ConcurrentReadsSucceed)
+{
   const int num_threads = 10;
   std::atomic<int> success_count{0};
   std::vector<std::thread> threads;
@@ -515,7 +557,8 @@ TEST_F(SquashFSBackendMountedTest, ConcurrentReadsSucceed) {
   EXPECT_EQ(success_count, num_threads);
 }
 
-TEST_F(SquashFSBackendMountedTest, ConcurrentDirectoryListsSucceed) {
+TEST_F(SquashFSBackendMountedTest, ConcurrentDirectoryListsSucceed)
+{
   const int num_threads = 10;
   std::atomic<int> success_count{0};
   std::vector<std::thread> threads;
@@ -541,7 +584,8 @@ TEST_F(SquashFSBackendMountedTest, ConcurrentDirectoryListsSucceed) {
 // 9. Error Handling Tests (2 tests)
 // ===================================================================
 
-TEST_F(SquashFSBackendTest, OperationsOnUnmountedBackendFail) {
+TEST_F(SquashFSBackendTest, OperationsOnUnmountedBackendFail)
+{
   EXPECT_FALSE(backend->exists(mount_point + "/test.txt"));
   EXPECT_FALSE(backend->is_file(mount_point + "/test.txt"));
   EXPECT_FALSE(backend->is_directory(mount_point));
@@ -550,7 +594,8 @@ TEST_F(SquashFSBackendTest, OperationsOnUnmountedBackendFail) {
   EXPECT_EQ(backend->list_directory(mount_point), nullptr);
 }
 
-TEST_F(SquashFSBackendMountedTest, InvalidOperationsReturnProperErrors) {
+TEST_F(SquashFSBackendMountedTest, InvalidOperationsReturnProperErrors)
+{
   // Open with write flags should fail (read-only archive)
   EXPECT_EQ(backend->open(mount_point + "/test.txt", O_WRONLY), nullptr);
   EXPECT_EQ(backend->open(mount_point + "/test.txt", O_RDWR), nullptr);
@@ -566,7 +611,8 @@ TEST_F(SquashFSBackendMountedTest, InvalidOperationsReturnProperErrors) {
 // 10. Performance Tests (2 tests - optional with GTEST_SKIP)
 // ===================================================================
 
-TEST_F(SquashFSBackendTest, ReadLargeFilePerformance) {
+TEST_F(SquashFSBackendTest, ReadLargeFilePerformance)
+{
   std::string archive = fixtures_path + "large.sqfs";
   if (!backend->mount(archive, mount_point)) {
     GTEST_SKIP() << "Large test fixture not available";
@@ -581,7 +627,8 @@ TEST_F(SquashFSBackendTest, ReadLargeFilePerformance) {
   int64_t total_read = 0;
   while (true) {
     ssize_t bytes_read = handle->read(buffer, sizeof(buffer));
-    if (bytes_read <= 0) break;
+    if (bytes_read <= 0)
+      break;
     total_read += bytes_read;
   }
 
@@ -595,7 +642,8 @@ TEST_F(SquashFSBackendTest, ReadLargeFilePerformance) {
   EXPECT_LT(duration.count(), 5000) << "Reading 10MB took " << duration.count() << "ms";
 }
 
-TEST_F(SquashFSBackendTest, ListManyFilesPerformance) {
+TEST_F(SquashFSBackendTest, ListManyFilesPerformance)
+{
   std::string archive = fixtures_path + "large.sqfs";
   if (!backend->mount(archive, mount_point)) {
     GTEST_SKIP() << "Large test fixture not available";

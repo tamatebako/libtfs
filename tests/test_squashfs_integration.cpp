@@ -41,7 +41,8 @@ using namespace tebako::fs;
 
 class BackendFactorySquashFSTest : public ::testing::Test {
  protected:
-  void SetUp() override {
+  void SetUp() override
+  {
     // Test fixtures path
     fixtures_path = "tests/fixtures/squashfs/";
   }
@@ -54,14 +55,16 @@ class BackendFactorySquashFSTest : public ::testing::Test {
 // 1. Format Detection Tests (4 tests)
 // ===================================================================
 
-TEST_F(BackendFactorySquashFSTest, DetectsSquashFSByMagicBytes) {
+TEST_F(BackendFactorySquashFSTest, DetectsSquashFSByMagicBytes)
+{
   std::string path = fixtures_path + "simple.sqfs";
   EXPECT_TRUE(BackendFactory::is_squashfs_format(path));
   EXPECT_FALSE(BackendFactory::is_dwarfs_format(path));
   EXPECT_FALSE(BackendFactory::is_zip_format(path));
 }
 
-TEST_F(BackendFactorySquashFSTest, DetectsSquashFSByExtension) {
+TEST_F(BackendFactorySquashFSTest, DetectsSquashFSByExtension)
+{
   // Extension should be recognized
   std::string path = fixtures_path + "simple.sqfs";
   auto backend = BackendFactory::create_from_file(path);
@@ -69,13 +72,15 @@ TEST_F(BackendFactorySquashFSTest, DetectsSquashFSByExtension) {
   EXPECT_EQ(backend->backend_name(), "SquashFS");
 }
 
-TEST_F(BackendFactorySquashFSTest, RejectsNonSquashFSFiles) {
+TEST_F(BackendFactorySquashFSTest, RejectsNonSquashFSFiles)
+{
   std::string path = fixtures_path + "corrupted.sqfs";
   // Corrupted file should fail format detection
   EXPECT_FALSE(BackendFactory::is_squashfs_format(path));
 }
 
-TEST_F(BackendFactorySquashFSTest, HandlesCorruptedSquashFSFiles) {
+TEST_F(BackendFactorySquashFSTest, HandlesCorruptedSquashFSFiles)
+{
   std::string path = fixtures_path + "corrupted.sqfs";
   // Should not detect as valid SquashFS format
   EXPECT_FALSE(BackendFactory::is_squashfs_format(path));
@@ -92,26 +97,30 @@ TEST_F(BackendFactorySquashFSTest, HandlesCorruptedSquashFSFiles) {
 // 2. Backend Instantiation Tests (4 tests)
 // ===================================================================
 
-TEST_F(BackendFactorySquashFSTest, CreateSquashFSReturnsSquashFSBackend) {
+TEST_F(BackendFactorySquashFSTest, CreateSquashFSReturnsSquashFSBackend)
+{
   auto backend = BackendFactory::create_squashfs();
   ASSERT_NE(backend, nullptr);
   EXPECT_EQ(backend->backend_name(), "SquashFS");
 }
 
-TEST_F(BackendFactorySquashFSTest, CreateFromFileReturnsSquashFSBackend) {
+TEST_F(BackendFactorySquashFSTest, CreateFromFileReturnsSquashFSBackend)
+{
   std::string path = fixtures_path + "simple.sqfs";
   auto backend = BackendFactory::create_from_file(path);
   ASSERT_NE(backend, nullptr);
   EXPECT_EQ(backend->backend_name(), "SquashFS");
 }
 
-TEST_F(BackendFactorySquashFSTest, BackendNameIsSquashFS) {
+TEST_F(BackendFactorySquashFSTest, BackendNameIsSquashFS)
+{
   auto backend = BackendFactory::create_squashfs();
   ASSERT_NE(backend, nullptr);
   EXPECT_EQ(backend->backend_name(), "SquashFS");
 }
 
-TEST_F(BackendFactorySquashFSTest, BackendVersionMatchesSquashFSToolsNG) {
+TEST_F(BackendFactorySquashFSTest, BackendVersionMatchesSquashFSToolsNG)
+{
   auto backend = BackendFactory::create_squashfs();
   ASSERT_NE(backend, nullptr);
 
@@ -125,7 +134,8 @@ TEST_F(BackendFactorySquashFSTest, BackendVersionMatchesSquashFSToolsNG) {
 // 3. End-to-End Tests (3 tests)
 // ===================================================================
 
-TEST_F(BackendFactorySquashFSTest, FactoryCreatesMountReadsFile) {
+TEST_F(BackendFactorySquashFSTest, FactoryCreatesMountReadsFile)
+{
   std::string path = fixtures_path + "simple.sqfs";
 
   // Create backend via factory
@@ -151,7 +161,8 @@ TEST_F(BackendFactorySquashFSTest, FactoryCreatesMountReadsFile) {
   backend->unmount();
 }
 
-TEST_F(BackendFactorySquashFSTest, FactoryHandlesMultipleSquashFSArchives) {
+TEST_F(BackendFactorySquashFSTest, FactoryHandlesMultipleSquashFSArchives)
+{
   // Create backend for first archive
   auto backend1 = BackendFactory::create_from_file(fixtures_path + "simple.sqfs");
   ASSERT_NE(backend1, nullptr);
@@ -175,7 +186,8 @@ TEST_F(BackendFactorySquashFSTest, FactoryHandlesMultipleSquashFSArchives) {
   backend2->unmount();
 }
 
-TEST_F(BackendFactorySquashFSTest, FactoryAutoDetectsAndInstantiates) {
+TEST_F(BackendFactorySquashFSTest, FactoryAutoDetectsAndInstantiates)
+{
   std::string path = fixtures_path + "simple.sqfs";
 
   // create_from_file should auto-detect SquashFS format
@@ -194,7 +206,8 @@ TEST_F(BackendFactorySquashFSTest, FactoryAutoDetectsAndInstantiates) {
 // 4. SquashFS-Specific Tests (2 tests)
 // ===================================================================
 
-TEST_F(BackendFactorySquashFSTest, PreservesPermissionsCorrectly) {
+TEST_F(BackendFactorySquashFSTest, PreservesPermissionsCorrectly)
+{
   std::string path = fixtures_path + "permissions.sqfs";
   auto backend = BackendFactory::create_from_file(path);
   ASSERT_NE(backend, nullptr);
@@ -210,7 +223,8 @@ TEST_F(BackendFactorySquashFSTest, PreservesPermissionsCorrectly) {
   backend->unmount();
 }
 
-TEST_F(BackendFactorySquashFSTest, SupportsNativeSeek) {
+TEST_F(BackendFactorySquashFSTest, SupportsNativeSeek)
+{
   std::string path = fixtures_path + "simple.sqfs";
   auto backend = BackendFactory::create_from_file(path);
   ASSERT_NE(backend, nullptr);
@@ -235,7 +249,8 @@ TEST_F(BackendFactorySquashFSTest, SupportsNativeSeek) {
 // Main
 // ===================================================================
 
-int main(int argc, char** argv) {
+int main(int argc, char** argv)
+{
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }

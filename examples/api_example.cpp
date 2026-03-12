@@ -106,7 +106,8 @@ void demonstrate_file_operations(const char* filepath)
   ssize_t bytes_read = tebako_read(fd, buffer, sizeof(buffer) - 1);
   if (bytes_read < 0) {
     std::cerr << "  Error: Failed to read file\n";
-  } else {
+  }
+  else {
     buffer[bytes_read] = '\0';
     std::cout << "  Bytes read: " << bytes_read << "\n";
     std::cout << "  Content preview: " << std::string(buffer, std::min<size_t>(bytes_read, 50))
@@ -174,7 +175,8 @@ void demonstrate_file_operations(const char* filepath)
   ret = tebako_close(fd);
   if (ret == 0) {
     std::cout << "  Success: File closed\n";
-  } else {
+  }
+  else {
     std::cerr << "  Error: Failed to close file\n";
   }
 }
@@ -263,7 +265,8 @@ void demonstrate_directory_operations(const char* dirpath)
   int ret = tebako_closedir(dirp);
   if (ret == 0) {
     std::cout << "  Success: Directory closed\n";
-  } else {
+  }
+  else {
     std::cerr << "  Error: Failed to close directory\n";
   }
 }
@@ -297,7 +300,8 @@ void demonstrate_stat_operations(const char* filepath)
       strftime(time_buf, sizeof(time_buf), "%Y-%m-%d %H:%M:%S", timeinfo);
       std::cout << "  Modified: " << time_buf << "\n";
     }
-  } else {
+  }
+  else {
     std::cerr << "  Error: stat failed (errno=" << errno << ": " << strerror(errno) << ")\n";
   }
 
@@ -322,11 +326,13 @@ void demonstrate_stat_operations(const char* filepath)
         link_target[len] = '\0';
         std::cout << "  Link target: " << link_target << "\n";
       }
-    } else {
+    }
+    else {
       std::cout << "  Type: " << (S_ISDIR(st.st_mode) ? "directory" : "regular file") << "\n";
     }
     std::cout << "  Size: " << format_size(st.st_size) << "\n";
-  } else {
+  }
+  else {
     std::cerr << "  Error: lstat failed (errno=" << errno << ": " << strerror(errno) << ")\n";
   }
 #endif
@@ -366,7 +372,8 @@ void demonstrate_path_navigation()
     if (result) {
       std::cout << "  New current directory: " << cwd << "\n";
     }
-  } else {
+  }
+  else {
     std::cerr << "  Error: chdir failed (errno=" << errno << ": " << strerror(errno) << ")\n";
   }
 

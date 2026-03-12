@@ -18,7 +18,8 @@ namespace fs {
 // FsConfig Implementation
 // ===================================================================
 
-Result<std::unique_ptr<FileSystem>> FsConfig::create() const {
+Result<std::unique_ptr<FileSystem>> FsConfig::create() const
+{
   // Validate configuration
   if (!is_valid()) {
     return Err(ErrorCode::InvalidArgument, validation_error());
@@ -27,8 +28,7 @@ Result<std::unique_ptr<FileSystem>> FsConfig::create() const {
   // Create filesystem using factory
   std::unique_ptr<FileSystem> fs = BackendFactory::create_from_file(archive_path);
   if (!fs) {
-    return Err(ErrorCode::IOError, "Failed to create filesystem",
-               archive_path);
+    return Err(ErrorCode::IOError, "Failed to create filesystem", archive_path);
   }
 
   // Mount the filesystem
@@ -40,8 +40,8 @@ Result<std::unique_ptr<FileSystem>> FsConfig::create() const {
   return Ok(std::move(fs));
 }
 
-Result<std::unique_ptr<FileSystem>> FsConfig::create_from_memory(
-    const void* data, size_t size) const {
+Result<std::unique_ptr<FileSystem>> FsConfig::create_from_memory(const void* data, size_t size) const
+{
   // Validate basic requirements
   if (!data || size == 0) {
     return Err(ErrorCode::InvalidArgument, "Invalid memory data");
@@ -66,11 +66,13 @@ Result<std::unique_ptr<FileSystem>> FsConfig::create_from_memory(
   return Ok(std::move(fs));
 }
 
-bool FsConfig::is_valid() const {
+bool FsConfig::is_valid() const
+{
   return validation_error().empty();
 }
 
-std::string FsConfig::validation_error() const {
+std::string FsConfig::validation_error() const
+{
   if (archive_path.empty()) {
     return "Archive path not specified";
   }

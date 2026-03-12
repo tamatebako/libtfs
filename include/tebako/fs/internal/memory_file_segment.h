@@ -19,16 +19,13 @@ class memory_file_view_impl;
 ///
 /// Represents a contiguous region of memory within a memory-backed file view.
 /// Provides zero-copy access to the underlying memory buffer.
-class memory_file_segment_impl final
-    : public dwarfs::detail::file_segment_impl {
+class memory_file_segment_impl final : public dwarfs::detail::file_segment_impl {
  public:
   /// Construct a segment from a memory view
   ///
   /// @param view Shared pointer to the parent memory file view
   /// @param range The range (offset + size) this segment represents
-  memory_file_segment_impl(
-      std::shared_ptr<memory_file_view_impl const> view,
-      dwarfs::file_range range);
+  memory_file_segment_impl(std::shared_ptr<memory_file_view_impl const> view, dwarfs::file_range range);
 
   ~memory_file_segment_impl() override = default;
 
@@ -41,9 +38,7 @@ class memory_file_segment_impl final
   // --- file_segment_impl interface ---
 
   /// Get the offset of this segment in the file
-  dwarfs::file_off_t offset() const noexcept override {
-    return range_.offset();
-  }
+  dwarfs::file_off_t offset() const noexcept override { return range_.offset(); }
 
   /// Get the size of this segment
   dwarfs::file_size_t size() const noexcept override { return range_.size(); }
@@ -58,7 +53,8 @@ class memory_file_segment_impl final
   std::span<std::byte const> raw_bytes() const override;
 
   /// Provide I/O advice (no-op for memory segments)
-  void advise(dwarfs::io_advice advice, std::error_code& ec) const override {
+  void advise(dwarfs::io_advice advice, std::error_code& ec) const override
+  {
     (void)advice;
     ec.clear();
   }
@@ -68,7 +64,7 @@ class memory_file_segment_impl final
 
  private:
   std::shared_ptr<memory_file_view_impl const> view_;  ///< Parent view
-  dwarfs::file_range range_;  ///< Range this segment represents
+  dwarfs::file_range range_;                           ///< Range this segment represents
 };
 
 }  // namespace tebako

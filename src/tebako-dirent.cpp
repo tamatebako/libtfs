@@ -41,20 +41,30 @@
 
 // Ensure IFTODT is defined (some systems don't have it)
 #ifndef IFTODT
-#define IFTODT(mode) (((mode) & 0170000) >> 12)
+#define IFTODT(mode) (((mode)&0170000) >> 12)
 #endif
 
 using namespace std;
 
 // Declare the C helper function from tebako-dirent-helper.c
 extern "C" {
-  void populate_dirent_buffer_c(void* buffer, ino_t ino, off_t offset,
-                                mode_t mode, const char* name, size_t name_len, size_t reclen);
+void populate_dirent_buffer_c(void* buffer,
+                              ino_t ino,
+                              off_t offset,
+                              mode_t mode,
+                              const char* name,
+                              size_t name_len,
+                              size_t reclen);
 }
 
 // C++ wrapper that uses the C function
-void tebako::populate_tebako_dirent(tebako::tebako_dirent& entry, ino_t ino, off_t offset,
-                                     mode_t mode, const char* name, size_t name_len) {
+void tebako::populate_tebako_dirent(tebako::tebako_dirent& entry,
+                                    ino_t ino,
+                                    off_t offset,
+                                    mode_t mode,
+                                    const char* name,
+                                    size_t name_len)
+{
 #ifndef RB_W32
   populate_dirent_buffer_c(entry.e(), ino, offset, mode, name, name_len, sizeof(tebako::tebako_dirent));
 #endif

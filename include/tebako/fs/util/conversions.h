@@ -46,95 +46,93 @@ namespace util {
  * This is a replacement for folly::to<T>() that uses only
  * standard C library functions.
  */
-template<typename T>
+template <typename T>
 T string_to(const char* str);
 
 /**
  * Specialization for double
  * Converts string to double using strtod
  */
-template<>
-inline double string_to<double>(const char* str) {
-    if (!str || *str == '\0') {
-        throw std::invalid_argument("Cannot convert empty string to double");
-    }
+template <>
+inline double string_to<double>(const char* str)
+{
+  if (!str || *str == '\0') {
+    throw std::invalid_argument("Cannot convert empty string to double");
+  }
 
-    char* end;
-    errno = 0;
-    double result = std::strtod(str, &end);
+  char* end;
+  errno = 0;
+  double result = std::strtod(str, &end);
 
-    if (errno == ERANGE) {
-        throw std::out_of_range(
-            std::string("Value out of range: ") + str);
-    }
-    if (end == str || *end != '\0') {
-        throw std::invalid_argument(
-            std::string("Cannot convert '") + str + "' to double");
-    }
+  if (errno == ERANGE) {
+    throw std::out_of_range(std::string("Value out of range: ") + str);
+  }
+  if (end == str || *end != '\0') {
+    throw std::invalid_argument(std::string("Cannot convert '") + str + "' to double");
+  }
 
-    return result;
+  return result;
 }
 
 /**
  * Specialization for size_t
  * Converts string to size_t using strtoull
  */
-template<>
-inline size_t string_to<size_t>(const char* str) {
-    if (!str || *str == '\0') {
-        throw std::invalid_argument("Cannot convert empty string to size_t");
-    }
+template <>
+inline size_t string_to<size_t>(const char* str)
+{
+  if (!str || *str == '\0') {
+    throw std::invalid_argument("Cannot convert empty string to size_t");
+  }
 
-    char* end;
-    errno = 0;
-    unsigned long long result = std::strtoull(str, &end, 10);
+  char* end;
+  errno = 0;
+  unsigned long long result = std::strtoull(str, &end, 10);
 
-    if (errno == ERANGE) {
-        throw std::out_of_range(
-            std::string("Value out of range: ") + str);
-    }
-    if (end == str || *end != '\0') {
-        throw std::invalid_argument(
-            std::string("Cannot convert '") + str + "' to size_t");
-    }
+  if (errno == ERANGE) {
+    throw std::out_of_range(std::string("Value out of range: ") + str);
+  }
+  if (end == str || *end != '\0') {
+    throw std::invalid_argument(std::string("Cannot convert '") + str + "' to size_t");
+  }
 
-    return static_cast<size_t>(result);
+  return static_cast<size_t>(result);
 }
 
 /**
  * Specialization for file_off_t (usually int64_t or long long)
  * Converts string to file_off_t using strtoll
  */
-template<>
-inline file_off_t string_to<file_off_t>(const char* str) {
-    if (!str || *str == '\0') {
-        throw std::invalid_argument("Cannot convert empty string to file_off_t");
-    }
+template <>
+inline file_off_t string_to<file_off_t>(const char* str)
+{
+  if (!str || *str == '\0') {
+    throw std::invalid_argument("Cannot convert empty string to file_off_t");
+  }
 
-    char* end;
-    errno = 0;
-    long long result = std::strtoll(str, &end, 10);
+  char* end;
+  errno = 0;
+  long long result = std::strtoll(str, &end, 10);
 
-    if (errno == ERANGE) {
-        throw std::out_of_range(
-            std::string("Value out of range: ") + str);
-    }
-    if (end == str || *end != '\0') {
-        throw std::invalid_argument(
-            std::string("Cannot convert '") + str + "' to file_off_t");
-    }
+  if (errno == ERANGE) {
+    throw std::out_of_range(std::string("Value out of range: ") + str);
+  }
+  if (end == str || *end != '\0') {
+    throw std::invalid_argument(std::string("Cannot convert '") + str + "' to file_off_t");
+  }
 
-    return static_cast<file_off_t>(result);
+  return static_cast<file_off_t>(result);
 }
 
 /**
  * String overload for convenience
  * Allows passing std::string directly
  */
-template<typename T>
-inline T string_to(const std::string& str) {
-    return string_to<T>(str.c_str());
+template <typename T>
+inline T string_to(const std::string& str)
+{
+  return string_to<T>(str.c_str());
 }
 
-} // namespace util
-} // namespace tebako
+}  // namespace util
+}  // namespace tebako

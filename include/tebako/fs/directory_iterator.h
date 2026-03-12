@@ -83,7 +83,9 @@ struct DirectoryEntry {
    * @brief Constructor with all fields
    */
   DirectoryEntry(const std::string& n, bool is_dir, int64_t sz, time_t mt)
-      : name(n), is_directory(is_dir), size(sz), mtime(mt) {}
+      : name(n), is_directory(is_dir), size(sz), mtime(mt)
+  {
+  }
 };
 
 /**

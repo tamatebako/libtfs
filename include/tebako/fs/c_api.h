@@ -41,10 +41,10 @@ extern "C" {
 
 /* Directory entry type constants (from POSIX dirent.h) */
 #ifndef DT_REG
-#define DT_REG 8   /**< Regular file */
+#define DT_REG 8 /**< Regular file */
 #endif
 #ifndef DT_DIR
-#define DT_DIR 4   /**< Directory */
+#define DT_DIR 4 /**< Directory */
 #endif
 
 /* ============================================================
@@ -236,8 +236,8 @@ typedef void* tebako_dir_t;
  * Compatible with POSIX struct dirent for easier integration.
  */
 struct tebako_c_dirent {
-    char d_name[256];      /**< Entry name (null-terminated) */
-    unsigned char d_type;  /**< Entry type: DT_REG (file) or DT_DIR (directory) */
+  char d_name[256];     /**< Entry name (null-terminated) */
+  unsigned char d_type; /**< Entry type: DT_REG (file) or DT_DIR (directory) */
 };
 
 /**
