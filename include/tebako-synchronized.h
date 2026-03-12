@@ -42,84 +42,79 @@ namespace tebako {
  * This is a replacement for folly::Synchronized<T> that uses only
  * standard C++17 features.
  */
-template<typename T>
+template <typename T>
 class Synchronized {
-private:
-    T data_;
-    mutable std::shared_mutex mutex_;
+ private:
+  T data_;
+  mutable std::shared_mutex mutex_;
 
-public:
-    /**
-     * Read lock holder (const access)
-     * Allows multiple concurrent readers
-     */
-    class ConstLockedPtr {
-    private:
-        std::shared_lock<std::shared_mutex> lock_;
-        const T* ptr_;
+ public:
+  /**
+   * Read lock holder (const access)
+   * Allows multiple concurrent readers
+   */
+  class ConstLockedPtr {
+   private:
+    std::shared_lock<std::shared_mutex> lock_;
+    const T* ptr_;
 
-    public:
-        ConstLockedPtr(std::shared_mutex& m, const T* p)
-            : lock_(m), ptr_(p) {}
+   public:
+    ConstLockedPtr(std::shared_mutex& m, const T* p) : lock_(m), ptr_(p) {}
 
-        const T* operator->() const { return ptr_; }
-        const T& operator*() const { return *ptr_; }
-    };
+    const T* operator->() const { return ptr_; }
+    const T& operator*() const { return *ptr_; }
+  };
 
-    /**
-     * Write lock holder (mutable access)
-     * Provides exclusive access for writing
-     */
-    class LockedPtr {
-    private:
-        std::unique_lock<std::shared_mutex> lock_;
-        T* ptr_;
+  /**
+   * Write lock holder (mutable access)
+   * Provides exclusive access for writing
+   */
+  class LockedPtr {
+   private:
+    std::unique_lock<std::shared_mutex> lock_;
+    T* ptr_;
 
-    public:
-        LockedPtr(std::shared_mutex& m, T* p)
-            : lock_(m), ptr_(p) {}
+   public:
+    LockedPtr(std::shared_mutex& m, T* p) : lock_(m), ptr_(p) {}
 
-        T* operator->() { return ptr_; }
-        T& operator*() { return *ptr_; }
-    };
+    T* operator->() { return ptr_; }
+    T& operator*() { return *ptr_; }
+  };
 
-    // Constructors
-    Synchronized() : data_() {}
-    explicit Synchronized(T&& val) : data_(std::move(val)) {}
-    explicit Synchronized(const T& val) : data_(val) {}
+  // Constructors
+  Synchronized() : data_() {}
+  explicit Synchronized(T&& val) : data_(std::move(val)) {}
+  explicit Synchronized(const T& val) : data_(val) {}
 
-    // Deleted copy operations (not thread-safe to copy)
-    Synchronized(const Synchronized&) = delete;
-    Synchronized& operator=(const Synchronized&) = delete;
+  // Deleted copy operations (not thread-safe to copy)
+  Synchronized(const Synchronized&) = delete;
+  Synchronized& operator=(const Synchronized&) = delete;
 
-    /**
-     * Acquire write lock for exclusive access
-     * @return LockedPtr RAII wrapper that holds the lock
-     */
-    LockedPtr wlock() {
-        return LockedPtr(mutex_, &data_);
-    }
+  /**
+   * Acquire write lock for exclusive access
+   * @return LockedPtr RAII wrapper that holds the lock
+   */
+  LockedPtr wlock() { return LockedPtr(mutex_, &data_); }
 
-    /**
-     * Acquire read lock for shared access
-     * @return ConstLockedPtr RAII wrapper that holds the lock
-     */
-    ConstLockedPtr rlock() const {
-        return ConstLockedPtr(mutex_, &data_);
-    }
+  /**
+   * Acquire read lock for shared access
+   * @return ConstLockedPtr RAII wrapper that holds the lock
+   */
+  ConstLockedPtr rlock() const { return ConstLockedPtr(mutex_, &data_); }
 
-    /**
-     * Atomic exchange operation
-     * Swaps the current value with a new value and returns the old value
-     * @param new_val New value to set
-     * @return Old value
-     */
-    T exchange(T&& new_val) {
-        auto lock = wlock();
-        T old = std::move(*lock);
-        *lock = std::move(new_val);
-        return old;
-    }
+  /**
+   * Atomic exchange operation
+   * Swaps the current value with a new value and returns the old value
+   * @param new_val New value to set
+   * @return Old value
+   */
+  T exchange(T&& new_val)
+  {
+    auto lock = wlock();
+    T old = std::move(*lock);
+    *lock = std::move(new_val);
+    return old;
+  }
 };
 
-} // namespace tebako
+}  // namespace tebako

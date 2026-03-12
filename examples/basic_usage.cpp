@@ -96,15 +96,14 @@ int main(int argc, char* argv[])
    *
    * Returns: 0 on success, -1 on error
    */
-  int ret = mount_root_memfs(
-      buffer.data(),  // DwarFS image data
-      size,           // Image size
-      NULL,           // debuglevel (use default)
-      NULL,           // cachesize (use default: 512MB)
-      NULL,           // workers (use default: 2)
-      NULL,           // mlock (use default: NONE)
-      NULL,           // decompress_ratio (use default: 0.8)
-      "auto"          // image_offset (auto-detect)
+  int ret = mount_root_memfs(buffer.data(),  // DwarFS image data
+                             size,           // Image size
+                             NULL,           // debuglevel (use default)
+                             NULL,           // cachesize (use default: 512MB)
+                             NULL,           // workers (use default: 2)
+                             NULL,           // mlock (use default: NONE)
+                             NULL,           // decompress_ratio (use default: 0.8)
+                             "auto"          // image_offset (auto-detect)
   );
 
   if (ret != 0) {
@@ -184,7 +183,8 @@ int main(int argc, char* argv[])
   ret = tebako_close(fd);
   if (ret != 0) {
     std::cerr << "Warning: Failed to close file descriptor\n";
-  } else {
+  }
+  else {
     std::cout << "  File closed successfully\n";
   }
 

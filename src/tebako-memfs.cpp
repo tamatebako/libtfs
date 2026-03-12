@@ -43,7 +43,7 @@
 
 // Ensure IFTODT is defined (some systems don't have it)
 #ifndef IFTODT
-#define IFTODT(mode) (((mode) & 0170000) >> 12)
+#define IFTODT(mode) (((mode)&0170000) >> 12)
 #endif
 
 using namespace dwarfs;
@@ -88,8 +88,7 @@ int memfs::load(const char* image_offset)
     set_image_offset_str(image_offset);
 
     // Create memory file view for modern DwarFS v0.9+ API
-    auto mem_view = std::make_shared<tebako::memory_file_view_impl>(
-        data, size, "/__tebako_memfs__");
+    auto mem_view = std::make_shared<tebako::memory_file_view_impl>(data, size, "/__tebako_memfs__");
     dwarfs::file_view view{mem_view};
 
     // Set inode_offset in filesystem_options instead of passing directly
@@ -119,7 +118,8 @@ int memfs::load(const char* image_offset)
 
 void memfs::set_cachesize(const char* cachesize)
 {
-  options().cachesize = (cachesize != nullptr) ? dwarfs::parse_size_with_unit(cachesize) : (static_cast<size_t>(512) << 20);
+  options().cachesize =
+      (cachesize != nullptr) ? dwarfs::parse_size_with_unit(cachesize) : (static_cast<size_t>(512) << 20);
 }
 
 void memfs::set_debuglevel(const char* debuglevel)
@@ -142,8 +142,8 @@ void memfs::set_image_offset_str(const char* image_offset_str)
   if (image_offset_str) {
     std::string image_offset{image_offset_str};
     try {
-      fsopts.image_offset =
-          image_offset == "auto" ? dwarfs::reader::filesystem_options::IMAGE_OFFSET_AUTO : tebako::util::string_to<file_off_t>(image_offset);
+      fsopts.image_offset = image_offset == "auto" ? dwarfs::reader::filesystem_options::IMAGE_OFFSET_AUTO
+                                                   : tebako::util::string_to<file_off_t>(image_offset);
     }
     catch (...) {
       DWARFS_THROW(runtime_error, "failed to parse offset: " + image_offset);
@@ -552,9 +552,8 @@ int memfs::inode_readdir(uint32_t inode,
           ret = dwarfs_file_stat(entry, &st);
 
           // Use helper function implemented in tebako-dirent.cpp
-          populate_tebako_dirent(cache[cache_size], st.st_ino,
-                                cache_start + cache_size, st.st_mode,
-                                name.c_str(), std::min(name.length(), TEBAKO_PATH_LENGTH));
+          populate_tebako_dirent(cache[cache_size], st.st_ino, cache_start + cache_size, st.st_mode, name.c_str(),
+                                 std::min(name.length(), TEBAKO_PATH_LENGTH));
 
           ++cache_size;
         }

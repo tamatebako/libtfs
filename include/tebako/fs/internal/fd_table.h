@@ -37,7 +37,7 @@ struct tebako_dirent;
 #endif
 // Forward declarations continue
 class memfs;
-}
+}  // namespace tebako
 
 struct tebako_fd {
   struct stat st;

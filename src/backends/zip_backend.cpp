@@ -64,13 +64,8 @@ class ZipFileHandle : public FileHandle {
    * @param path Full path to the file
    */
   ZipFileHandle(struct zip* archive, int64_t index, std::string_view path)
-      : archive_(archive),
-        index_(index),
-        path_(path),
-        file_(nullptr),
-        size_(0),
-        current_pos_(0),
-        eof_(false) {
+      : archive_(archive), index_(index), path_(path), file_(nullptr), size_(0), current_pos_(0), eof_(false)
+  {
     if (!archive_) {
       throw std::invalid_argument("ZipFileHandle: archive is null");
     }
@@ -94,14 +89,13 @@ class ZipFileHandle : public FileHandle {
   /**
    * @brief Destructor - ensures file is closed
    */
-  ~ZipFileHandle() override {
-    close();
-  }
+  ~ZipFileHandle() override { close(); }
 
   /**
    * @brief Read data from the file
    */
-  ssize_t read(void* buffer, size_t count) override {
+  ssize_t read(void* buffer, size_t count) override
+  {
     if (!file_) {
       return -1;  // File is closed - return error
     }
@@ -135,7 +129,8 @@ class ZipFileHandle : public FileHandle {
    * 2. Reopening the file
    * 3. Skipping to the desired position
    */
-  off_t seek(off_t offset, int whence) override {
+  off_t seek(off_t offset, int whence) override
+  {
     if (!file_) {
       return -1;
     }
@@ -201,21 +196,18 @@ class ZipFileHandle : public FileHandle {
   /**
    * @brief Get current position in the file
    */
-  off_t tell() const override {
-    return current_pos_;
-  }
+  off_t tell() const override { return current_pos_; }
 
   /**
    * @brief Check if at end of file
    */
-  bool eof() const override {
-    return eof_;
-  }
+  bool eof() const override { return eof_; }
 
   /**
    * @brief Close the file handle
    */
-  void close() override {
+  void close() override
+  {
     if (file_) {
       zip_fclose(file_);
       file_ = nullptr;
@@ -225,25 +217,21 @@ class ZipFileHandle : public FileHandle {
   /**
    * @brief Get the file path
    */
-  std::string path() const override {
-    return path_;
-  }
+  std::string path() const override { return path_; }
 
   /**
    * @brief Get the file size
    */
-  int64_t size() const override {
-    return size_;
-  }
+  int64_t size() const override { return size_; }
 
  private:
-  struct zip* archive_;       ///< ZIP archive handle
-  int64_t index_;             ///< ZIP entry index
-  std::string path_;          ///< Full file path
-  struct zip_file* file_;     ///< libzip file handle
-  int64_t size_;              ///< File size in bytes
-  off_t current_pos_;         ///< Current position in file
-  bool eof_;                  ///< End-of-file flag
+  struct zip* archive_;    ///< ZIP archive handle
+  int64_t index_;          ///< ZIP entry index
+  std::string path_;       ///< Full file path
+  struct zip_file* file_;  ///< libzip file handle
+  int64_t size_;           ///< File size in bytes
+  off_t current_pos_;      ///< Current position in file
+  bool eof_;               ///< End-of-file flag
 };
 
 // ===================================================================
@@ -263,8 +251,8 @@ class ZipDirectoryIterator : public DirectoryIterator {
    * @param archive ZIP archive handle
    * @param dir_path Path to the directory (relative to archive root)
    */
-  ZipDirectoryIterator(struct zip* archive, const std::string& dir_path)
-      : current_index_(0) {
+  ZipDirectoryIterator(struct zip* archive, const std::string& dir_path) : current_index_(0)
+  {
     if (!archive) {
       return;
     }
@@ -297,18 +285,20 @@ class ZipDirectoryIterator : public DirectoryIterator {
         if (slash_pos == std::string::npos) {
           // It's a file in root
           add_entry(archive, i, full_name, false);
-        } else if (slash_pos == full_name.length() - 1) {
+        }
+        else if (slash_pos == full_name.length() - 1) {
           // It's a top-level directory
           std::string name = full_name.substr(0, slash_pos);
           add_entry(archive, i, name, true);
-        } else {
+        }
+        else {
           // It's in a subdirectory - skip
           continue;
         }
-      } else {
+      }
+      else {
         // Non-root directory
-        if (full_name.size() <= normalized_dir.size() ||
-            full_name.substr(0, normalized_dir.size()) != normalized_dir) {
+        if (full_name.size() <= normalized_dir.size() || full_name.substr(0, normalized_dir.size()) != normalized_dir) {
           continue;  // Not in this directory
         }
 
@@ -320,7 +310,8 @@ class ZipDirectoryIterator : public DirectoryIterator {
         if (slash_pos == std::string::npos) {
           // It's a file in this directory
           add_entry(archive, i, relative, false);
-        } else if (slash_pos == relative.length() - 1) {
+        }
+        else if (slash_pos == relative.length() - 1) {
           // It's a subdirectory (entry ends with '/')
           std::string name = relative.substr(0, slash_pos);
           add_entry(archive, i, name, true);
@@ -333,14 +324,13 @@ class ZipDirectoryIterator : public DirectoryIterator {
   /**
    * @brief Check if there are more entries
    */
-  bool has_next() const override {
-    return current_index_ < entries_.size();
-  }
+  bool has_next() const override { return current_index_ < entries_.size(); }
 
   /**
    * @brief Get the next directory entry
    */
-  DirectoryEntry next() override {
+  DirectoryEntry next() override
+  {
     if (!has_next()) {
       throw std::runtime_error("No more directory entries");
     }
@@ -350,9 +340,7 @@ class ZipDirectoryIterator : public DirectoryIterator {
   /**
    * @brief Reset the iterator to the beginning
    */
-  void reset() override {
-    current_index_ = 0;
-  }
+  void reset() override { current_index_ = 0; }
 
  private:
   /**
@@ -363,8 +351,8 @@ class ZipDirectoryIterator : public DirectoryIterator {
    * @param name Entry name (basename only)
    * @param is_dir Whether this is a directory
    */
-  void add_entry(struct zip* archive, zip_int64_t index,
-                 const std::string& name, bool is_dir) {
+  void add_entry(struct zip* archive, zip_int64_t index, const std::string& name, bool is_dir)
+  {
     // Check if we already have this entry (duplicates can occur with
     // directories)
     for (const auto& entry : entries_) {
@@ -402,12 +390,13 @@ class ZipDirectoryIterator : public DirectoryIterator {
 
 ZipBackend::ZipBackend() : archive_(nullptr) {}
 
-ZipBackend::~ZipBackend() {
+ZipBackend::~ZipBackend()
+{
   unmount();
 }
 
-Result<void> ZipBackend::mount(std::string_view archive_path,
-                               std::string_view mount_point) {
+Result<void> ZipBackend::mount(std::string_view archive_path, std::string_view mount_point)
+{
   std::unique_lock lock(mutex_);
 
   if (archive_) {
@@ -426,8 +415,8 @@ Result<void> ZipBackend::mount(std::string_view archive_path,
   return make_ok();
 }
 
-Result<void> ZipBackend::mount_from_memory(const void* data, size_t size,
-                                            std::string_view mount_point) {
+Result<void> ZipBackend::mount_from_memory(const void* data, size_t size, std::string_view mount_point)
+{
   std::unique_lock lock(mutex_);
 
   if (archive_) {
@@ -441,11 +430,9 @@ Result<void> ZipBackend::mount_from_memory(const void* data, size_t size,
   // Create zip source from memory buffer
   // Note: freep = 0 means we don't own the memory, caller must keep it valid
   zip_error_t error;
-  zip_source_t* src = zip_source_buffer_create(
-      data, size,
-      0,  // freep = 0, we don't own the memory
-      &error
-  );
+  zip_source_t* src = zip_source_buffer_create(data, size,
+                                               0,  // freep = 0, we don't own the memory
+                                               &error);
 
   if (!src) {
     return Err{ErrorCode::OutOfMemory, "Failed to create ZIP source from memory"};
@@ -464,7 +451,8 @@ Result<void> ZipBackend::mount_from_memory(const void* data, size_t size,
   return make_ok();
 }
 
-void ZipBackend::unmount() {
+void ZipBackend::unmount()
+{
   std::unique_lock lock(mutex_);
 
   if (archive_) {
@@ -476,13 +464,14 @@ void ZipBackend::unmount() {
   mount_point_.clear();
 }
 
-bool ZipBackend::is_mounted() const {
+bool ZipBackend::is_mounted() const
+{
   std::shared_lock lock(mutex_);
   return archive_ != nullptr;
 }
 
-Result<std::unique_ptr<FileHandle>> ZipBackend::open(std::string_view path,
-                                                      int flags) {
+Result<std::unique_ptr<FileHandle>> ZipBackend::open(std::string_view path, int flags)
+{
   std::shared_lock lock(mutex_);
 
   if (!archive_) {
@@ -508,12 +497,14 @@ Result<std::unique_ptr<FileHandle>> ZipBackend::open(std::string_view path,
 
   try {
     return Ok<std::unique_ptr<FileHandle>>{std::make_unique<ZipFileHandle>(archive_, index, path)};
-  } catch (const std::exception& e) {
+  }
+  catch (const std::exception& e) {
     return Err{ErrorCode::IOError, "Failed to open file", path};
   }
 }
 
-bool ZipBackend::exists(std::string_view path) const {
+bool ZipBackend::exists(std::string_view path) const
+{
   std::shared_lock lock(mutex_);
 
   if (!archive_) {
@@ -530,7 +521,8 @@ bool ZipBackend::exists(std::string_view path) const {
   return locate_entry(rel_path) >= 0;
 }
 
-bool ZipBackend::is_file(std::string_view path) const {
+bool ZipBackend::is_file(std::string_view path) const
+{
   std::shared_lock lock(mutex_);
 
   if (!archive_) {
@@ -552,7 +544,8 @@ bool ZipBackend::is_file(std::string_view path) const {
   return entry_name[strlen(entry_name) - 1] != '/';
 }
 
-bool ZipBackend::is_directory(std::string_view path) const {
+bool ZipBackend::is_directory(std::string_view path) const
+{
   std::shared_lock lock(mutex_);
 
   if (!archive_) {
@@ -586,8 +579,7 @@ bool ZipBackend::is_directory(std::string_view path) const {
     const char* entry_name = zip_get_name(archive_, i, 0);
     if (entry_name) {
       std::string name(entry_name);
-      if (name.size() > dir_path.size() &&
-          name.substr(0, dir_path.size()) == dir_path) {
+      if (name.size() > dir_path.size() && name.substr(0, dir_path.size()) == dir_path) {
         return true;  // Found a child entry
       }
     }
@@ -596,8 +588,8 @@ bool ZipBackend::is_directory(std::string_view path) const {
   return false;
 }
 
-Result<std::unique_ptr<DirectoryIterator>> ZipBackend::list_directory(
-    std::string_view path) {
+Result<std::unique_ptr<DirectoryIterator>> ZipBackend::list_directory(std::string_view path)
+{
   std::shared_lock lock(mutex_);
 
   if (!archive_) {
@@ -632,7 +624,8 @@ Result<std::unique_ptr<DirectoryIterator>> ZipBackend::list_directory(
   return Err{ErrorCode::NotFound, "Path not found", path};
 }
 
-Result<int64_t> ZipBackend::file_size(std::string_view path) const {
+Result<int64_t> ZipBackend::file_size(std::string_view path) const
+{
   std::shared_lock lock(mutex_);
 
   if (!archive_) {
@@ -658,7 +651,8 @@ Result<int64_t> ZipBackend::file_size(std::string_view path) const {
   return Err{ErrorCode::IOError, "File size not available", path};
 }
 
-Result<time_t> ZipBackend::modification_time(std::string_view path) const {
+Result<time_t> ZipBackend::modification_time(std::string_view path) const
+{
   std::shared_lock lock(mutex_);
 
   if (!archive_) {
@@ -684,7 +678,8 @@ Result<time_t> ZipBackend::modification_time(std::string_view path) const {
   return Err{ErrorCode::IOError, "Modification time not available", path};
 }
 
-Result<mode_t> ZipBackend::permissions(std::string_view path) const {
+Result<mode_t> ZipBackend::permissions(std::string_view path) const
+{
   std::shared_lock lock(mutex_);
 
   if (!archive_) {
@@ -700,12 +695,14 @@ Result<mode_t> ZipBackend::permissions(std::string_view path) const {
   // Return default permissions
   if (is_directory(path)) {
     return Ok<mode_t>{0755};  // rwxr-xr-x for directories
-  } else {
+  }
+  else {
     return Ok<mode_t>{0644};  // rw-r--r-- for files
   }
 }
 
-std::string ZipBackend::backend_version() const {
+std::string ZipBackend::backend_version() const
+{
   return "libzip " + std::string(zip_libzip_version());
 }
 
@@ -713,7 +710,8 @@ std::string ZipBackend::backend_version() const {
 // Private Helper Methods
 // ===================================================================
 
-int64_t ZipBackend::locate_entry(std::string_view path) const {
+int64_t ZipBackend::locate_entry(std::string_view path) const
+{
   if (!archive_) {
     return -1;
   }
@@ -738,7 +736,8 @@ int64_t ZipBackend::locate_entry(std::string_view path) const {
   return -1;
 }
 
-std::string ZipBackend::strip_mount_point(std::string_view path) const {
+std::string ZipBackend::strip_mount_point(std::string_view path) const
+{
   if (path.size() < mount_point_.size()) {
     return std::string(path);
   }
@@ -755,7 +754,8 @@ std::string ZipBackend::strip_mount_point(std::string_view path) const {
   return std::string(path);
 }
 
-std::string ZipBackend::normalize_path(std::string_view path) const {
+std::string ZipBackend::normalize_path(std::string_view path) const
+{
   std::string result(path);
 
   // Remove leading slash
@@ -766,7 +766,8 @@ std::string ZipBackend::normalize_path(std::string_view path) const {
   return result;
 }
 
-bool ZipBackend::is_directory_entry(std::string_view path) const {
+bool ZipBackend::is_directory_entry(std::string_view path) const
+{
   return !path.empty() && path.back() == '/';
 }
 

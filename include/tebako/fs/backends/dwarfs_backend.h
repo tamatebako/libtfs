@@ -97,8 +97,7 @@ class DwarfsBackend : public FileSystem {
    * @param mount_point Virtual mount point
    * @return Result<void> - success or error with details
    */
-  Result<void> mount(std::string_view archive_path,
-                     std::string_view mount_point) override;
+  Result<void> mount(std::string_view archive_path, std::string_view mount_point) override;
 
   /**
    * @brief Mount a DwarFS archive from memory buffer
@@ -113,8 +112,7 @@ class DwarfsBackend : public FileSystem {
    *
    * @note The archive_path will be empty for memory-mounted archives
    */
-  Result<void> mount_from_memory(const void* data, size_t size,
-                                 std::string_view mount_point) override;
+  Result<void> mount_from_memory(const void* data, size_t size, std::string_view mount_point) override;
 
   /**
    * @brief Unmount the DwarFS archive
@@ -142,8 +140,7 @@ class DwarfsBackend : public FileSystem {
    * @param flags Open flags (only O_RDONLY supported)
    * @return Result containing FileHandle or error
    */
-  Result<std::unique_ptr<FileHandle>> open(std::string_view path,
-                                           int flags) override;
+  Result<std::unique_ptr<FileHandle>> open(std::string_view path, int flags) override;
 
   /**
    * @brief Check if a path exists in the archive
@@ -179,8 +176,7 @@ class DwarfsBackend : public FileSystem {
    * @param path Absolute path to the directory
    * @return Result containing DirectoryIterator or error
    */
-  Result<std::unique_ptr<DirectoryIterator>> list_directory(
-      std::string_view path) override;
+  Result<std::unique_ptr<DirectoryIterator>> list_directory(std::string_view path) override;
 
   // ===================================================================
   // Metadata Operations (FileSystem interface)
@@ -276,8 +272,8 @@ class DwarfsBackend : public FileSystem {
 
   // Member variables
   std::unique_ptr<Impl> impl_;       ///< PIMPL implementation
-  std::string archive_path_;          ///< Path to the DwarFS file
-  std::string mount_point_;           ///< Virtual mount point
+  std::string archive_path_;         ///< Path to the DwarFS file
+  std::string mount_point_;          ///< Virtual mount point
   mutable std::shared_mutex mutex_;  ///< Thread-safe access synchronization
 };
 

@@ -32,12 +32,14 @@
 
 namespace tebako {
 
-memory_file_segment_impl::memory_file_segment_impl(
-    std::shared_ptr<memory_file_view_impl const> view,
-    dwarfs::file_range range)
-    : view_(std::move(view)), range_(range) {}
+memory_file_segment_impl::memory_file_segment_impl(std::shared_ptr<memory_file_view_impl const> view,
+                                                   dwarfs::file_range range)
+    : view_(std::move(view)), range_(range)
+{
+}
 
-std::span<std::byte const> memory_file_segment_impl::raw_bytes() const {
+std::span<std::byte const> memory_file_segment_impl::raw_bytes() const
+{
   // Get the raw bytes from the parent view and return a subspan for this segment
   auto view_bytes = view_->raw_bytes();
   return view_bytes.subspan(range_.offset(), range_.size());

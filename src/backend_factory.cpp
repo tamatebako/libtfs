@@ -50,12 +50,12 @@ namespace {
 constexpr uint8_t DWARFS_MAGIC[] = {'D', 'W', 'A', 'R', 'F', 'S'};
 
 // ZIP: PK signature at offset 0
-constexpr uint8_t ZIP_LOCAL_MAGIC[] = {0x50, 0x4B, 0x03, 0x04};      // PK\x03\x04
-constexpr uint8_t ZIP_CENTRAL_MAGIC[] = {0x50, 0x4B, 0x05, 0x06};    // PK\x05\x06
+constexpr uint8_t ZIP_LOCAL_MAGIC[] = {0x50, 0x4B, 0x03, 0x04};    // PK\x03\x04
+constexpr uint8_t ZIP_CENTRAL_MAGIC[] = {0x50, 0x4B, 0x05, 0x06};  // PK\x05\x06
 
 // SquashFS: "hsqs" (LE) or "sqsh" (BE) at offset 0
-constexpr uint8_t SQUASHFS_MAGIC_LE[] = {0x68, 0x73, 0x71, 0x73};    // "hsqs"
-constexpr uint8_t SQUASHFS_MAGIC_BE[] = {0x73, 0x71, 0x73, 0x68};    // "sqsh"
+constexpr uint8_t SQUASHFS_MAGIC_LE[] = {0x68, 0x73, 0x71, 0x73};  // "hsqs"
+constexpr uint8_t SQUASHFS_MAGIC_BE[] = {0x73, 0x71, 0x73, 0x68};  // "sqsh"
 
 constexpr size_t MAX_MAGIC_SIZE = 16;
 }  // namespace
@@ -64,9 +64,8 @@ constexpr size_t MAX_MAGIC_SIZE = 16;
 // Primary Factory Methods
 // ===================================================================
 
-std::unique_ptr<FileSystem> BackendFactory::create_from_file(
-    const std::string& archive_path) {
-
+std::unique_ptr<FileSystem> BackendFactory::create_from_file(const std::string& archive_path)
+{
   // Check if file exists first - don't create backends for non-existent files
   std::ifstream check_file(archive_path, std::ios::binary);
   if (!check_file.good()) {
@@ -91,15 +90,12 @@ std::unique_ptr<FileSystem> BackendFactory::create_from_file(
   */
 
   // Fallback to extension-based detection
-  if (has_extension(archive_path, ".dwarfs") ||
-      has_extension(archive_path, ".dfs")) {
+  if (has_extension(archive_path, ".dwarfs") || has_extension(archive_path, ".dfs")) {
     return create_dwarfs();
   }
 
-  if (has_extension(archive_path, ".zip") ||
-      has_extension(archive_path, ".jar") ||
-      has_extension(archive_path, ".apk") ||
-      has_extension(archive_path, ".war") ||
+  if (has_extension(archive_path, ".zip") || has_extension(archive_path, ".jar") ||
+      has_extension(archive_path, ".apk") || has_extension(archive_path, ".war") ||
       has_extension(archive_path, ".ear")) {
     return create_zip();
   }
@@ -116,9 +112,8 @@ std::unique_ptr<FileSystem> BackendFactory::create_from_file(
   return nullptr;
 }
 
-std::unique_ptr<FileSystem> BackendFactory::create_from_memory(
-    const void* data, size_t size) {
-
+std::unique_ptr<FileSystem> BackendFactory::create_from_memory(const void* data, size_t size)
+{
   if (!data || size < 4) {
     return nullptr;
   }
@@ -126,12 +121,10 @@ std::unique_ptr<FileSystem> BackendFactory::create_from_memory(
   const uint8_t* bytes = static_cast<const uint8_t*>(data);
 
   // Check ZIP magic (PK\x03\x04 or PK\x05\x06)
-  if (size >= 4 && bytes[0] == 'P' && bytes[1] == 'K' &&
-      (bytes[2] == 0x03 && bytes[3] == 0x04)) {
+  if (size >= 4 && bytes[0] == 'P' && bytes[1] == 'K' && (bytes[2] == 0x03 && bytes[3] == 0x04)) {
     return create_zip();
   }
-  if (size >= 4 && bytes[0] == 'P' && bytes[1] == 'K' &&
-      (bytes[2] == 0x05 && bytes[3] == 0x06)) {
+  if (size >= 4 && bytes[0] == 'P' && bytes[1] == 'K' && (bytes[2] == 0x05 && bytes[3] == 0x06)) {
     return create_zip();
   }
 
@@ -148,23 +141,25 @@ std::unique_ptr<FileSystem> BackendFactory::create_from_memory(
   */
 
   // Check DwarFS magic ("DWARFS" at offset 0)
-  if (size >= sizeof(DWARFS_MAGIC) &&
-      std::memcmp(bytes, DWARFS_MAGIC, sizeof(DWARFS_MAGIC)) == 0) {
+  if (size >= sizeof(DWARFS_MAGIC) && std::memcmp(bytes, DWARFS_MAGIC, sizeof(DWARFS_MAGIC)) == 0) {
     return create_dwarfs();
   }
 
   return nullptr;
 }
 
-std::unique_ptr<FileSystem> BackendFactory::create_dwarfs() {
+std::unique_ptr<FileSystem> BackendFactory::create_dwarfs()
+{
   return std::make_unique<DwarfsBackend>();
 }
 
-std::unique_ptr<FileSystem> BackendFactory::create_zip() {
+std::unique_ptr<FileSystem> BackendFactory::create_zip()
+{
   return std::make_unique<ZipBackend>();
 }
 
-std::unique_ptr<FileSystem> BackendFactory::create_squashfs() {
+std::unique_ptr<FileSystem> BackendFactory::create_squashfs()
+{
   // TODO: Re-enable once squashfs-tools-ng is available
   // return std::make_unique<SquashFSBackend>();
   return nullptr;
@@ -174,7 +169,8 @@ std::unique_ptr<FileSystem> BackendFactory::create_squashfs() {
 // Format Detection
 // ===================================================================
 
-bool BackendFactory::is_dwarfs_format(const std::string& path) {
+bool BackendFactory::is_dwarfs_format(const std::string& path)
+{
   uint8_t buffer[MAX_MAGIC_SIZE] = {0};
 
   if (!read_magic_bytes(path, buffer, sizeof(DWARFS_MAGIC))) {
@@ -184,7 +180,8 @@ bool BackendFactory::is_dwarfs_format(const std::string& path) {
   return std::memcmp(buffer, DWARFS_MAGIC, sizeof(DWARFS_MAGIC)) == 0;
 }
 
-bool BackendFactory::is_zip_format(const std::string& path) {
+bool BackendFactory::is_zip_format(const std::string& path)
+{
   uint8_t buffer[MAX_MAGIC_SIZE] = {0};
 
   if (!read_magic_bytes(path, buffer, sizeof(ZIP_LOCAL_MAGIC))) {
@@ -204,7 +201,8 @@ bool BackendFactory::is_zip_format(const std::string& path) {
   return false;
 }
 
-bool BackendFactory::is_squashfs_format(const std::string& path) {
+bool BackendFactory::is_squashfs_format(const std::string& path)
+{
   uint8_t buffer[MAX_MAGIC_SIZE] = {0};
 
   if (!read_magic_bytes(path, buffer, sizeof(SQUASHFS_MAGIC_LE))) {
@@ -228,9 +226,8 @@ bool BackendFactory::is_squashfs_format(const std::string& path) {
 // Internal Helpers
 // ===================================================================
 
-bool BackendFactory::read_magic_bytes(const std::string& path,
-                                     uint8_t* buffer,
-                                     size_t size) {
+bool BackendFactory::read_magic_bytes(const std::string& path, uint8_t* buffer, size_t size)
+{
   std::ifstream file(path, std::ios::binary);
   if (!file.is_open()) {
     return false;
@@ -240,21 +237,17 @@ bool BackendFactory::read_magic_bytes(const std::string& path,
   return file.gcount() == static_cast<std::streamsize>(size);
 }
 
-bool BackendFactory::has_extension(const std::string& path,
-                                   const std::string& ext) {
+bool BackendFactory::has_extension(const std::string& path, const std::string& ext)
+{
   if (path.length() < ext.length()) {
     return false;
   }
 
   // Case-insensitive comparison
   auto path_end = path.substr(path.length() - ext.length());
-  return std::equal(
-      path_end.begin(), path_end.end(),
-      ext.begin(),
-      [](char a, char b) {
-        return std::tolower(static_cast<unsigned char>(a)) ==
-               std::tolower(static_cast<unsigned char>(b));
-      });
+  return std::equal(path_end.begin(), path_end.end(), ext.begin(), [](char a, char b) {
+    return std::tolower(static_cast<unsigned char>(a)) == std::tolower(static_cast<unsigned char>(b));
+  });
 }
 
 }  // namespace fs

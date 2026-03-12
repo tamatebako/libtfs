@@ -77,25 +77,20 @@ class DwarfsFileHandle : public FileHandle {
                    dwarfs::reader::inode_view inode,
                    std::string_view path,
                    int64_t size)
-      : fs_(fs),
-        inode_(inode),
-        path_(path),
-        size_(size),
-        current_pos_(0),
-        eof_(false),
-        closed_(false) {}
+      : fs_(fs), inode_(inode), path_(path), size_(size), current_pos_(0), eof_(false), closed_(false)
+  {
+  }
 
   /**
    * @brief Destructor - ensures file is closed
    */
-  ~DwarfsFileHandle() override {
-    close();
-  }
+  ~DwarfsFileHandle() override { close(); }
 
   /**
    * @brief Read data from the file
    */
-  ssize_t read(void* buffer, size_t count) override {
+  ssize_t read(void* buffer, size_t count) override
+  {
     if (closed_ || eof_ || current_pos_ >= size_) {
       if (!closed_) {
         eof_ = true;
@@ -113,11 +108,7 @@ class DwarfsFileHandle : public FileHandle {
     try {
       // Use DwarFS reader's read function with error code
       std::error_code ec;
-      size_t bytes_read = fs_.read(inode_.inode_num(),
-                                   static_cast<char*>(buffer),
-                                   to_read,
-                                   current_pos_,
-                                   ec);
+      size_t bytes_read = fs_.read(inode_.inode_num(), static_cast<char*>(buffer), to_read, current_pos_, ec);
 
       if (ec) {
         return -1;
@@ -133,7 +124,8 @@ class DwarfsFileHandle : public FileHandle {
       }
 
       return static_cast<ssize_t>(bytes_read);
-    } catch (...) {
+    }
+    catch (...) {
       return -1;
     }
   }
@@ -143,7 +135,8 @@ class DwarfsFileHandle : public FileHandle {
    *
    * DwarFS supports native seeking, so this is efficient.
    */
-  off_t seek(off_t offset, int whence) override {
+  off_t seek(off_t offset, int whence) override
+  {
     // Calculate target position
     off_t target_pos = 0;
     switch (whence) {
@@ -173,46 +166,36 @@ class DwarfsFileHandle : public FileHandle {
   /**
    * @brief Get current position in the file
    */
-  off_t tell() const override {
-    return current_pos_;
-  }
+  off_t tell() const override { return current_pos_; }
 
   /**
    * @brief Check if at end of file
    */
-  bool eof() const override {
-    return eof_;
-  }
+  bool eof() const override { return eof_; }
 
   /**
    * @brief Close the file handle
    */
-  void close() override {
-    closed_ = true;
-  }
+  void close() override { closed_ = true; }
 
   /**
    * @brief Get the file path
    */
-  std::string path() const override {
-    return path_;
-  }
+  std::string path() const override { return path_; }
 
   /**
    * @brief Get the file size
    */
-  int64_t size() const override {
-    return size_;
-  }
+  int64_t size() const override { return size_; }
 
  private:
   dwarfs::reader::filesystem_v2_lite& fs_;  ///< DwarFS filesystem reference
-  dwarfs::reader::inode_view inode_;   ///< Inode for this file
-  std::string path_;                    ///< Full file path
-  int64_t size_;                        ///< File size in bytes
-  off_t current_pos_;                   ///< Current position in file
-  bool eof_;                            ///< End-of-file flag
-  bool closed_;                         ///< Closed flag
+  dwarfs::reader::inode_view inode_;        ///< Inode for this file
+  std::string path_;                        ///< Full file path
+  int64_t size_;                            ///< File size in bytes
+  off_t current_pos_;                       ///< Current position in file
+  bool eof_;                                ///< End-of-file flag
+  bool closed_;                             ///< Closed flag
 };
 
 // ===================================================================
@@ -232,10 +215,9 @@ class DwarfsDirectoryIterator : public DirectoryIterator {
    * @param fs Reference to the DwarFS filesystem
    * @param inode The directory inode
    */
-  DwarfsDirectoryIterator(dwarfs::reader::filesystem_v2_lite& fs,
-                          dwarfs::reader::inode_view dir_inode)
-      : fs_(fs), current_index_(0) {
-
+  DwarfsDirectoryIterator(dwarfs::reader::filesystem_v2_lite& fs, dwarfs::reader::inode_view dir_inode)
+      : fs_(fs), current_index_(0)
+  {
     try {
       // Get directory entries using DwarFS API
       auto dir = fs_.opendir(dir_inode);
@@ -243,7 +225,8 @@ class DwarfsDirectoryIterator : public DirectoryIterator {
         size_t offset = 0;
         while (true) {
           auto entry = fs_.readdir(*dir, offset++);
-          if (!entry) break;  // End of directory
+          if (!entry)
+            break;  // End of directory
 
           // Skip ".", "..", and empty entries
           std::string name = entry->name();
@@ -268,7 +251,8 @@ class DwarfsDirectoryIterator : public DirectoryIterator {
           entries_.push_back(de);
         }
       }
-    } catch (...) {
+    }
+    catch (...) {
       // If we fail to read directory, leave entries empty
     }
   }
@@ -276,14 +260,13 @@ class DwarfsDirectoryIterator : public DirectoryIterator {
   /**
    * @brief Check if there are more entries
    */
-  bool has_next() const override {
-    return current_index_ < entries_.size();
-  }
+  bool has_next() const override { return current_index_ < entries_.size(); }
 
   /**
    * @brief Get the next directory entry
    */
-  DirectoryEntry next() override {
+  DirectoryEntry next() override
+  {
     if (!has_next()) {
       throw std::runtime_error("No more directory entries");
     }
@@ -293,14 +276,12 @@ class DwarfsDirectoryIterator : public DirectoryIterator {
   /**
    * @brief Reset the iterator to the beginning
    */
-  void reset() override {
-    current_index_ = 0;
-  }
+  void reset() override { current_index_ = 0; }
 
  private:
-  dwarfs::reader::filesystem_v2_lite& fs_;   ///< DwarFS filesystem reference
-  std::vector<DirectoryEntry> entries_;  ///< Directory entries
-  size_t current_index_;                 ///< Current iteration position
+  dwarfs::reader::filesystem_v2_lite& fs_;  ///< DwarFS filesystem reference
+  std::vector<DirectoryEntry> entries_;     ///< Directory entries
+  size_t current_index_;                    ///< Current iteration position
 };
 
 // ===================================================================
@@ -314,15 +295,15 @@ class DwarfsDirectoryIterator : public DirectoryIterator {
  */
 class DwarfsBackend::Impl {
  public:
-  Impl() : is_mounted_(false), logger_(std::make_shared<dwarfs::stream_logger>()) {
+  Impl() : is_mounted_(false), logger_(std::make_shared<dwarfs::stream_logger>())
+  {
     logger_->set_threshold(dwarfs::LOGGER_LEVEL_INFO);
   }
 
-  ~Impl() {
-    unmount();
-  }
+  ~Impl() { unmount(); }
 
-  bool mount_file(const std::string& archive_path) {
+  bool mount_file(const std::string& archive_path)
+  {
     if (is_mounted_) {
       return false;
     }
@@ -331,8 +312,8 @@ class DwarfsBackend::Impl {
       // Use filesystem_loader for clean initialization
       dwarfs::reader::filesystem_load_config config;
       config.image_path = archive_path;
-      config.cache_size = 512 << 20;   // 512 MiB default
-      config.block_size = 512 << 10;   // 512 KiB default
+      config.cache_size = 512 << 20;  // 512 MiB default
+      config.block_size = 512 << 10;  // 512 KiB default
       config.num_workers = 2;
       config.image_offset = std::nullopt;  // Auto-detect
 
@@ -344,13 +325,15 @@ class DwarfsBackend::Impl {
 
       is_mounted_ = true;
       return true;
-    } catch (const std::exception& e) {
+    }
+    catch (const std::exception& e) {
       // Log error for debugging
       return false;
     }
   }
 
-  bool mount_memory(const void* data, size_t size) {
+  bool mount_memory(const void* data, size_t size)
+  {
     if (is_mounted_) {
       return false;
     }
@@ -361,8 +344,7 @@ class DwarfsBackend::Impl {
 
     try {
       // Create memory file view using our internal implementation
-      auto mem_view = std::make_shared<tebako::memory_file_view_impl>(
-          data, size, "/__tebako_dwarfs__");
+      auto mem_view = std::make_shared<tebako::memory_file_view_impl>(data, size, "/__tebako_dwarfs__");
       dwarfs::file_view view{mem_view};
 
       dwarfs::os_access_generic os;
@@ -372,33 +354,31 @@ class DwarfsBackend::Impl {
       opts.image_offset = 0;
       opts.image_size = size;
 
-      fs_ = std::make_unique<dwarfs::reader::filesystem_v2_lite>(
-          *logger_, os, view, opts);
+      fs_ = std::make_unique<dwarfs::reader::filesystem_v2_lite>(*logger_, os, view, opts);
 
       is_mounted_ = true;
       return true;
-    } catch (const std::exception& e) {
+    }
+    catch (const std::exception& e) {
       // Log error for debugging
       return false;
     }
   }
 
-  void unmount() {
+  void unmount()
+  {
     if (is_mounted_) {
       fs_.reset();
       is_mounted_ = false;
     }
   }
 
-  bool is_mounted() const {
-    return is_mounted_;
-  }
+  bool is_mounted() const { return is_mounted_; }
 
-  dwarfs::reader::filesystem_v2_lite* get_fs() {
-    return fs_.get();
-  }
+  dwarfs::reader::filesystem_v2_lite* get_fs() { return fs_.get(); }
 
-  std::optional<dwarfs::reader::inode_view> find_inode(const std::string& path) {
+  std::optional<dwarfs::reader::inode_view> find_inode(const std::string& path)
+  {
     if (!fs_) {
       return std::nullopt;
     }
@@ -426,7 +406,8 @@ class DwarfsBackend::Impl {
         return entry->inode();
       }
       return std::nullopt;
-    } catch (...) {
+    }
+    catch (...) {
       return std::nullopt;
     }
   }
@@ -443,12 +424,13 @@ class DwarfsBackend::Impl {
 
 DwarfsBackend::DwarfsBackend() : impl_(std::make_unique<Impl>()) {}
 
-DwarfsBackend::~DwarfsBackend() {
+DwarfsBackend::~DwarfsBackend()
+{
   unmount();
 }
 
-Result<void> DwarfsBackend::mount(std::string_view archive_path,
-                                  std::string_view mount_point) {
+Result<void> DwarfsBackend::mount(std::string_view archive_path, std::string_view mount_point)
+{
   std::unique_lock lock(mutex_);
 
   if (impl_->is_mounted()) {
@@ -465,8 +447,8 @@ Result<void> DwarfsBackend::mount(std::string_view archive_path,
   return make_ok();
 }
 
-Result<void> DwarfsBackend::mount_from_memory(const void* data, size_t size,
-                                             std::string_view mount_point) {
+Result<void> DwarfsBackend::mount_from_memory(const void* data, size_t size, std::string_view mount_point)
+{
   std::unique_lock lock(mutex_);
 
   if (impl_->is_mounted()) {
@@ -486,20 +468,22 @@ Result<void> DwarfsBackend::mount_from_memory(const void* data, size_t size,
   return make_ok();
 }
 
-void DwarfsBackend::unmount() {
+void DwarfsBackend::unmount()
+{
   std::unique_lock lock(mutex_);
   impl_->unmount();
   archive_path_.clear();
   mount_point_.clear();
 }
 
-bool DwarfsBackend::is_mounted() const {
+bool DwarfsBackend::is_mounted() const
+{
   std::shared_lock lock(mutex_);
   return impl_->is_mounted();
 }
 
-Result<std::unique_ptr<FileHandle>> DwarfsBackend::open(std::string_view path,
-                                                       int flags) {
+Result<std::unique_ptr<FileHandle>> DwarfsBackend::open(std::string_view path, int flags)
+{
   std::shared_lock lock(mutex_);
 
   if (!impl_->is_mounted()) {
@@ -530,14 +514,16 @@ Result<std::unique_ptr<FileHandle>> DwarfsBackend::open(std::string_view path,
       return Err{ErrorCode::NotAFile, "Path is not a regular file", path};
     }
 
-    return Ok<std::unique_ptr<FileHandle>>{std::make_unique<DwarfsFileHandle>(
-        *impl_->get_fs(), *inode_opt, path, stat.size())};
-  } catch (const std::exception& e) {
+    return Ok<std::unique_ptr<FileHandle>>{
+        std::make_unique<DwarfsFileHandle>(*impl_->get_fs(), *inode_opt, path, stat.size())};
+  }
+  catch (const std::exception& e) {
     return Err{ErrorCode::IOError, "Failed to open file", path};
   }
 }
 
-bool DwarfsBackend::exists(std::string_view path) const {
+bool DwarfsBackend::exists(std::string_view path) const
+{
   std::shared_lock lock(mutex_);
 
   if (!impl_->is_mounted()) {
@@ -551,7 +537,8 @@ bool DwarfsBackend::exists(std::string_view path) const {
   return inode_opt.has_value();
 }
 
-bool DwarfsBackend::is_file(std::string_view path) const {
+bool DwarfsBackend::is_file(std::string_view path) const
+{
   std::shared_lock lock(mutex_);
 
   if (!impl_->is_mounted()) {
@@ -570,12 +557,14 @@ bool DwarfsBackend::is_file(std::string_view path) const {
     std::error_code ec;
     auto stat = impl_->get_fs()->getattr(*inode_opt, ec);
     return !ec && S_ISREG(stat.mode());
-  } catch (...) {
+  }
+  catch (...) {
     return false;
   }
 }
 
-bool DwarfsBackend::is_directory(std::string_view path) const {
+bool DwarfsBackend::is_directory(std::string_view path) const
+{
   std::shared_lock lock(mutex_);
 
   if (!impl_->is_mounted()) {
@@ -599,13 +588,14 @@ bool DwarfsBackend::is_directory(std::string_view path) const {
     std::error_code ec;
     auto stat = impl_->get_fs()->getattr(*inode_opt, ec);
     return !ec && S_ISDIR(stat.mode());
-  } catch (...) {
+  }
+  catch (...) {
     return false;
   }
 }
 
-Result<std::unique_ptr<DirectoryIterator>> DwarfsBackend::list_directory(
-    std::string_view path) {
+Result<std::unique_ptr<DirectoryIterator>> DwarfsBackend::list_directory(std::string_view path)
+{
   std::shared_lock lock(mutex_);
 
   if (!impl_->is_mounted()) {
@@ -628,7 +618,8 @@ Result<std::unique_ptr<DirectoryIterator>> DwarfsBackend::list_directory(
       std::make_unique<DwarfsDirectoryIterator>(*impl_->get_fs(), *inode_opt)};
 }
 
-Result<int64_t> DwarfsBackend::file_size(std::string_view path) const {
+Result<int64_t> DwarfsBackend::file_size(std::string_view path) const
+{
   std::shared_lock lock(mutex_);
 
   if (!impl_->is_mounted()) {
@@ -653,12 +644,14 @@ Result<int64_t> DwarfsBackend::file_size(std::string_view path) const {
       return Err{ErrorCode::NotAFile, "Path is a directory", path};
     }
     return Ok<int64_t>{static_cast<int64_t>(stat.size())};
-  } catch (...) {
+  }
+  catch (...) {
     return Err{ErrorCode::IOError, "Failed to get file size", path};
   }
 }
 
-Result<time_t> DwarfsBackend::modification_time(std::string_view path) const {
+Result<time_t> DwarfsBackend::modification_time(std::string_view path) const
+{
   std::shared_lock lock(mutex_);
 
   if (!impl_->is_mounted()) {
@@ -680,12 +673,14 @@ Result<time_t> DwarfsBackend::modification_time(std::string_view path) const {
       return Err{ErrorCode::IOError, "Failed to get file attributes", path};
     }
     return Ok<time_t>{stat.mtime()};
-  } catch (...) {
+  }
+  catch (...) {
     return Err{ErrorCode::IOError, "Failed to get modification time", path};
   }
 }
 
-Result<mode_t> DwarfsBackend::permissions(std::string_view path) const {
+Result<mode_t> DwarfsBackend::permissions(std::string_view path) const
+{
   std::shared_lock lock(mutex_);
 
   if (!impl_->is_mounted()) {
@@ -707,12 +702,14 @@ Result<mode_t> DwarfsBackend::permissions(std::string_view path) const {
       return Err{ErrorCode::IOError, "Failed to get file attributes", path};
     }
     return Ok<mode_t>{static_cast<mode_t>(stat.mode() & 0777)};
-  } catch (...) {
+  }
+  catch (...) {
     return Err{ErrorCode::IOError, "Failed to get permissions", path};
   }
 }
 
-std::string DwarfsBackend::backend_version() const {
+std::string DwarfsBackend::backend_version() const
+{
   // TODO: Get actual DwarFS version from library
   return "DwarFS v0.9+";
 }
@@ -721,7 +718,8 @@ std::string DwarfsBackend::backend_version() const {
 // Private Helper Methods
 // ===================================================================
 
-std::string DwarfsBackend::strip_mount_point(std::string_view path) const {
+std::string DwarfsBackend::strip_mount_point(std::string_view path) const
+{
   if (path.size() < mount_point_.size()) {
     return std::string(path);
   }
@@ -738,7 +736,8 @@ std::string DwarfsBackend::strip_mount_point(std::string_view path) const {
   return std::string(path);
 }
 
-std::string DwarfsBackend::normalize_path(std::string_view path) const {
+std::string DwarfsBackend::normalize_path(std::string_view path) const
+{
   std::string result(path);
 
   // Remove leading slash

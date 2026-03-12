@@ -49,9 +49,9 @@ namespace c_api {
  * @brief Directory state for C API directory iteration
  */
 struct DirectoryState {
-    std::unique_ptr<DirectoryIterator> iterator;
-    tebako_c_dirent current_entry{};
-    bool has_current = false;
+  std::unique_ptr<DirectoryIterator> iterator;
+  tebako_c_dirent current_entry{};
+  bool has_current = false;
 };
 
 /**

@@ -23,9 +23,8 @@ namespace tebako {
 ///
 /// This class replaces the obsolete `mmif` interface with modern DwarFS v0.9+
 /// `file_view` abstraction.
-class memory_file_view_impl final
-    : public dwarfs::detail::file_view_impl,
-      public std::enable_shared_from_this<memory_file_view_impl> {
+class memory_file_view_impl final : public dwarfs::detail::file_view_impl,
+                                    public std::enable_shared_from_this<memory_file_view_impl> {
  public:
   /// Construct from raw memory buffer
   ///
@@ -34,8 +33,7 @@ class memory_file_view_impl final
   /// @param path Filesystem path for identification (can be synthetic)
   ///
   /// @throws std::invalid_argument if data is null or size is zero
-  memory_file_view_impl(const void* data, std::size_t size,
-                       std::filesystem::path path = "<memory>");
+  memory_file_view_impl(const void* data, std::size_t size, std::filesystem::path path = "<memory>");
 
   ~memory_file_view_impl() override = default;
 
@@ -67,8 +65,7 @@ class memory_file_view_impl final
   ///
   /// @param range Optional range to limit extents (defaults to full file)
   /// @return Iterable over file extents
-  dwarfs::file_extents_iterable
-  extents(std::optional<dwarfs::file_range> range) const override;
+  dwarfs::file_extents_iterable extents(std::optional<dwarfs::file_range> range) const override;
 
   /// Check if raw bytes access is supported
   ///
@@ -85,13 +82,13 @@ class memory_file_view_impl final
   /// @param dest Destination buffer
   /// @param range Source range (offset + size)
   /// @param ec Error code output
-  void copy_bytes(void* dest, dwarfs::file_range range,
-                  std::error_code& ec) const override;
+  void copy_bytes(void* dest, dwarfs::file_range range, std::error_code& ec) const override;
 
   /// Get default segment size for chunked operations
   ///
   /// @return Recommended segment size (64KB)
-  std::size_t default_segment_size() const override {
+  std::size_t default_segment_size() const override
+  {
     return 64 * 1024;  // 64KB
   }
 
@@ -99,15 +96,15 @@ class memory_file_view_impl final
   ///
   /// @param offset Offset to release up to
   /// @param ec Error code output (always success)
-  void release_until(dwarfs::file_off_t offset,
-                    std::error_code& ec) const override {
+  void release_until(dwarfs::file_off_t offset, std::error_code& ec) const override
+  {
     (void)offset;
     ec.clear();
   }
 
  private:
-  const void* data_;  ///< Pointer to memory buffer
-  std::size_t size_;  ///< Size of memory buffer
+  const void* data_;            ///< Pointer to memory buffer
+  std::size_t size_;            ///< Size of memory buffer
   std::filesystem::path path_;  ///< Filesystem path for identification
 };
 

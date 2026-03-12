@@ -53,20 +53,23 @@ class DwarfsIntegrationTest : public ::testing::Test {
 // 1. Factory Integration Tests (3 tests)
 // ===================================================================
 
-TEST_F(DwarfsIntegrationTest, AutoDetectDwarfsMagicSucceeds) {
+TEST_F(DwarfsIntegrationTest, AutoDetectDwarfsMagicSucceeds)
+{
   std::string archive = fixtures_path + "simple.dwarfs";
   auto backend = BackendFactory::create_from_file(archive);
   ASSERT_NE(backend, nullptr);
   EXPECT_EQ(backend->backend_name(), "DwarFS");
 }
 
-TEST_F(DwarfsIntegrationTest, FactoryReturnsNullForInvalidArchive) {
+TEST_F(DwarfsIntegrationTest, FactoryReturnsNullForInvalidArchive)
+{
   std::string archive = fixtures_path + "nonexistent.dwarfs";
   auto backend = BackendFactory::create_from_file(archive);
   EXPECT_EQ(backend, nullptr);
 }
 
-TEST_F(DwarfsIntegrationTest, FactoryReturnsNullForCorruptedArchive) {
+TEST_F(DwarfsIntegrationTest, FactoryReturnsNullForCorruptedArchive)
+{
   std::string archive = fixtures_path + "corrupted.dwarfs";
   auto backend = BackendFactory::create_from_file(archive);
   // Should create a DwarFS backend (has valid magic bytes)
@@ -81,7 +84,8 @@ TEST_F(DwarfsIntegrationTest, FactoryReturnsNullForCorruptedArchive) {
 // 2. Complete Workflow Tests (5 tests)
 // ===================================================================
 
-TEST_F(DwarfsIntegrationTest, CompleteWorkflowMountReadUnmount) {
+TEST_F(DwarfsIntegrationTest, CompleteWorkflowMountReadUnmount)
+{
   std::string archive = fixtures_path + "simple.dwarfs";
   auto backend = BackendFactory::create_from_file(archive);
   ASSERT_NE(backend, nullptr);
@@ -108,7 +112,8 @@ TEST_F(DwarfsIntegrationTest, CompleteWorkflowMountReadUnmount) {
   EXPECT_FALSE(backend->is_mounted());
 }
 
-TEST_F(DwarfsIntegrationTest, CompleteWorkflowDirectoryTraversal) {
+TEST_F(DwarfsIntegrationTest, CompleteWorkflowDirectoryTraversal)
+{
   std::string archive = fixtures_path + "nested.dwarfs";
   auto backend = std::make_unique<DwarfsBackend>();
   auto mount_result = backend->mount(archive, mount_point);
@@ -150,7 +155,8 @@ TEST_F(DwarfsIntegrationTest, CompleteWorkflowDirectoryTraversal) {
   backend->unmount();
 }
 
-TEST_F(DwarfsIntegrationTest, MultipleFileOperationsInSession) {
+TEST_F(DwarfsIntegrationTest, MultipleFileOperationsInSession)
+{
   std::string archive = fixtures_path + "simple.dwarfs";
   auto backend = std::make_unique<DwarfsBackend>();
   auto mount_result = backend->mount(archive, mount_point);
@@ -183,7 +189,8 @@ TEST_F(DwarfsIntegrationTest, MultipleFileOperationsInSession) {
   backend->unmount();
 }
 
-TEST_F(DwarfsIntegrationTest, SeekAndReadPattern) {
+TEST_F(DwarfsIntegrationTest, SeekAndReadPattern)
+{
   std::string archive = fixtures_path + "simple.dwarfs";
   auto backend = std::make_unique<DwarfsBackend>();
   auto mount_result = backend->mount(archive, mount_point);
@@ -217,7 +224,8 @@ TEST_F(DwarfsIntegrationTest, SeekAndReadPattern) {
   backend->unmount();
 }
 
-TEST_F(DwarfsIntegrationTest, MetadataConsistencyCheck) {
+TEST_F(DwarfsIntegrationTest, MetadataConsistencyCheck)
+{
   std::string archive = fixtures_path + "permissions.dwarfs";
   auto backend = std::make_unique<DwarfsBackend>();
   auto mount_result = backend->mount(archive, mount_point);
@@ -246,7 +254,8 @@ TEST_F(DwarfsIntegrationTest, MetadataConsistencyCheck) {
 // 3. Error Recovery Tests (2 tests)
 // ===================================================================
 
-TEST_F(DwarfsIntegrationTest, RecoverFromFailedMount) {
+TEST_F(DwarfsIntegrationTest, RecoverFromFailedMount)
+{
   auto backend = std::make_unique<DwarfsBackend>();
 
   // Attempt to mount invalid archive
@@ -261,7 +270,8 @@ TEST_F(DwarfsIntegrationTest, RecoverFromFailedMount) {
   backend->unmount();
 }
 
-TEST_F(DwarfsIntegrationTest, HandleOperationsAfterUnmount) {
+TEST_F(DwarfsIntegrationTest, HandleOperationsAfterUnmount)
+{
   auto backend = std::make_unique<DwarfsBackend>();
   auto mount_result = backend->mount(fixtures_path + "simple.dwarfs", mount_point);
   ASSERT_TRUE(mount_result.is_ok());
@@ -287,7 +297,8 @@ TEST_F(DwarfsIntegrationTest, HandleOperationsAfterUnmount) {
 // 4. Cross-Backend Comparison Tests (2 tests)
 // ===================================================================
 
-TEST_F(DwarfsIntegrationTest, DwarfsVsZipCompatibility) {
+TEST_F(DwarfsIntegrationTest, DwarfsVsZipCompatibility)
+{
   // Both backends should provide the same logical interface
   auto dwarfs = std::make_unique<DwarfsBackend>();
 
@@ -303,12 +314,14 @@ TEST_F(DwarfsIntegrationTest, DwarfsVsZipCompatibility) {
     EXPECT_TRUE(handle_result.is_ok());
 
     dwarfs->unmount();
-  } else {
+  }
+  else {
     GTEST_SKIP() << "DwarFS archive not available";
   }
 }
 
-TEST_F(DwarfsIntegrationTest, NativeSeekAdvantageOverZip) {
+TEST_F(DwarfsIntegrationTest, NativeSeekAdvantageOverZip)
+{
   auto backend = std::make_unique<DwarfsBackend>();
   std::string archive = fixtures_path + "large.dwarfs";
 
@@ -338,7 +351,8 @@ TEST_F(DwarfsIntegrationTest, NativeSeekAdvantageOverZip) {
 // 5. Real-World Usage Patterns (1 test)
 // ===================================================================
 
-TEST_F(DwarfsIntegrationTest, TypicalApplicationUsagePattern) {
+TEST_F(DwarfsIntegrationTest, TypicalApplicationUsagePattern)
+{
   // Simulate typical application: mount, read config, read resources, unmount
   auto backend = std::make_unique<DwarfsBackend>();
   std::string archive = fixtures_path + "simple.dwarfs";

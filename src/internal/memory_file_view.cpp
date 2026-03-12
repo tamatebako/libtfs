@@ -38,10 +38,9 @@
 
 namespace tebako {
 
-memory_file_view_impl::memory_file_view_impl(const void* data,
-                                             std::size_t size,
-                                             std::filesystem::path path)
-    : data_(data), size_(size), path_(std::move(path)) {
+memory_file_view_impl::memory_file_view_impl(const void* data, std::size_t size, std::filesystem::path path)
+    : data_(data), size_(size), path_(std::move(path))
+{
   if (!data || size == 0) {
     throw std::invalid_argument(
         "memory_file_view_impl: data must not be null and size must be "
@@ -49,24 +48,22 @@ memory_file_view_impl::memory_file_view_impl(const void* data,
   }
 }
 
-dwarfs::file_segment
-memory_file_view_impl::segment_at(dwarfs::file_range range) const {
+dwarfs::file_segment memory_file_view_impl::segment_at(dwarfs::file_range range) const
+{
   auto const offset = range.offset();
   auto const size = range.size();
 
   // Validate range
-  if (offset < 0 || size == 0 ||
-      std::cmp_greater(offset + size, this->size())) {
-    return {}; // Return empty segment for invalid ranges
+  if (offset < 0 || size == 0 || std::cmp_greater(offset + size, this->size())) {
+    return {};  // Return empty segment for invalid ranges
   }
 
   // Create a segment implementation
-  return dwarfs::file_segment(std::make_shared<memory_file_segment_impl>(
-      shared_from_this(), range));
+  return dwarfs::file_segment(std::make_shared<memory_file_segment_impl>(shared_from_this(), range));
 }
 
-dwarfs::file_extents_iterable
-memory_file_view_impl::extents(std::optional<dwarfs::file_range> range) const {
+dwarfs::file_extents_iterable memory_file_view_impl::extents(std::optional<dwarfs::file_range> range) const
+{
   // For a simple memory buffer, we have a single data extent
   std::vector<dwarfs::detail::file_extent_info> extents;
 
@@ -80,12 +77,13 @@ memory_file_view_impl::extents(std::optional<dwarfs::file_range> range) const {
   return dwarfs::file_extents_iterable{shared_from_this(), extents, *range};
 }
 
-std::span<std::byte const> memory_file_view_impl::raw_bytes() const {
+std::span<std::byte const> memory_file_view_impl::raw_bytes() const
+{
   return {reinterpret_cast<std::byte const*>(data_), size_};
 }
 
-void memory_file_view_impl::copy_bytes(void* dest, dwarfs::file_range range,
-                                      std::error_code& ec) const {
+void memory_file_view_impl::copy_bytes(void* dest, dwarfs::file_range range, std::error_code& ec) const
+{
   auto const offset = range.offset();
   auto const size = range.size();
 

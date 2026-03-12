@@ -32,9 +32,9 @@ namespace cli {
 struct CLIOptions {
   bool verbose = false;
   bool quiet = false;
-  bool recursive = false;      // For ls -r
-  bool long_format = false;    // For ls -l
-  std::string dest_dir;        // For extract --dest
+  bool recursive = false;    // For ls -r
+  bool long_format = false;  // For ls -l
+  std::string dest_dir;      // For extract --dest
 };
 
 /**
@@ -102,8 +102,7 @@ class TebakofsCLI {
    * @param opts Command options (dest_dir, verbose)
    * @return Exit code
    */
-  int cmd_extract(const std::string& archive, const std::vector<std::string>& files,
-                  const CLIOptions& opts);
+  int cmd_extract(const std::string& archive, const std::vector<std::string>& files, const CLIOptions& opts);
 
   /**
    * @brief Search for files matching pattern
@@ -125,32 +124,27 @@ class TebakofsCLI {
   /**
    * @brief Print directory entry (short or long format)
    */
-  void print_entry(const DirectoryEntry& entry, const std::string& path,
-                   bool long_format);
+  void print_entry(const DirectoryEntry& entry, const std::string& path, bool long_format);
 
   /**
    * @brief List directory recursively
    */
-  void list_recursive(FileSystem* fs, const std::string& path,
-                     const std::string& prefix, bool long_format);
+  void list_recursive(FileSystem* fs, const std::string& path, const std::string& prefix, bool long_format);
 
   /**
    * @brief Print directory tree
    */
-  void print_tree(FileSystem* fs, const std::string& path,
-                  int depth, const std::string& prefix);
+  void print_tree(FileSystem* fs, const std::string& path, int depth, const std::string& prefix);
 
   /**
    * @brief Extract single file
    */
-  bool extract_file(FileSystem* fs, const std::string& src,
-                    const std::string& dest);
+  bool extract_file(FileSystem* fs, const std::string& src, const std::string& dest);
 
   /**
    * @brief Extract directory recursively
    */
-  bool extract_directory(FileSystem* fs, const std::string& src,
-                        const std::string& dest);
+  bool extract_directory(FileSystem* fs, const std::string& src, const std::string& dest);
 
   /**
    * @brief Extract specific files/directories
@@ -160,8 +154,7 @@ class TebakofsCLI {
    * @param dest_base Destination base directory
    * @return true if all extractions succeeded
    */
-  bool extract_selected(FileSystem* fs, const std::vector<std::string>& files,
-                       const std::string& dest_base);
+  bool extract_selected(FileSystem* fs, const std::vector<std::string>& files, const std::string& dest_base);
 
   /**
    * @brief Extract entire archive

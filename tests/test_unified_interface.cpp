@@ -17,8 +17,9 @@ namespace fs = std::filesystem;
 using Backend = FileSystem;
 
 class UnifiedInterfaceTest : public ::testing::Test {
-protected:
-  void SetUp() override {
+ protected:
+  void SetUp() override
+  {
     // Get paths to test fixtures
     zip_archive_path = "tests/fixtures/zip/simple.zip";
     dwarfs_archive_path = "tests/fixtures/dwarfs/simple.dwarfs";
@@ -29,7 +30,8 @@ protected:
 };
 
 // Test backend creation from file with auto-detection
-TEST_F(UnifiedInterfaceTest, CreateBackendFromFile) {
+TEST_F(UnifiedInterfaceTest, CreateBackendFromFile)
+{
   // Test ZIP
   auto zip = BackendFactory::create_from_file(zip_archive_path);
   ASSERT_NE(zip, nullptr);
@@ -42,7 +44,8 @@ TEST_F(UnifiedInterfaceTest, CreateBackendFromFile) {
 }
 
 // Test that all backends provide the same API
-TEST_F(UnifiedInterfaceTest, IdenticalAPIBehavior) {
+TEST_F(UnifiedInterfaceTest, IdenticalAPIBehavior)
+{
   struct BackendTest {
     std::unique_ptr<Backend> backend;
     std::string archive_path;
@@ -51,10 +54,12 @@ TEST_F(UnifiedInterfaceTest, IdenticalAPIBehavior) {
 
   // Create all available backends with their paths
   auto zip = BackendFactory::create_from_file(zip_archive_path);
-  if (zip) backends.push_back({std::move(zip), zip_archive_path});
+  if (zip)
+    backends.push_back({std::move(zip), zip_archive_path});
 
   auto dwarfs = BackendFactory::create_from_file(dwarfs_archive_path);
-  if (dwarfs) backends.push_back({std::move(dwarfs), dwarfs_archive_path});
+  if (dwarfs)
+    backends.push_back({std::move(dwarfs), dwarfs_archive_path});
 
   // Test each backend with identical API calls
   int test_id = 0;
@@ -117,7 +122,8 @@ TEST_F(UnifiedInterfaceTest, IdenticalAPIBehavior) {
 }
 
 // Test polymorphic behavior through base class pointer
-TEST_F(UnifiedInterfaceTest, PolymorphicBehavior) {
+TEST_F(UnifiedInterfaceTest, PolymorphicBehavior)
+{
   struct BackendTest {
     std::unique_ptr<Backend> backend;
     std::string archive_path;
@@ -129,7 +135,8 @@ TEST_F(UnifiedInterfaceTest, PolymorphicBehavior) {
 
   // Store in base class pointers and test polymorphism
   for (const auto& bt : backends) {
-    if (!bt.backend) continue;
+    if (!bt.backend)
+      continue;
 
     SCOPED_TRACE("Testing polymorphic behavior for: " + bt.backend->backend_name());
 
@@ -147,7 +154,8 @@ TEST_F(UnifiedInterfaceTest, PolymorphicBehavior) {
 }
 
 // Test format detection works correctly
-TEST_F(UnifiedInterfaceTest, FormatDetection) {
+TEST_F(UnifiedInterfaceTest, FormatDetection)
+{
   // ZIP should be detected
   auto zip = BackendFactory::create_from_file(zip_archive_path);
   ASSERT_NE(zip, nullptr);
@@ -164,7 +172,8 @@ TEST_F(UnifiedInterfaceTest, FormatDetection) {
 }
 
 // Test consistent error handling across backends
-TEST_F(UnifiedInterfaceTest, ConsistentErrorHandling) {
+TEST_F(UnifiedInterfaceTest, ConsistentErrorHandling)
+{
   struct BackendTest {
     std::unique_ptr<Backend> backend;
     std::string archive_path;
@@ -175,7 +184,8 @@ TEST_F(UnifiedInterfaceTest, ConsistentErrorHandling) {
   backends.push_back({BackendFactory::create_from_file(dwarfs_archive_path), dwarfs_archive_path});
 
   for (auto& bt : backends) {
-    if (!bt.backend) continue;
+    if (!bt.backend)
+      continue;
 
     SCOPED_TRACE("Testing error handling for: " + bt.backend->backend_name());
 
@@ -197,7 +207,8 @@ TEST_F(UnifiedInterfaceTest, ConsistentErrorHandling) {
 }
 
 // Test metadata consistency across backends
-TEST_F(UnifiedInterfaceTest, MetadataConsistency) {
+TEST_F(UnifiedInterfaceTest, MetadataConsistency)
+{
   struct BackendTest {
     std::unique_ptr<Backend> backend;
     std::string archive_path;
@@ -208,7 +219,8 @@ TEST_F(UnifiedInterfaceTest, MetadataConsistency) {
   backends.push_back({BackendFactory::create_from_file(dwarfs_archive_path), dwarfs_archive_path});
 
   for (auto& bt : backends) {
-    if (!bt.backend) continue;
+    if (!bt.backend)
+      continue;
 
     SCOPED_TRACE("Testing metadata for: " + bt.backend->backend_name());
 
@@ -243,7 +255,8 @@ TEST_F(UnifiedInterfaceTest, MetadataConsistency) {
 }
 
 // Test that backends can be used interchangeably
-TEST_F(UnifiedInterfaceTest, InterchangeableBackends) {
+TEST_F(UnifiedInterfaceTest, InterchangeableBackends)
+{
   // Function that works with any backend
   auto test_backend = [](Backend& backend, const std::string& archive_path) {
     std::string mount_point = "/mnt/test";
@@ -266,7 +279,8 @@ TEST_F(UnifiedInterfaceTest, InterchangeableBackends) {
   }
 }
 
-int main(int argc, char** argv) {
+int main(int argc, char** argv)
+{
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }

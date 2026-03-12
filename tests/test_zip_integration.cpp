@@ -41,7 +41,8 @@ using namespace tebako::fs;
 
 class BackendFactoryZipTest : public ::testing::Test {
  protected:
-  void SetUp() override {
+  void SetUp() override
+  {
     // Test fixtures path
     fixtures_path = "tests/fixtures/zip/";
   }
@@ -54,14 +55,16 @@ class BackendFactoryZipTest : public ::testing::Test {
 // 1. Format Detection Tests (6 tests)
 // ===================================================================
 
-TEST_F(BackendFactoryZipTest, DetectsZipByMagicBytes) {
+TEST_F(BackendFactoryZipTest, DetectsZipByMagicBytes)
+{
   std::string path = fixtures_path + "simple.zip";
   EXPECT_TRUE(BackendFactory::is_zip_format(path));
   EXPECT_FALSE(BackendFactory::is_dwarfs_format(path));
   EXPECT_FALSE(BackendFactory::is_squashfs_format(path));
 }
 
-TEST_F(BackendFactoryZipTest, DetectsZipByExtension) {
+TEST_F(BackendFactoryZipTest, DetectsZipByExtension)
+{
   // Even if magic bytes aren't recognized, extension should work
   std::string path = fixtures_path + "simple.zip";
   auto backend = BackendFactory::create_from_file(path);
@@ -69,32 +72,36 @@ TEST_F(BackendFactoryZipTest, DetectsZipByExtension) {
   EXPECT_EQ(backend->backend_name(), "ZIP");
 }
 
-TEST_F(BackendFactoryZipTest, DetectsJarFiles) {
+TEST_F(BackendFactoryZipTest, DetectsJarFiles)
+{
   // JAR files are ZIP-based
   std::string path = fixtures_path + "simple.zip";
   // Test that factory would recognize .jar extension
   EXPECT_TRUE(BackendFactory::is_zip_format(path));
 }
 
-TEST_F(BackendFactoryZipTest, DetectsApkFiles) {
+TEST_F(BackendFactoryZipTest, DetectsApkFiles)
+{
   // APK files are ZIP-based
   std::string path = fixtures_path + "simple.zip";
   // Test that factory recognizes ZIP format
   EXPECT_TRUE(BackendFactory::is_zip_format(path));
 }
 
-TEST_F(BackendFactoryZipTest, CorruptedZipDetectedButMountFails) {
+TEST_F(BackendFactoryZipTest, CorruptedZipDetectedButMountFails)
+{
   std::string path = fixtures_path + "corrupted.zip";
   // Corrupted file still has valid ZIP magic bytes, so format detection succeeds
   EXPECT_TRUE(BackendFactory::is_zip_format(path));
 
   // But mounting should fail due to corruption
   auto backend = BackendFactory::create_from_file(path);
-  ASSERT_NE(backend, nullptr);  // Backend created based on magic bytes
+  ASSERT_NE(backend, nullptr);                      // Backend created based on magic bytes
   EXPECT_FALSE(backend->mount(path, mount_point));  // But mount fails
 }
 
-TEST_F(BackendFactoryZipTest, CorruptedZipCreatesBackendButCannotMount) {
+TEST_F(BackendFactoryZipTest, CorruptedZipCreatesBackendButCannotMount)
+{
   std::string path = fixtures_path + "corrupted.zip";
   // Should detect as ZIP format (has valid magic bytes)
   EXPECT_TRUE(BackendFactory::is_zip_format(path));
@@ -111,26 +118,30 @@ TEST_F(BackendFactoryZipTest, CorruptedZipCreatesBackendButCannotMount) {
 // 2. Backend Instantiation Tests (4 tests)
 // ===================================================================
 
-TEST_F(BackendFactoryZipTest, CreateZipReturnsZipBackend) {
+TEST_F(BackendFactoryZipTest, CreateZipReturnsZipBackend)
+{
   auto backend = BackendFactory::create_zip();
   ASSERT_NE(backend, nullptr);
   EXPECT_EQ(backend->backend_name(), "ZIP");
 }
 
-TEST_F(BackendFactoryZipTest, CreateFromFileReturnsZipBackend) {
+TEST_F(BackendFactoryZipTest, CreateFromFileReturnsZipBackend)
+{
   std::string path = fixtures_path + "simple.zip";
   auto backend = BackendFactory::create_from_file(path);
   ASSERT_NE(backend, nullptr);
   EXPECT_EQ(backend->backend_name(), "ZIP");
 }
 
-TEST_F(BackendFactoryZipTest, BackendNameIsZIP) {
+TEST_F(BackendFactoryZipTest, BackendNameIsZIP)
+{
   auto backend = BackendFactory::create_zip();
   ASSERT_NE(backend, nullptr);
   EXPECT_EQ(backend->backend_name(), "ZIP");
 }
 
-TEST_F(BackendFactoryZipTest, BackendVersionMatchesLibzip) {
+TEST_F(BackendFactoryZipTest, BackendVersionMatchesLibzip)
+{
   auto backend = BackendFactory::create_zip();
   ASSERT_NE(backend, nullptr);
 
@@ -144,7 +155,8 @@ TEST_F(BackendFactoryZipTest, BackendVersionMatchesLibzip) {
 // 3. End-to-End Tests (3 tests)
 // ===================================================================
 
-TEST_F(BackendFactoryZipTest, FactoryCreatesMountReadsFile) {
+TEST_F(BackendFactoryZipTest, FactoryCreatesMountReadsFile)
+{
   std::string path = fixtures_path + "simple.zip";
 
   // Create backend via factory
@@ -172,7 +184,8 @@ TEST_F(BackendFactoryZipTest, FactoryCreatesMountReadsFile) {
   backend->unmount();
 }
 
-TEST_F(BackendFactoryZipTest, FactoryHandlesMultipleZipArchives) {
+TEST_F(BackendFactoryZipTest, FactoryHandlesMultipleZipArchives)
+{
   // Create backend for first archive
   auto backend1 = BackendFactory::create_from_file(fixtures_path + "simple.zip");
   ASSERT_NE(backend1, nullptr);
@@ -198,7 +211,8 @@ TEST_F(BackendFactoryZipTest, FactoryHandlesMultipleZipArchives) {
   backend2->unmount();
 }
 
-TEST_F(BackendFactoryZipTest, FactoryAutoDetectsAndInstantiates) {
+TEST_F(BackendFactoryZipTest, FactoryAutoDetectsAndInstantiates)
+{
   std::string path = fixtures_path + "simple.zip";
 
   // create_from_file should auto-detect ZIP format
@@ -218,7 +232,8 @@ TEST_F(BackendFactoryZipTest, FactoryAutoDetectsAndInstantiates) {
 // Main
 // ===================================================================
 
-int main(int argc, char** argv) {
+int main(int argc, char** argv)
+{
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }
