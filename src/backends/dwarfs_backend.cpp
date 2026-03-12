@@ -33,9 +33,9 @@
 #include <tebako/fs/directory_iterator.h>
 #include <tebako/fs/internal/memory_file_view.h>
 
+#include <dwarfs/reader/filesystem_loader.h>
 #include <dwarfs/reader/filesystem_v2.h>
 #include <dwarfs/reader/filesystem_options.h>
-#include <dwarfs/reader/internal/inode_reader_v2.h>
 #include <dwarfs/file_stat.h>
 #include <dwarfs/os_access_generic.h>
 #include <dwarfs/logger.h>
@@ -48,6 +48,7 @@
 #include <vector>
 #include <string>
 #include <filesystem>
+#include <iostream>
 
 namespace tebako {
 namespace fs {
@@ -72,9 +73,9 @@ class DwarfsFileHandle : public FileHandle {
    * @param path Full path to the file
    * @param size File size in bytes
    */
-  DwarfsFileHandle(dwarfs::reader::filesystem_v2& fs,
+  DwarfsFileHandle(dwarfs::reader::filesystem_v2_lite& fs,
                    dwarfs::reader::inode_view inode,
-                   const std::string& path,
+                   std::string_view path,
                    int64_t size)
       : fs_(fs),
         inode_(inode),
@@ -110,14 +111,20 @@ class DwarfsFileHandle : public FileHandle {
     size_t to_read = std::min(count, static_cast<size_t>(size_ - current_pos_));
 
     try {
-      // Use DwarFS reader's read function
-      int bytes_read = fs_.read(inode_.inode_num(),
-                                static_cast<char*>(buffer),
-                                to_read,
-                                current_pos_);
+      // Use DwarFS reader's read function with error code
+      std::error_code ec;
+      size_t bytes_read = fs_.read(inode_.inode_num(),
+                                   static_cast<char*>(buffer),
+                                   to_read,
+                                   current_pos_,
+                                   ec);
 
-      if (bytes_read < 0) {
+      if (ec) {
         return -1;
+      }
+
+      if (bytes_read == 0) {
+        return 0;
       }
 
       current_pos_ += bytes_read;
@@ -199,7 +206,7 @@ class DwarfsFileHandle : public FileHandle {
   }
 
  private:
-  dwarfs::reader::filesystem_v2& fs_;  ///< DwarFS filesystem reference
+  dwarfs::reader::filesystem_v2_lite& fs_;  ///< DwarFS filesystem reference
   dwarfs::reader::inode_view inode_;   ///< Inode for this file
   std::string path_;                    ///< Full file path
   int64_t size_;                        ///< File size in bytes
@@ -225,7 +232,7 @@ class DwarfsDirectoryIterator : public DirectoryIterator {
    * @param fs Reference to the DwarFS filesystem
    * @param inode The directory inode
    */
-  DwarfsDirectoryIterator(dwarfs::reader::filesystem_v2& fs,
+  DwarfsDirectoryIterator(dwarfs::reader::filesystem_v2_lite& fs,
                           dwarfs::reader::inode_view dir_inode)
       : fs_(fs), current_index_(0) {
 
@@ -291,7 +298,7 @@ class DwarfsDirectoryIterator : public DirectoryIterator {
   }
 
  private:
-  dwarfs::reader::filesystem_v2& fs_;   ///< DwarFS filesystem reference
+  dwarfs::reader::filesystem_v2_lite& fs_;   ///< DwarFS filesystem reference
   std::vector<DirectoryEntry> entries_;  ///< Directory entries
   size_t current_index_;                 ///< Current iteration position
 };
@@ -308,7 +315,7 @@ class DwarfsDirectoryIterator : public DirectoryIterator {
 class DwarfsBackend::Impl {
  public:
   Impl() : is_mounted_(false), logger_(std::make_shared<dwarfs::stream_logger>()) {
-    logger_->set_threshold(dwarfs::logger::INFO);
+    logger_->set_threshold(dwarfs::LOGGER_LEVEL_INFO);
   }
 
   ~Impl() {
@@ -321,18 +328,24 @@ class DwarfsBackend::Impl {
     }
 
     try {
-      dwarfs::reader::filesystem_options opts;
-      opts.image_offset = dwarfs::reader::filesystem_options::IMAGE_OFFSET_AUTO;
+      // Use filesystem_loader for clean initialization
+      dwarfs::reader::filesystem_load_config config;
+      config.image_path = archive_path;
+      config.cache_size = 512 << 20;   // 512 MiB default
+      config.block_size = 512 << 10;   // 512 KiB default
+      config.num_workers = 2;
+      config.image_offset = std::nullopt;  // Auto-detect
 
       dwarfs::os_access_generic os;
 
-      // Create filesystem from file (opts passed as const&)
-      fs_ = std::make_unique<dwarfs::reader::filesystem_v2>(
-          *logger_, os, std::filesystem::path(archive_path), opts);
+      // Create filesystem using filesystem_loader (returns filesystem_v2_lite)
+      fs_ = std::make_unique<dwarfs::reader::filesystem_v2_lite>(
+          dwarfs::reader::filesystem_loader::load(*logger_, os, config));
 
       is_mounted_ = true;
       return true;
-    } catch (...) {
+    } catch (const std::exception& e) {
+      // Log error for debugging
       return false;
     }
   }
@@ -342,10 +355,11 @@ class DwarfsBackend::Impl {
       return false;
     }
 
-    try {
-      dwarfs::reader::filesystem_options opts;
-      opts.image_offset = 0;  // Memory buffer starts at offset 0
+    if (!data || size == 0) {
+      return false;
+    }
 
+    try {
       // Create memory file view using our internal implementation
       auto mem_view = std::make_shared<tebako::memory_file_view_impl>(
           data, size, "/__tebako_dwarfs__");
@@ -353,8 +367,12 @@ class DwarfsBackend::Impl {
 
       dwarfs::os_access_generic os;
 
-      // Create filesystem from memory (opts passed as const&)
-      fs_ = std::make_unique<dwarfs::reader::filesystem_v2>(
+      // filesystem_loader doesn't support memory views, use direct constructor
+      dwarfs::reader::filesystem_options opts;
+      opts.image_offset = 0;
+      opts.image_size = size;
+
+      fs_ = std::make_unique<dwarfs::reader::filesystem_v2_lite>(
           *logger_, os, view, opts);
 
       is_mounted_ = true;
@@ -376,7 +394,7 @@ class DwarfsBackend::Impl {
     return is_mounted_;
   }
 
-  dwarfs::reader::filesystem_v2* get_fs() {
+  dwarfs::reader::filesystem_v2_lite* get_fs() {
     return fs_.get();
   }
 
@@ -416,7 +434,7 @@ class DwarfsBackend::Impl {
  private:
   bool is_mounted_;
   std::shared_ptr<dwarfs::stream_logger> logger_;
-  std::unique_ptr<dwarfs::reader::filesystem_v2> fs_;
+  std::unique_ptr<dwarfs::reader::filesystem_v2_lite> fs_;
 };
 
 // ===================================================================
@@ -429,42 +447,43 @@ DwarfsBackend::~DwarfsBackend() {
   unmount();
 }
 
-bool DwarfsBackend::mount(const std::string& archive_path,
-                          const std::string& mount_point) {
+Result<void> DwarfsBackend::mount(std::string_view archive_path,
+                                  std::string_view mount_point) {
   std::unique_lock lock(mutex_);
 
   if (impl_->is_mounted()) {
-    return false;  // Already mounted
+    return Err{ErrorCode::AlreadyMounted, "Filesystem already mounted"};
   }
 
-  if (!impl_->mount_file(archive_path)) {
-    return false;
+  std::string archive_path_str(archive_path);
+  if (!impl_->mount_file(archive_path_str)) {
+    return Err{ErrorCode::IOError, "Failed to mount DwarFS archive", archive_path};
   }
 
-  archive_path_ = archive_path;
-  mount_point_ = mount_point;
-  return true;
+  archive_path_ = archive_path_str;
+  mount_point_ = std::string(mount_point);
+  return make_ok();
 }
 
-bool DwarfsBackend::mount_from_memory(const void* data, size_t size,
-                                       const std::string& mount_point) {
+Result<void> DwarfsBackend::mount_from_memory(const void* data, size_t size,
+                                             std::string_view mount_point) {
   std::unique_lock lock(mutex_);
 
   if (impl_->is_mounted()) {
-    return false;  // Already mounted
+    return Err{ErrorCode::AlreadyMounted, "Filesystem already mounted"};
   }
 
   if (!data || size == 0) {
-    return false;  // Invalid parameters
+    return Err{ErrorCode::InvalidArgument, "Invalid memory buffer parameters"};
   }
 
   if (!impl_->mount_memory(data, size)) {
-    return false;
+    return Err{ErrorCode::IOError, "Failed to mount DwarFS archive from memory"};
   }
 
   archive_path_ = "";  // Empty for memory mounts
-  mount_point_ = mount_point;
-  return true;
+  mount_point_ = std::string(mount_point);
+  return make_ok();
 }
 
 void DwarfsBackend::unmount() {
@@ -479,17 +498,17 @@ bool DwarfsBackend::is_mounted() const {
   return impl_->is_mounted();
 }
 
-std::unique_ptr<FileHandle> DwarfsBackend::open(const std::string& path,
-                                                 int flags) {
+Result<std::unique_ptr<FileHandle>> DwarfsBackend::open(std::string_view path,
+                                                       int flags) {
   std::shared_lock lock(mutex_);
 
   if (!impl_->is_mounted()) {
-    return nullptr;
+    return Err{ErrorCode::NotMounted, "Filesystem not mounted"};
   }
 
   // DwarFS backend is read-only - reject write flags
   if ((flags & O_WRONLY) || (flags & O_RDWR)) {
-    return nullptr;
+    return Err{ErrorCode::NotSupported, "Write operations not supported for DwarFS archives"};
   }
 
   std::string rel_path = strip_mount_point(path);
@@ -497,25 +516,28 @@ std::unique_ptr<FileHandle> DwarfsBackend::open(const std::string& path,
 
   auto inode_opt = impl_->find_inode(rel_path);
   if (!inode_opt) {
-    return nullptr;
+    return Err{ErrorCode::NotFound, "File not found", path};
   }
 
   // Verify it's a file, not a directory
   try {
     std::error_code ec;
     auto stat = impl_->get_fs()->getattr(*inode_opt, ec);
-    if (ec || !S_ISREG(stat.mode())) {
-      return nullptr;  // Not a regular file
+    if (ec) {
+      return Err{ErrorCode::IOError, "Failed to get file attributes", path};
+    }
+    if (!S_ISREG(stat.mode())) {
+      return Err{ErrorCode::NotAFile, "Path is not a regular file", path};
     }
 
-    return std::make_unique<DwarfsFileHandle>(
-        *impl_->get_fs(), *inode_opt, path, stat.size());
-  } catch (...) {
-    return nullptr;
+    return Ok<std::unique_ptr<FileHandle>>{std::make_unique<DwarfsFileHandle>(
+        *impl_->get_fs(), *inode_opt, path, stat.size())};
+  } catch (const std::exception& e) {
+    return Err{ErrorCode::IOError, "Failed to open file", path};
   }
 }
 
-bool DwarfsBackend::exists(const std::string& path) const {
+bool DwarfsBackend::exists(std::string_view path) const {
   std::shared_lock lock(mutex_);
 
   if (!impl_->is_mounted()) {
@@ -529,7 +551,7 @@ bool DwarfsBackend::exists(const std::string& path) const {
   return inode_opt.has_value();
 }
 
-bool DwarfsBackend::is_file(const std::string& path) const {
+bool DwarfsBackend::is_file(std::string_view path) const {
   std::shared_lock lock(mutex_);
 
   if (!impl_->is_mounted()) {
@@ -553,7 +575,7 @@ bool DwarfsBackend::is_file(const std::string& path) const {
   }
 }
 
-bool DwarfsBackend::is_directory(const std::string& path) const {
+bool DwarfsBackend::is_directory(std::string_view path) const {
   std::shared_lock lock(mutex_);
 
   if (!impl_->is_mounted()) {
@@ -582,16 +604,16 @@ bool DwarfsBackend::is_directory(const std::string& path) const {
   }
 }
 
-std::unique_ptr<DirectoryIterator> DwarfsBackend::list_directory(
-    const std::string& path) {
+Result<std::unique_ptr<DirectoryIterator>> DwarfsBackend::list_directory(
+    std::string_view path) {
   std::shared_lock lock(mutex_);
 
   if (!impl_->is_mounted()) {
-    return nullptr;
+    return Err{ErrorCode::NotMounted, "Filesystem not mounted"};
   }
 
   if (!is_directory(path)) {
-    return nullptr;
+    return Err{ErrorCode::NotADirectory, "Path is not a directory", path};
   }
 
   std::string rel_path = strip_mount_point(path);
@@ -599,17 +621,18 @@ std::unique_ptr<DirectoryIterator> DwarfsBackend::list_directory(
 
   auto inode_opt = impl_->find_inode(rel_path);
   if (!inode_opt) {
-    return nullptr;
+    return Err{ErrorCode::NotFound, "Directory not found", path};
   }
 
-  return std::make_unique<DwarfsDirectoryIterator>(*impl_->get_fs(), *inode_opt);
+  return Ok<std::unique_ptr<DirectoryIterator>>{
+      std::make_unique<DwarfsDirectoryIterator>(*impl_->get_fs(), *inode_opt)};
 }
 
-int64_t DwarfsBackend::file_size(const std::string& path) const {
+Result<int64_t> DwarfsBackend::file_size(std::string_view path) const {
   std::shared_lock lock(mutex_);
 
   if (!impl_->is_mounted()) {
-    return -1;
+    return Err{ErrorCode::NotMounted, "Filesystem not mounted"};
   }
 
   std::string rel_path = strip_mount_point(path);
@@ -617,30 +640,29 @@ int64_t DwarfsBackend::file_size(const std::string& path) const {
 
   auto inode_opt = impl_->find_inode(rel_path);
   if (!inode_opt) {
-    return -1;
+    return Err{ErrorCode::NotFound, "File not found", path};
   }
 
   try {
     std::error_code ec;
     auto stat = impl_->get_fs()->getattr(*inode_opt, ec);
     if (ec) {
-      return -1;
+      return Err{ErrorCode::IOError, "Failed to get file attributes", path};
     }
-    // Return -1 for directories
     if (S_ISDIR(stat.mode())) {
-      return -1;
+      return Err{ErrorCode::NotAFile, "Path is a directory", path};
     }
-    return static_cast<int64_t>(stat.size());
+    return Ok<int64_t>{static_cast<int64_t>(stat.size())};
   } catch (...) {
-    return -1;
+    return Err{ErrorCode::IOError, "Failed to get file size", path};
   }
 }
 
-time_t DwarfsBackend::modification_time(const std::string& path) const {
+Result<time_t> DwarfsBackend::modification_time(std::string_view path) const {
   std::shared_lock lock(mutex_);
 
   if (!impl_->is_mounted()) {
-    return 0;
+    return Err{ErrorCode::NotMounted, "Filesystem not mounted"};
   }
 
   std::string rel_path = strip_mount_point(path);
@@ -648,23 +670,26 @@ time_t DwarfsBackend::modification_time(const std::string& path) const {
 
   auto inode_opt = impl_->find_inode(rel_path);
   if (!inode_opt) {
-    return 0;
+    return Err{ErrorCode::NotFound, "Path not found", path};
   }
 
   try {
     std::error_code ec;
     auto stat = impl_->get_fs()->getattr(*inode_opt, ec);
-    return ec ? 0 : stat.mtime();
+    if (ec) {
+      return Err{ErrorCode::IOError, "Failed to get file attributes", path};
+    }
+    return Ok<time_t>{stat.mtime()};
   } catch (...) {
-    return 0;
+    return Err{ErrorCode::IOError, "Failed to get modification time", path};
   }
 }
 
-mode_t DwarfsBackend::permissions(const std::string& path) const {
+Result<mode_t> DwarfsBackend::permissions(std::string_view path) const {
   std::shared_lock lock(mutex_);
 
   if (!impl_->is_mounted()) {
-    return 0;
+    return Err{ErrorCode::NotMounted, "Filesystem not mounted"};
   }
 
   std::string rel_path = strip_mount_point(path);
@@ -672,15 +697,18 @@ mode_t DwarfsBackend::permissions(const std::string& path) const {
 
   auto inode_opt = impl_->find_inode(rel_path);
   if (!inode_opt) {
-    return 0;
+    return Err{ErrorCode::NotFound, "Path not found", path};
   }
 
   try {
     std::error_code ec;
     auto stat = impl_->get_fs()->getattr(*inode_opt, ec);
-    return ec ? 0 : (stat.mode() & 0777);
+    if (ec) {
+      return Err{ErrorCode::IOError, "Failed to get file attributes", path};
+    }
+    return Ok<mode_t>{static_cast<mode_t>(stat.mode() & 0777)};
   } catch (...) {
-    return 0;
+    return Err{ErrorCode::IOError, "Failed to get permissions", path};
   }
 }
 
@@ -693,29 +721,29 @@ std::string DwarfsBackend::backend_version() const {
 // Private Helper Methods
 // ===================================================================
 
-std::string DwarfsBackend::strip_mount_point(const std::string& path) const {
+std::string DwarfsBackend::strip_mount_point(std::string_view path) const {
   if (path.size() < mount_point_.size()) {
-    return path;
+    return std::string(path);
   }
 
   if (path.substr(0, mount_point_.size()) == mount_point_) {
-    std::string result = path.substr(mount_point_.size());
+    std::string result(path.substr(mount_point_.size()));
     // Remove leading slash
     if (!result.empty() && result.front() == '/') {
-      result = result.substr(1);
+      result.erase(0, 1);
     }
     return result;
   }
 
-  return path;
+  return std::string(path);
 }
 
-std::string DwarfsBackend::normalize_path(const std::string& path) const {
-  std::string result = path;
+std::string DwarfsBackend::normalize_path(std::string_view path) const {
+  std::string result(path);
 
   // Remove leading slash
   if (!result.empty() && result.front() == '/') {
-    result = result.substr(1);
+    result.erase(0, 1);
   }
 
   // Remove embedded "./" segments
@@ -726,12 +754,12 @@ std::string DwarfsBackend::normalize_path(const std::string& path) const {
 
   // Handle leading "./"
   if (result.size() >= 2 && result[0] == '.' && result[1] == '/') {
-    result = result.substr(2);
+    result.erase(0, 2);
   }
 
   // Remove trailing slash for non-root paths
   if (!result.empty() && result.back() == '/') {
-    result = result.substr(0, result.size() - 1);
+    result.pop_back();
   }
 
   return result;

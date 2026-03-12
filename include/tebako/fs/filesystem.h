@@ -29,9 +29,12 @@
 
 #pragma once
 
+#include <tebako/fs/core/result.h>
+#include <tebako/fs/core/path.h>
+
 #include <cstdint>
 #include <memory>
-#include <string>
+#include <string_view>
 #include <sys/types.h>
 
 namespace tebako {
@@ -48,15 +51,28 @@ class DirectoryIterator;
  * This provides a unified API for mounting, reading, and navigating different
  * archive formats.
  *
+ * All operations that can fail return `Result<T, Error>` for structured error
+ * handling. This provides:
+ * - Clear indication of success/failure
+ * - Machine-readable error codes
+ * - Human-readable error messages with context
+ * - No exceptions for expected error conditions
+ *
  * Thread Safety: All methods must be thread-safe for concurrent access.
  * Implementations should use appropriate synchronization primitives.
  *
  * @example
  * @code
  * auto backend = std::make_unique<ZipBackend>();
- * if (backend->mount("/path/to/archive.zip", "/mnt/app")) {
- *     auto handle = backend->open("/mnt/app/file.txt", O_RDONLY);
- *     // ... use file ...
+ * auto mount_result = backend->mount("/path/to/archive.zip", "/mnt/app");
+ * if (mount_result.is_ok()) {
+ *     auto open_result = backend->open("/mnt/app/file.txt", O_RDONLY);
+ *     if (open_result.is_ok()) {
+ *         auto handle = open_result.unwrap();
+ *         // ... use file ...
+ *     } else {
+ *         std::cerr << "Failed to open: " << open_result.error().full_message() << std::endl;
+ *     }
  *     backend->unmount();
  * }
  * @endcode
@@ -74,12 +90,12 @@ class FileSystem {
    *
    * @param archive_path Path to the archive file (e.g., "/data/app.zip")
    * @param mount_point Virtual mount point (e.g., "/mnt/app")
-   * @return true if mount succeeded, false otherwise
+   * @return Result<void> - success or error with details
    *
    * @note The mount point should be an absolute path
    * @note Multiple archives can be mounted at different mount points
    */
-  virtual bool mount(const std::string& archive_path, const std::string& mount_point) = 0;
+  virtual Result<void> mount(std::string_view archive_path, std::string_view mount_point) = 0;
 
   /**
    * @brief Mount an archive from memory buffer
@@ -90,14 +106,14 @@ class FileSystem {
    * @param data Pointer to archive data in memory
    * @param size Size of archive in bytes
    * @param mount_point Virtual mount point (e.g., "/__tebako__")
-   * @return true if mount succeeded, false otherwise
+   * @return Result<void> - success or error with details
    *
    * @note The caller must ensure 'data' remains valid until unmount()
    * @note Only one archive can be mounted at a time
    * @note The archive path will be empty for memory-mounted filesystems
    */
-  virtual bool mount_from_memory(const void* data, size_t size,
-                                  const std::string& mount_point) = 0;
+  virtual Result<void> mount_from_memory(const void* data, size_t size,
+                                          std::string_view mount_point) = 0;
 
   /**
    * @brief Unmount the filesystem
@@ -123,36 +139,38 @@ class FileSystem {
    *
    * @param path Absolute path to the file within the mounted filesystem
    * @param flags Open flags (e.g., O_RDONLY) - write operations not supported
-   * @return Unique pointer to FileHandle, or nullptr on error
+   * @return Result containing FileHandle or error
    *
    * @note Paths are relative to the mount point
    * @note Only read operations are supported in current implementation
    */
-  virtual std::unique_ptr<FileHandle> open(const std::string& path, int flags) = 0;
+  virtual Result<std::unique_ptr<FileHandle>> open(std::string_view path, int flags) = 0;
 
   /**
    * @brief Check if a path exists
    *
    * @param path Absolute path to check
    * @return true if path exists (file or directory), false otherwise
+   *
+   * @note This returns bool because non-existence is not an error condition
    */
-  virtual bool exists(const std::string& path) const = 0;
+  virtual bool exists(std::string_view path) const = 0;
 
   /**
    * @brief Check if a path is a regular file
    *
    * @param path Absolute path to check
-   * @return true if path is a regular file, false otherwise
+   * @return true if path is a regular file, false otherwise (including if not found)
    */
-  virtual bool is_file(const std::string& path) const = 0;
+  virtual bool is_file(std::string_view path) const = 0;
 
   /**
    * @brief Check if a path is a directory
    *
    * @param path Absolute path to check
-   * @return true if path is a directory, false otherwise
+   * @return true if path is a directory, false otherwise (including if not found)
    */
-  virtual bool is_directory(const std::string& path) const = 0;
+  virtual bool is_directory(std::string_view path) const = 0;
 
   // ===================================================================
   // Directory Operations
@@ -162,12 +180,12 @@ class FileSystem {
    * @brief List contents of a directory
    *
    * @param path Absolute path to the directory
-   * @return Unique pointer to DirectoryIterator, or nullptr on error
+   * @return Result containing DirectoryIterator or error
    *
    * @note The iterator remains valid until the filesystem is unmounted
    * @note Use the iterator's has_next() and next() methods to traverse entries
    */
-  virtual std::unique_ptr<DirectoryIterator> list_directory(const std::string& path) = 0;
+  virtual Result<std::unique_ptr<DirectoryIterator>> list_directory(std::string_view path) = 0;
 
   // ===================================================================
   // Metadata Operations
@@ -177,25 +195,25 @@ class FileSystem {
    * @brief Get the size of a file in bytes
    *
    * @param path Absolute path to the file
-   * @return File size in bytes, or -1 on error
+   * @return Result containing file size or error
    */
-  virtual int64_t file_size(const std::string& path) const = 0;
+  virtual Result<int64_t> file_size(std::string_view path) const = 0;
 
   /**
    * @brief Get the modification time of a file
    *
    * @param path Absolute path to the file
-   * @return Modification time as Unix timestamp, or 0 on error
+   * @return Result containing modification time or error
    */
-  virtual time_t modification_time(const std::string& path) const = 0;
+  virtual Result<time_t> modification_time(std::string_view path) const = 0;
 
   /**
    * @brief Get the permissions of a file
    *
    * @param path Absolute path to the file
-   * @return File permissions as mode_t, or 0 on error
+   * @return Result containing permissions or error
    */
-  virtual mode_t permissions(const std::string& path) const = 0;
+  virtual Result<mode_t> permissions(std::string_view path) const = 0;
 
   // ===================================================================
   // Backend Information

@@ -123,7 +123,7 @@ int mount_root_memfs(const void* data,
       fs = sync_tebako_memfs_table::get_tebako_memfs_table().get(0);
       if (fs->load(image_offset) == 0) {
         ret = 0;
-        tebako_init_cwd(memfs::logger(), memfs::options().debuglevel >= logger::DEBUG);
+        tebako_init_cwd(memfs::logger(), memfs::options().debuglevel >= dwarfs::LOGGER_LEVEL_DEBUG);
       }
       else {
         sync_tebako_memfs_table::get_tebako_memfs_table().erase(0);

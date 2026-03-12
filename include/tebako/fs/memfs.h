@@ -31,9 +31,9 @@
 
 #include <dwarfs/error.h>
 #include <dwarfs/file_stat.h>
+#include <dwarfs/logger_level.h>
 #include <dwarfs/reader/filesystem_v2.h>
 #include <dwarfs/fstypes.h>
-#include <dwarfs/reader/internal/metadata_v2.h>
 #include <dwarfs/reader/mlock_mode.h>
 #include <dwarfs/logger.h>
 #include <dwarfs/reader/filesystem_options.h>
@@ -51,7 +51,7 @@ struct memfs_options {
   size_t workers{2};
   dwarfs::reader::mlock_mode lock_mode{dwarfs::reader::mlock_mode::NONE};
   double decompress_ratio{0.8};
-  dwarfs::logger::level_type debuglevel{dwarfs::logger::INFO};
+  dwarfs::logger::level_type debuglevel{dwarfs::LOGGER_LEVEL_INFO};
 };
 
 class memfs {

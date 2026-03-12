@@ -46,6 +46,9 @@ namespace fs = std::filesystem;
  * @brief Test fixture for C API tests
  *
  * Creates a temporary ZIP archive for testing C API functionality.
+ *
+ * NOTE: These tests share global C API state and must be serialized.
+ * CMakeLists.txt uses RESOURCE_LOCK to ensure this.
  */
 class CApiTest : public ::testing::Test {
 protected:

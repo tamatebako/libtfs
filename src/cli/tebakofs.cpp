@@ -253,8 +253,10 @@ std::unique_ptr<FileSystem> TebakofsCLI::open_archive(const std::string& path) {
       return nullptr;
     }
 
-    if (!backend->mount(path, "/mnt")) {
+    auto mount_result = backend->mount(path, "/mnt");
+    if (mount_result.is_err()) {
       std::cerr << "Error: Failed to mount archive: " << path << std::endl;
+      std::cerr << "       " << mount_result.error().message << std::endl;
       return nullptr;
     }
 
@@ -292,8 +294,13 @@ int TebakofsCLI::cmd_ls(const std::string& archive, const std::string& path,
     entry.name = path.substr(path.find_last_of('/') + 1);
     if (entry.name.empty()) entry.name = path;
     entry.is_directory = false;
-    entry.size = fs->file_size(full_path);
-    entry.mtime = fs->modification_time(full_path);
+
+    auto size_result = fs->file_size(full_path);
+    entry.size = size_result.is_ok() ? size_result.unwrap() : 0;
+
+    auto mtime_result = fs->modification_time(full_path);
+    entry.mtime = mtime_result.is_ok() ? mtime_result.unwrap() : 0;
+
     print_entry(entry, path, opts.long_format);
     return 0;
   }
@@ -303,11 +310,12 @@ int TebakofsCLI::cmd_ls(const std::string& archive, const std::string& path,
     list_recursive(fs.get(), full_path, "", opts.long_format);
   } else {
     // Single directory listing
-    auto iter = fs->list_directory(full_path);
-    if (!iter) {
+    auto iter_result = fs->list_directory(full_path);
+    if (iter_result.is_err()) {
       std::cerr << "Error: Failed to list directory: " << path << std::endl;
       return 1;
     }
+    auto iter = std::move(iter_result).unwrap();
 
     while (iter->has_next()) {
       auto entry = iter->next();
@@ -323,8 +331,9 @@ int TebakofsCLI::cmd_ls(const std::string& archive, const std::string& path,
 
 void TebakofsCLI::list_recursive(FileSystem* fs, const std::string& path,
                                  const std::string& prefix, bool long_format) {
-  auto iter = fs->list_directory(path);
-  if (!iter) return;
+  auto iter_result = fs->list_directory(path);
+  if (iter_result.is_err()) return;
+  auto iter = std::move(iter_result).unwrap();
 
   while (iter->has_next()) {
     auto entry = iter->next();
@@ -374,8 +383,9 @@ int TebakofsCLI::cmd_info(const std::string& archive, const CLIOptions& opts) {
   int64_t total_size = 0;
 
   std::function<void(const std::string&)> count_recursive = [&](const std::string& path) {
-    auto iter = fs->list_directory(path);
-    if (!iter) return;
+    auto iter_result = fs->list_directory(path);
+    if (iter_result.is_err()) return;
+    auto iter = std::move(iter_result).unwrap();
 
     while (iter->has_next()) {
       auto entry = iter->next();
@@ -422,11 +432,12 @@ int TebakofsCLI::cmd_cat(const std::string& archive, const std::string& file,
     return 1;
   }
 
-  auto handle = fs->open(full_path, O_RDONLY);
-  if (!handle) {
+  auto handle_result = fs->open(full_path, O_RDONLY);
+  if (handle_result.is_err()) {
     std::cerr << "Error: Failed to open file: " << file << std::endl;
     return 1;
   }
+  auto handle = std::move(handle_result).unwrap();
 
   char buffer[4096];
   while (true) {
@@ -466,8 +477,9 @@ int TebakofsCLI::cmd_tree(const std::string& archive, const std::string& path,
 
 void TebakofsCLI::print_tree(FileSystem* fs, const std::string& path,
                              int depth, const std::string& prefix) {
-  auto iter = fs->list_directory(path);
-  if (!iter) return;
+  auto iter_result = fs->list_directory(path);
+  if (iter_result.is_err()) return;
+  auto iter = std::move(iter_result).unwrap();
 
   std::vector<DirectoryEntry> entries;
   while (iter->has_next()) {
@@ -513,12 +525,18 @@ int TebakofsCLI::cmd_stat(const std::string& archive, const std::string& path,
   std::cout << "Type: " << (fs->is_directory(full_path) ? "directory" : "file") << std::endl;
 
   if (!fs->is_directory(full_path)) {
-    int64_t size = fs->file_size(full_path);
-    std::cout << "Size: " << format_size(size) << " (" << size << " bytes)" << std::endl;
-  }
+    auto size_result = fs->file_size(full_path);
+    if (size_result.is_ok()) {
+      int64_t size = size_result.unwrap();
+      std::cout << "Size: " << format_size(size) << " (" << size << " bytes)" << std::endl;
+    }
 
-  time_t mtime = fs->modification_time(full_path);
-  std::cout << "Modified: " << format_time(mtime) << std::endl;
+    auto mtime_result = fs->modification_time(full_path);
+    if (mtime_result.is_ok()) {
+      time_t mtime = mtime_result.unwrap();
+      std::cout << "Modified: " << format_time(mtime) << std::endl;
+    }
+  }
 
   return 0;
 }
@@ -609,11 +627,12 @@ bool TebakofsCLI::extract_file(FileSystem* fs, const std::string& src,
     system(cmd.c_str());
   }
 
-  auto handle = fs->open(src, O_RDONLY);
-  if (!handle) {
+  auto handle_result = fs->open(src, O_RDONLY);
+  if (handle_result.is_err()) {
     std::cerr << "Error: Failed to open file: " << src << std::endl;
     return false;
   }
+  auto handle = std::move(handle_result).unwrap();
 
   std::ofstream out(dest, std::ios::binary);
   if (!out) {
@@ -637,11 +656,12 @@ bool TebakofsCLI::extract_directory(FileSystem* fs, const std::string& src,
   std::string cmd = "mkdir -p \"" + dest + "\"";
   system(cmd.c_str());
 
-  auto iter = fs->list_directory(src);
-  if (!iter) {
+  auto iter_result = fs->list_directory(src);
+  if (iter_result.is_err()) {
     std::cerr << "Error: Failed to list directory: " << src << std::endl;
     return false;
   }
+  auto iter = std::move(iter_result).unwrap();
 
   bool all_success = true;
   while (iter->has_next()) {
@@ -669,8 +689,9 @@ int TebakofsCLI::cmd_find(const std::string& archive, const std::string& pattern
   if (!fs) return 1;
 
   std::function<void(const std::string&)> search_recursive = [&](const std::string& path) {
-    auto iter = fs->list_directory(path);
-    if (!iter) return;
+    auto iter_result = fs->list_directory(path);
+    if (iter_result.is_err()) return;
+    auto iter = std::move(iter_result).unwrap();
 
     while (iter->has_next()) {
       auto entry = iter->next();

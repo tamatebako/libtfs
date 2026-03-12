@@ -152,12 +152,14 @@ TEST_F(BackendFactoryZipTest, FactoryCreatesMountReadsFile) {
   ASSERT_NE(backend, nullptr);
 
   // Mount archive
-  ASSERT_TRUE(backend->mount(path, mount_point));
+  auto mount_result = backend->mount(path, mount_point);
+  ASSERT_TRUE(mount_result.is_ok());
   EXPECT_TRUE(backend->is_mounted());
 
   // Read file
-  auto handle = backend->open(mount_point + "/test.txt", O_RDONLY);
-  ASSERT_NE(handle, nullptr);
+  auto handle_result = backend->open(mount_point + "/test.txt", O_RDONLY);
+  ASSERT_TRUE(handle_result.is_ok());
+  auto handle = std::move(handle_result).unwrap();
 
   char buffer[256] = {0};
   ssize_t bytes_read = handle->read(buffer, sizeof(buffer) - 1);
@@ -174,12 +176,14 @@ TEST_F(BackendFactoryZipTest, FactoryHandlesMultipleZipArchives) {
   // Create backend for first archive
   auto backend1 = BackendFactory::create_from_file(fixtures_path + "simple.zip");
   ASSERT_NE(backend1, nullptr);
-  ASSERT_TRUE(backend1->mount(fixtures_path + "simple.zip", "/mnt/archive1"));
+  auto mount1 = backend1->mount(fixtures_path + "simple.zip", "/mnt/archive1");
+  ASSERT_TRUE(mount1.is_ok());
 
   // Create backend for second archive
   auto backend2 = BackendFactory::create_from_file(fixtures_path + "nested.zip");
   ASSERT_NE(backend2, nullptr);
-  ASSERT_TRUE(backend2->mount(fixtures_path + "nested.zip", "/mnt/archive2"));
+  auto mount2 = backend2->mount(fixtures_path + "nested.zip", "/mnt/archive2");
+  ASSERT_TRUE(mount2.is_ok());
 
   // Both should be mounted simultaneously
   EXPECT_TRUE(backend1->is_mounted());
@@ -203,7 +207,8 @@ TEST_F(BackendFactoryZipTest, FactoryAutoDetectsAndInstantiates) {
   EXPECT_EQ(backend->backend_name(), "ZIP");
 
   // Should be able to mount and use
-  ASSERT_TRUE(backend->mount(path, mount_point));
+  auto mount_result = backend->mount(path, mount_point);
+  ASSERT_TRUE(mount_result.is_ok());
   EXPECT_TRUE(backend->exists(mount_point + "/test.txt"));
 
   backend->unmount();

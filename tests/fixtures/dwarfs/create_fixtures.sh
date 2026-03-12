@@ -20,7 +20,8 @@ if [ -d "$SOURCE_DIR/simple" ]; then
     mkdwarfs -i "$SOURCE_DIR/simple" \
              -o simple.dwarfs \
              -l 9 \
-             --no-progress
+             --no-progress \
+             --force
     echo "✓ simple.dwarfs created"
 else
     echo "✗ Source directory $SOURCE_DIR/simple not found"
@@ -33,7 +34,8 @@ if [ -d "$SOURCE_DIR/nested" ]; then
     mkdwarfs -i "$SOURCE_DIR/nested" \
              -o nested.dwarfs \
              -l 9 \
-             --no-progress
+             --no-progress \
+             --force
     echo "✓ nested.dwarfs created"
 else
     echo "✗ Source directory $SOURCE_DIR/nested not found"
@@ -46,7 +48,8 @@ if [ -d "$SOURCE_DIR/permissions" ]; then
     mkdwarfs -i "$SOURCE_DIR/permissions" \
              -o permissions.dwarfs \
              -l 9 \
-             --no-progress
+             --no-progress \
+             --force
     echo "✓ permissions.dwarfs created"
 else
     echo "✗ Source directory $SOURCE_DIR/permissions not found"
@@ -59,7 +62,8 @@ if [ -d "$SOURCE_DIR/large" ]; then
     mkdwarfs -i "$SOURCE_DIR/large" \
              -o large.dwarfs \
              -l 9 \
-             --no-progress
+             --no-progress \
+             --force
     echo "✓ large.dwarfs created"
 else
     echo "✗ Source directory $SOURCE_DIR/large not found"
@@ -71,7 +75,8 @@ echo "Creating empty.dwarfs..."
 if [ -d "$SOURCE_DIR/empty" ]; then
     mkdwarfs -i "$SOURCE_DIR/empty" \
              -o empty.dwarfs \
-             --no-progress
+             --no-progress \
+             --force
     echo "✓ empty.dwarfs created"
 else
     echo "✗ Source directory $SOURCE_DIR/empty not found"

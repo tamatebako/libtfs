@@ -63,7 +63,8 @@ TEST_F(UnifiedInterfaceTest, IdenticalAPIBehavior) {
 
     // Mount the archive - use unique mount point for each backend
     std::string mount_point = "/mnt/test" + std::to_string(++test_id);
-    ASSERT_TRUE(bt.backend->mount(bt.archive_path, mount_point));
+    auto mount_result = bt.backend->mount(bt.archive_path, mount_point);
+    ASSERT_TRUE(mount_result.is_ok());
 
     // Test exists
     EXPECT_TRUE(bt.backend->exists(mount_point));
@@ -72,8 +73,9 @@ TEST_F(UnifiedInterfaceTest, IdenticalAPIBehavior) {
     EXPECT_TRUE(bt.backend->is_directory(mount_point));
 
     // Test list_directory
-    auto iter = bt.backend->list_directory(mount_point);
-    ASSERT_NE(iter, nullptr);
+    auto iter_result = bt.backend->list_directory(mount_point);
+    ASSERT_TRUE(iter_result.is_ok());
+    auto iter = std::move(iter_result).unwrap();
     EXPECT_TRUE(iter->has_next());
 
     // Get first entry and test file operations
@@ -85,12 +87,14 @@ TEST_F(UnifiedInterfaceTest, IdenticalAPIBehavior) {
       EXPECT_TRUE(bt.backend->is_file(file_path));
 
       // Test file_size
-      auto size = bt.backend->file_size(file_path);
-      EXPECT_GT(size, 0);
+      auto size_result = bt.backend->file_size(file_path);
+      ASSERT_TRUE(size_result.is_ok());
+      EXPECT_GT(size_result.unwrap(), 0);
 
       // Test open
-      auto handle = bt.backend->open(file_path, O_RDONLY);
-      ASSERT_NE(handle, nullptr);
+      auto handle_result = bt.backend->open(file_path, O_RDONLY);
+      ASSERT_TRUE(handle_result.is_ok());
+      auto handle = std::move(handle_result).unwrap();
 
       // Test read
       char buffer[1024];
@@ -131,7 +135,8 @@ TEST_F(UnifiedInterfaceTest, PolymorphicBehavior) {
 
     // All virtual methods should work correctly
     std::string mount_point = "/mnt/test";
-    EXPECT_TRUE(bt.backend->mount(bt.archive_path, mount_point));
+    auto mount_result = bt.backend->mount(bt.archive_path, mount_point);
+    EXPECT_TRUE(mount_result.is_ok());
 
     // Test that backend-specific implementations are called
     EXPECT_FALSE(bt.backend->backend_name().empty());
@@ -175,15 +180,16 @@ TEST_F(UnifiedInterfaceTest, ConsistentErrorHandling) {
     SCOPED_TRACE("Testing error handling for: " + bt.backend->backend_name());
 
     std::string mount_point = "/mnt/test";
-    ASSERT_TRUE(bt.backend->mount(bt.archive_path, mount_point));
+    auto mount_result = bt.backend->mount(bt.archive_path, mount_point);
+    ASSERT_TRUE(mount_result.is_ok());
 
     // Non-existent file
     EXPECT_FALSE(bt.backend->exists(mount_point + "/nonexistent.txt"));
     EXPECT_FALSE(bt.backend->is_file(mount_point + "/nonexistent.txt"));
 
-    // Open non-existent file should return nullptr
-    auto handle = bt.backend->open(mount_point + "/nonexistent.txt", O_RDONLY);
-    EXPECT_EQ(handle, nullptr);
+    // Open non-existent file should return error
+    auto handle_result = bt.backend->open(mount_point + "/nonexistent.txt", O_RDONLY);
+    EXPECT_TRUE(handle_result.is_err());
 
     bt.backend->unmount();
     EXPECT_FALSE(bt.backend->is_mounted());
@@ -207,10 +213,12 @@ TEST_F(UnifiedInterfaceTest, MetadataConsistency) {
     SCOPED_TRACE("Testing metadata for: " + bt.backend->backend_name());
 
     std::string mount_point = "/mnt/test";
-    ASSERT_TRUE(bt.backend->mount(bt.archive_path, mount_point));
+    auto mount_result = bt.backend->mount(bt.archive_path, mount_point);
+    ASSERT_TRUE(mount_result.is_ok());
 
-    auto iter = bt.backend->list_directory(mount_point);
-    ASSERT_NE(iter, nullptr);
+    auto iter_result = bt.backend->list_directory(mount_point);
+    ASSERT_TRUE(iter_result.is_ok());
+    auto iter = std::move(iter_result).unwrap();
 
     if (iter->has_next()) {
       auto entry = iter->next();
@@ -218,14 +226,14 @@ TEST_F(UnifiedInterfaceTest, MetadataConsistency) {
 
       if (!entry.is_directory) {
         // All backends should provide these metadata
-        auto size = bt.backend->file_size(path);
-        EXPECT_GE(size, 0);
+        auto size_result = bt.backend->file_size(path);
+        EXPECT_TRUE(size_result.is_ok());
 
-        auto mtime = bt.backend->modification_time(path);
-        EXPECT_GE(mtime, 0);
+        auto mtime_result = bt.backend->modification_time(path);
+        EXPECT_TRUE(mtime_result.is_ok());
 
-        auto perms = bt.backend->permissions(path);
-        EXPECT_GE(perms, 0);
+        auto perms_result = bt.backend->permissions(path);
+        EXPECT_TRUE(perms_result.is_ok());
       }
     }
 

@@ -63,7 +63,7 @@ class ZipFileHandle : public FileHandle {
    * @param index ZIP entry index
    * @param path Full path to the file
    */
-  ZipFileHandle(struct zip* archive, int64_t index, const std::string& path)
+  ZipFileHandle(struct zip* archive, int64_t index, std::string_view path)
       : archive_(archive),
         index_(index),
         path_(path),
@@ -406,35 +406,36 @@ ZipBackend::~ZipBackend() {
   unmount();
 }
 
-bool ZipBackend::mount(const std::string& archive_path,
-                       const std::string& mount_point) {
+Result<void> ZipBackend::mount(std::string_view archive_path,
+                               std::string_view mount_point) {
   std::unique_lock lock(mutex_);
 
   if (archive_) {
-    return false;  // Already mounted
+    return Err{ErrorCode::AlreadyMounted, "Filesystem already mounted"};
   }
 
   int error = 0;
-  archive_ = zip_open(archive_path.c_str(), ZIP_RDONLY, &error);
+  std::string archive_path_str(archive_path);
+  archive_ = zip_open(archive_path_str.c_str(), ZIP_RDONLY, &error);
   if (!archive_) {
-    return false;
+    return Err{ErrorCode::IOError, "Failed to open ZIP archive", archive_path};
   }
 
-  archive_path_ = archive_path;
-  mount_point_ = mount_point;
-  return true;
+  archive_path_ = archive_path_str;
+  mount_point_ = std::string(mount_point);
+  return make_ok();
 }
 
-bool ZipBackend::mount_from_memory(const void* data, size_t size,
-                                    const std::string& mount_point) {
+Result<void> ZipBackend::mount_from_memory(const void* data, size_t size,
+                                            std::string_view mount_point) {
   std::unique_lock lock(mutex_);
 
   if (archive_) {
-    return false;  // Already mounted
+    return Err{ErrorCode::AlreadyMounted, "Filesystem already mounted"};
   }
 
   if (!data || size == 0) {
-    return false;  // Invalid parameters
+    return Err{ErrorCode::InvalidArgument, "Invalid memory buffer parameters"};
   }
 
   // Create zip source from memory buffer
@@ -447,20 +448,20 @@ bool ZipBackend::mount_from_memory(const void* data, size_t size,
   );
 
   if (!src) {
-    return false;
+    return Err{ErrorCode::OutOfMemory, "Failed to create ZIP source from memory"};
   }
 
   // Open archive from source
   archive_ = zip_open_from_source(src, ZIP_RDONLY, &error);
   if (!archive_) {
     zip_source_free(src);
-    return false;
+    return Err{ErrorCode::CorruptedArchive, "Failed to open ZIP archive from memory"};
   }
 
   // Store details (archive_path is empty for memory mounts)
   archive_path_ = "";
-  mount_point_ = mount_point;
-  return true;
+  mount_point_ = std::string(mount_point);
+  return make_ok();
 }
 
 void ZipBackend::unmount() {
@@ -480,39 +481,39 @@ bool ZipBackend::is_mounted() const {
   return archive_ != nullptr;
 }
 
-std::unique_ptr<FileHandle> ZipBackend::open(const std::string& path,
-                                             int flags) {
+Result<std::unique_ptr<FileHandle>> ZipBackend::open(std::string_view path,
+                                                      int flags) {
   std::shared_lock lock(mutex_);
 
   if (!archive_) {
-    return nullptr;
+    return Err{ErrorCode::NotMounted, "Filesystem not mounted"};
   }
 
   // ZIP backend is read-only - reject write flags
   if ((flags & O_WRONLY) || (flags & O_RDWR)) {
-    return nullptr;
+    return Err{ErrorCode::NotSupported, "Write operations not supported for ZIP archives"};
   }
 
   std::string rel_path = strip_mount_point(path);
   int64_t index = locate_entry(rel_path);
   if (index < 0) {
-    return nullptr;
+    return Err{ErrorCode::NotFound, "File not found", path};
   }
 
   // Verify it's a file, not a directory
   const char* entry_name = zip_get_name(archive_, index, 0);
   if (entry_name && entry_name[strlen(entry_name) - 1] == '/') {
-    return nullptr;  // It's a directory
+    return Err{ErrorCode::NotAFile, "Path is a directory, not a file", path};
   }
 
   try {
-    return std::make_unique<ZipFileHandle>(archive_, index, path);
-  } catch (...) {
-    return nullptr;
+    return Ok<std::unique_ptr<FileHandle>>{std::make_unique<ZipFileHandle>(archive_, index, path)};
+  } catch (const std::exception& e) {
+    return Err{ErrorCode::IOError, "Failed to open file", path};
   }
 }
 
-bool ZipBackend::exists(const std::string& path) const {
+bool ZipBackend::exists(std::string_view path) const {
   std::shared_lock lock(mutex_);
 
   if (!archive_) {
@@ -529,7 +530,7 @@ bool ZipBackend::exists(const std::string& path) const {
   return locate_entry(rel_path) >= 0;
 }
 
-bool ZipBackend::is_file(const std::string& path) const {
+bool ZipBackend::is_file(std::string_view path) const {
   std::shared_lock lock(mutex_);
 
   if (!archive_) {
@@ -551,7 +552,7 @@ bool ZipBackend::is_file(const std::string& path) const {
   return entry_name[strlen(entry_name) - 1] != '/';
 }
 
-bool ZipBackend::is_directory(const std::string& path) const {
+bool ZipBackend::is_directory(std::string_view path) const {
   std::shared_lock lock(mutex_);
 
   if (!archive_) {
@@ -595,90 +596,113 @@ bool ZipBackend::is_directory(const std::string& path) const {
   return false;
 }
 
-std::unique_ptr<DirectoryIterator> ZipBackend::list_directory(
-    const std::string& path) {
+Result<std::unique_ptr<DirectoryIterator>> ZipBackend::list_directory(
+    std::string_view path) {
   std::shared_lock lock(mutex_);
 
   if (!archive_) {
-    return nullptr;
-  }
-
-  if (!is_directory(path)) {
-    return nullptr;
+    return Err{ErrorCode::NotMounted, "Filesystem not mounted"};
   }
 
   std::string rel_path = strip_mount_point(path);
-  return std::make_unique<ZipDirectoryIterator>(archive_, rel_path);
+
+  // Root directory always exists
+  if (rel_path.empty() || rel_path == "/") {
+    return Ok<std::unique_ptr<DirectoryIterator>>{std::make_unique<ZipDirectoryIterator>(archive_, rel_path)};
+  }
+
+  // Check if path exists as a directory (with trailing slash)
+  std::string dir_path = rel_path;
+  if (dir_path.back() != '/') {
+    dir_path += '/';
+  }
+
+  if (locate_entry(dir_path) >= 0) {
+    // It's a directory, return the iterator
+    return Ok<std::unique_ptr<DirectoryIterator>>{std::make_unique<ZipDirectoryIterator>(archive_, dir_path)};
+  }
+
+  // Check if path exists as a file (without trailing slash)
+  if (locate_entry(rel_path) >= 0) {
+    // Path exists but is a file, not a directory
+    return Err{ErrorCode::NotADirectory, "Path is not a directory", path};
+  }
+
+  // Path doesn't exist at all
+  return Err{ErrorCode::NotFound, "Path not found", path};
 }
 
-int64_t ZipBackend::file_size(const std::string& path) const {
+Result<int64_t> ZipBackend::file_size(std::string_view path) const {
   std::shared_lock lock(mutex_);
 
   if (!archive_) {
-    return -1;
+    return Err{ErrorCode::NotMounted, "Filesystem not mounted"};
   }
 
   std::string rel_path = strip_mount_point(path);
   int64_t index = locate_entry(rel_path);
   if (index < 0) {
-    return -1;
+    return Err{ErrorCode::NotFound, "File not found", path};
   }
 
   struct zip_stat stat;
   zip_stat_init(&stat);
   if (zip_stat_index(archive_, index, 0, &stat) != 0) {
-    return -1;
+    return Err{ErrorCode::IOError, "Failed to get file stats", path};
   }
 
   if (stat.valid & ZIP_STAT_SIZE) {
-    return static_cast<int64_t>(stat.size);
+    return Ok<int64_t>{static_cast<int64_t>(stat.size)};
   }
 
-  return -1;
+  return Err{ErrorCode::IOError, "File size not available", path};
 }
 
-time_t ZipBackend::modification_time(const std::string& path) const {
+Result<time_t> ZipBackend::modification_time(std::string_view path) const {
   std::shared_lock lock(mutex_);
 
   if (!archive_) {
-    return 0;
+    return Err{ErrorCode::NotMounted, "Filesystem not mounted"};
   }
 
   std::string rel_path = strip_mount_point(path);
   int64_t index = locate_entry(rel_path);
   if (index < 0) {
-    return 0;
+    return Err{ErrorCode::NotFound, "File not found", path};
   }
 
   struct zip_stat stat;
   zip_stat_init(&stat);
   if (zip_stat_index(archive_, index, 0, &stat) != 0) {
-    return 0;
+    return Err{ErrorCode::IOError, "Failed to get file stats", path};
   }
 
   if (stat.valid & ZIP_STAT_MTIME) {
-    return static_cast<time_t>(stat.mtime);
+    return Ok<time_t>{static_cast<time_t>(stat.mtime)};
   }
 
-  return 0;
+  return Err{ErrorCode::IOError, "Modification time not available", path};
 }
 
-mode_t ZipBackend::permissions(const std::string& path) const {
+Result<mode_t> ZipBackend::permissions(std::string_view path) const {
   std::shared_lock lock(mutex_);
 
   if (!archive_) {
-    return 0;
+    return Err{ErrorCode::NotMounted, "Filesystem not mounted"};
+  }
+
+  // Check if path exists
+  if (!exists(path)) {
+    return Err{ErrorCode::NotFound, "Path not found", path};
   }
 
   // ZIP archives don't reliably store POSIX permissions
   // Return default permissions
   if (is_directory(path)) {
-    return 0755;  // rwxr-xr-x for directories
-  } else if (is_file(path)) {
-    return 0644;  // rw-r--r-- for files
+    return Ok<mode_t>{0755};  // rwxr-xr-x for directories
+  } else {
+    return Ok<mode_t>{0644};  // rw-r--r-- for files
   }
-
-  return 0;
 }
 
 std::string ZipBackend::backend_version() const {
@@ -689,7 +713,7 @@ std::string ZipBackend::backend_version() const {
 // Private Helper Methods
 // ===================================================================
 
-int64_t ZipBackend::locate_entry(const std::string& path) const {
+int64_t ZipBackend::locate_entry(std::string_view path) const {
   if (!archive_) {
     return -1;
   }
@@ -714,35 +738,35 @@ int64_t ZipBackend::locate_entry(const std::string& path) const {
   return -1;
 }
 
-std::string ZipBackend::strip_mount_point(const std::string& path) const {
+std::string ZipBackend::strip_mount_point(std::string_view path) const {
   if (path.size() < mount_point_.size()) {
-    return path;
+    return std::string(path);
   }
 
   if (path.substr(0, mount_point_.size()) == mount_point_) {
-    std::string result = path.substr(mount_point_.size());
+    std::string result(path.substr(mount_point_.size()));
     // Remove leading slash
     if (!result.empty() && result.front() == '/') {
-      result = result.substr(1);
+      result.erase(0, 1);
     }
     return result;
   }
 
-  return path;
+  return std::string(path);
 }
 
-std::string ZipBackend::normalize_path(const std::string& path) const {
-  std::string result = path;
+std::string ZipBackend::normalize_path(std::string_view path) const {
+  std::string result(path);
 
   // Remove leading slash
   if (!result.empty() && result.front() == '/') {
-    result = result.substr(1);
+    result.erase(0, 1);
   }
 
   return result;
 }
 
-bool ZipBackend::is_directory_entry(const std::string& path) const {
+bool ZipBackend::is_directory_entry(std::string_view path) const {
   return !path.empty() && path.back() == '/';
 }
 
