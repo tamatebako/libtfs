@@ -1,0 +1,12 @@
+# This is a generated file and its contents are an internal implementation detail.
+# The download step will be re-executed if anything in this file changes.
+# No other meaning or use of this file is supported.
+
+method=url
+command=/opt/homebrew/bin/cmake;-DCMAKE_MESSAGE_LOG_LEVEL=VERBOSE;-P;/Users/mulgogi/src/tamatebako/libdwarfs/src/_libarchive-stamp/download-_libarchive.cmake;COMMAND;/opt/homebrew/bin/cmake;-DCMAKE_MESSAGE_LOG_LEVEL=VERBOSE;-P;/Users/mulgogi/src/tamatebako/libdwarfs/src/_libarchive-stamp/verify-_libarchive.cmake;COMMAND;/opt/homebrew/bin/cmake;-DCMAKE_MESSAGE_LOG_LEVEL=VERBOSE;-P;/Users/mulgogi/src/tamatebako/libdwarfs/src/_libarchive-stamp/extract-_libarchive.cmake
+source_dir=/Users/mulgogi/src/tamatebako/libdwarfs/src/_libarchive
+work_dir=/Users/mulgogi/src/tamatebako/libdwarfs/src
+url(s)=https://www.libarchive.org/downloads/libarchive-3.7.9.tar.xz
+hash=SHA256=ed8b5732e4cd6e30fae909fb945cad8ff9cb7be5c6cdaa3944ec96e4a200c04c
+      no_extract=
+

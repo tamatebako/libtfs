@@ -428,9 +428,13 @@ add_library(tfs STATIC
     "src/backends/dwarfs_backend.cpp"
     "src/internal/memory_file_view.cpp"
     "src/internal/memory_file_segment.cpp"
+    "src/core/path.cpp"
+    "src/core/config.cpp"
     # "src/backends/squashfs_backend.cpp"  # TODO: Re-enable once squashfs-tools-ng is available
     # Modern C API implementation (replaces old file-ctl/dir-ctl/file-io/dir-io)
     "src/c_api.cpp"
+    "src/c_api/fs_context.cpp"
+    "src/backend_registry.cpp"
     "include/tebako-cmdline.h"
     "include/tebako-common.h"
     "include/tebako-config.h"
@@ -455,6 +459,7 @@ add_library(tfs STATIC
     "include/tebako/fs/internal/memory_file_segment.h"
     # "include/tebako/fs/backends/squashfs_backend.h"  # TODO: Re-enable
     "include/tebako/fs/c_api.h"
+    "include/tebako/fs/backend_registry.h"
   )
 
 if(RB_W32)
@@ -467,6 +472,16 @@ endif(RB_W32)
 
 # Link the pure C helper library to tfs
 target_link_libraries(tfs PUBLIC tebako_dirent_helper_c)
+
+# IMPORTANT: Add vcpkg include directories FIRST (BEFORE any system includes)
+# This ensures vcpkg headers take precedence over Homebrew/system headers
+# which is critical when both provide the same package (e.g., dwarfs)
+# Use PRIVATE since this is only needed for compiling tfs, not for consumers
+if(VCPKG_INSTALLED_DIR AND VCPKG_TARGET_TRIPLET)
+  target_include_directories(tfs BEFORE PRIVATE
+    "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/include"
+  )
+endif()
 
 # Find and link libzip (provided by vcpkg)
 find_package(libzip CONFIG REQUIRED)
@@ -765,7 +780,9 @@ if (WITH_TESTS)
     dwarfs::dwarfs_reader
     dwarfs::dwarfs_common
   )
-  gtest_add_tests(TARGET test_c_api)
+  gtest_add_tests(TARGET test_c_api TEST_LIST c_api_tests)
+  # C API tests share global state and must not run in parallel
+  set_tests_properties(${c_api_tests} PROPERTIES RESOURCE_LOCK "capi_global_state")
 
   # Extraction API tests
   add_executable(test_extraction
@@ -777,7 +794,48 @@ if (WITH_TESTS)
     GTest::gtest
     GTest::gtest_main
   )
-  gtest_add_tests(TARGET test_extraction)
+  gtest_add_tests(TARGET test_extraction TEST_LIST extraction_tests)
+  # Extraction tests also use C API global state and must not run in parallel with C API tests
+  set_tests_properties(${extraction_tests} PROPERTIES RESOURCE_LOCK "capi_global_state")
+
+  # Result<T, Error> type tests
+  add_executable(test_result
+    "tests/test_result.cpp"
+  )
+  target_link_libraries(test_result PRIVATE
+    tfs
+    tebako_dirent_helper_c
+    GTest::gtest
+    GTest::gtest_main
+  )
+  gtest_add_tests(TARGET test_result)
+
+  # Path class tests
+  add_executable(test_path
+    "tests/test_path.cpp"
+    "src/core/path.cpp"
+  )
+  target_include_directories(test_path PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+  )
+  target_link_libraries(test_path PRIVATE
+    GTest::gtest
+    GTest::gtest_main
+  )
+  gtest_add_tests(TARGET test_path)
+
+  # LRU Cache tests
+  add_executable(test_lru_cache
+    "tests/test_lru_cache.cpp"
+  )
+  target_include_directories(test_lru_cache PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+  )
+  target_link_libraries(test_lru_cache PRIVATE
+    GTest::gtest
+    GTest::gtest_main
+  )
+  gtest_add_tests(TARGET test_lru_cache)
 
   # Unified interface tests
   add_executable(test_unified_interface

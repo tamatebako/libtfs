@@ -4,7 +4,7 @@ set -e
 # 1. simple.zip - Basic functionality
 echo "Creating simple.zip..."
 mkdir -p simple
-echo "Hello from ZIP!" > simple/test.txt
+printf 'Hello from ZIP\x21\n' > simple/test.txt
 echo "Second file" > simple/file2.txt
 (cd simple && zip -q ../simple.zip test.txt file2.txt)
 rm -rf simple

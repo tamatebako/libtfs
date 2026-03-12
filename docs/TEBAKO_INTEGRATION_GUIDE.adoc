@@ -1,0 +1,841 @@
+= Tebako Integration Guide
+:toc:
+:toclevels: 3
+
+== Purpose
+
+This guide provides comprehensive instructions for integrating libtfs as the
+filesystem backend for Tebako - the Ruby application packaging tool.
+
+== References
+
+* link:../README.adoc[libtfs Main Documentation]
+* link:backends/DWARFS_BACKEND.adoc[DwarFS Backend Guide]
+* link:backends/ZIP_BACKEND.adoc[ZIP Backend Guide]
+* https://github.com/tamatebako/tebako[Tebako Repository]
+* https://github.com/ffi/ffi[Ruby FFI Documentation]
+
+== Concepts
+
+archive backend::
+The underlying implementation (DwarFS, ZIP, SquashFS) used to access archived files.
+
+embedded archive::
+An archive embedded within the executable binary, accessed at runtime without external files.
+
+mount point::
+The virtual path prefix where the archived filesystem appears (e.g., `/__tebako__`).
+
+FFI (Foreign Function Interface)::
+Ruby's mechanism for calling C functions from native libraries.
+
+== Architecture Overview
+
+=== Integration layers
+
+.Tebako integration architecture
+[source]
+----
+┌─────────────────────────────────────────────┐
+│         Tebako Ruby Application             │
+│   (Packaged as single executable)           │
+└─────────────────┬───────────────────────────┘
+                  │
+┌─────────────────▼───────────────────────────┐
+│           Ruby FFI Bindings                 │
+│   (lib/tebako/filesystem/bindings.rb)       │
+└─────────────────┬───────────────────────────┘
+                  │
+┌─────────────────▼───────────────────────────┐
+│          libtfs C API Layer                 │
+│      (tebako/fs/c_api.h)                    │
+│                                             │
+│  • tebako_fs_init()                         │
+│  • tebako_open() / tebako_read()            │
+│  • tebako_opendir() / tebako_readdir()      │
+│  • tebako_stat()                            │
+│  • tebako_fs_extract_all()                  │
+└─────────────────┬───────────────────────────┘
+                  │
+┌─────────────────▼───────────────────────────┐
+│        Backend Factory                      │
+│    (Auto-detect archive format)             │
+└──────┬──────────────┬──────────────┬────────┘
+       │              │              │
+   ┌───▼───┐      ┌───▼───┐      ┌──▼────┐
+   │DwarFS │      │  ZIP  │      │SquashFS│
+   │Backend│      │Backend│      │Backend │
+   └───────┘      └───────┘      └────────┘
+----
+
+=== Data flow
+
+. Tebako packages Ruby application into DwarFS/ZIP archive
+. Archive is embedded in executable binary
+. At startup, Tebako calls `tebako_fs_init()` with embedded data
+. libtfs auto-detects format and creates appropriate backend
+. Backend mounts archive at virtual mount point (e.g., `/__tebako__`)
+. Ruby code accesses files through overridden `File` and `Dir` methods
+. FFI bindings translate Ruby calls to C API calls
+. libtfs serves files from embedded archive
+
+== Implementation
+
+=== Step 1: Add libtfs dependency
+
+==== Update Tebako's CMakeLists.txt
+
+[source,cmake]
+----
+# Find libtfs package (via vcpkg or system installation)
+find_package(libtfs CONFIG REQUIRED)
+
+# Link to Tebako executable
+target_link_libraries(tebako PRIVATE libtfs::tfs)
+
+# Ensure libtfs symbols are exported
+if(UNIX AND NOT APPLE)
+  target_link_options(tebako PRIVATE "-Wl,--export-dynamic")
+endif()
+----
+
+==== Update vcpkg.json
+
+[source,json]
+----
+{
+  "name": "tebako",
+  "version-string": "0.9.0",
+  "dependencies": [
+    "libtfs",
+    "ruby",
+    "yaml-cpp"
+  ]
+}
+----
+
+=== Step 2: Create Ruby FFI bindings
+
+==== Create bindings module
+
+.lib/tebako/filesystem/bindings.rb
+[source,ruby]
+----
+require 'ffi'
+
+module Tebako
+  module FileSystem
+    extend FFI::Library
+
+    # Load libtfs shared library
+    # Try different library names across platforms
+    ffi_lib ['tfs', 'libtfs', 'libtfs.so', 'libtfs.dylib', 'tfs.dll']
+
+    # ===============================================
+    # Type Definitions
+    # ===============================================
+
+    # File descriptor type
+    typedef :int, :fd_t
+
+    # Directory handle type (opaque pointer)
+    typedef :pointer, :dir_t
+
+    # File offset type
+    typedef :long_long, :off_t
+
+    # ===============================================
+    # Lifecycle Management
+    # ===============================================
+
+    # Initialize from file
+    # @param archive_path [String] Path to archive file
+    # @param mount_point [String] Virtual mount point path
+    # @return [Integer] 0 on success, -1 on failure
+    attach_function :tebako_fs_init_from_file, [:string, :string], :int
+
+    # Initialize from memory buffer
+    # @param data [FFI::Pointer] Pointer to archive data
+    # @param size [Integer] Size of archive data in bytes
+    # @param mount_point [String] Virtual mount point path
+    # @return [Integer] 0 on success, -1 on failure
+    attach_function :tebako_fs_init, [:pointer, :size_t, :string], :int
+
+    # Unmount filesystem and cleanup
+    # @return [void]
+    attach_function :tebako_fs_unmount, [], :void
+
+    # Check if filesystem is initialized
+    # @return [Integer] 1 if initialized, 0 otherwise
+    attach_function :tebako_is_initialized, [], :int
+
+    # ===============================================
+    # File Operations
+    # ===============================================
+
+    # Open file for reading
+    # @param path [String] File path
+    # @param flags [Integer] Open flags (O_RDONLY, etc.)
+    # @return [Integer] File descriptor or -1 on error
+    attach_function :tebako_open, [:string, :int], :fd_t
+
+    # Read from file
+    # @param fd [Integer] File descriptor
+    # @param buf [FFI::Pointer] Buffer to read into
+    # @param count [Integer] Number of bytes to read
+    # @return [Integer] Number of bytes read or -1 on error
+    attach_function :tebako_read, [:fd_t, :pointer, :size_t], :ssize_t
+
+    # Seek within file
+    # @param fd [Integer] File descriptor
+    # @param offset [Integer] Offset to seek to
+    # @param whence [Integer] SEEK_SET, SEEK_CUR, or SEEK_END
+    # @return [Integer] New file position or -1 on error
+    attach_function :tebako_lseek, [:fd_t, :off_t, :int], :off_t
+
+    # Close file
+    # @param fd [Integer] File descriptor
+    # @return [Integer] 0 on success, -1 on error
+    attach_function :tebako_close, [:fd_t], :int
+
+    # ===============================================
+    # Directory Operations
+    # ===============================================
+
+    # Open directory for reading
+    # @param path [String] Directory path
+    # @return [FFI::Pointer] Directory handle or NULL on error
+    attach_function :tebako_opendir, [:string], :dir_t
+
+    # Read directory entry
+    # @param dir [FFI::Pointer] Directory handle
+    # @return [FFI::Pointer] Pointer to dirent structure or NULL
+    attach_function :tebako_readdir, [:dir_t], :pointer
+
+    # Close directory
+    # @param dir [FFI::Pointer] Directory handle
+    # @return [Integer] 0 on success, -1 on error
+    attach_function :tebako_closedir, [:dir_t], :int
+
+    # ===============================================
+    # Metadata Operations
+    # ===============================================
+
+    # Get file metadata by path
+    # @param path [String] File path
+    # @param statbuf [FFI::Pointer] Pointer to stat structure
+    # @return [Integer] 0 on success, -1 on error
+    attach_function :tebako_stat, [:string, :pointer], :int
+
+    # Get file metadata by file descriptor
+    # @param fd [Integer] File descriptor
+    # @param statbuf [FFI::Pointer] Pointer to stat structure
+    # @return [Integer] 0 on success, -1 on error
+    attach_function :tebako_fstat, [:fd_t, :pointer], :int
+
+    # ===============================================
+    # Extraction Operations
+    # ===============================================
+
+    # Extract entire archive to directory
+    # @param dest_path [String] Destination directory path
+    # @return [Integer] 0 on success, -1 on error
+    attach_function :tebako_fs_extract_all, [:string], :int
+
+    # ===============================================
+    # Utility Functions
+    # ===============================================
+
+    # Check if path is in embedded filesystem
+    # @param path [String] Path to check
+    # @return [Integer] 1 if embedded, 0 otherwise
+    attach_function :tebako_path_is_embedded, [:string], :int
+
+    # Check if file descriptor is from embedded filesystem
+    # @param fd [Integer] File descriptor
+    # @return [Integer] 1 if embedded, 0 otherwise
+    attach_function :tebako_fd_is_embedded, [:fd_t], :int
+
+    # Get last error code
+    # @return [Integer] errno value
+    attach_function :tebako_get_errno, [], :int
+
+    # Get current mount point
+    # @return [String] Mount point path or NULL
+    attach_function :tebako_get_mount_point, [], :string
+
+    # Get backend name
+    # @return [String] Backend name (ZIP, DwarFS, SquashFS) or NULL
+    attach_function :tebako_get_backend_name, [], :string
+
+    # ===============================================
+    # Constants
+    # ===============================================
+
+    # File open flags (from fcntl.h)
+    O_RDONLY = 0x0000
+    O_WRONLY = 0x0001
+    O_RDWR   = 0x0002
+
+    # Seek whence values (from stdio.h)
+    SEEK_SET = 0
+    SEEK_CUR = 1
+    SEEK_END = 2
+
+    # File descriptor flag
+    TEBAKO_FD_FLAG = 0x40000000
+    TEBAKO_FD_MAX  = 0x3FFFFFFF
+  end
+end
+----
+
+=== Step 3: Create high-level Ruby API
+
+==== File operations wrapper
+
+.lib/tebako/filesystem/file_ops.rb
+[source,ruby]
+----
+module Tebako
+  module FileSystem
+    class FileOps
+      class << self
+        # Read entire file from embedded filesystem
+        def read(path)
+          return nil unless embedded?(path)
+
+          fd = Bindings.tebako_open(path, Bindings::O_RDONLY)
+          return nil if fd < 0
+
+          begin
+            # Allocate buffer (max 10MB for safety)
+            buffer = FFI::MemoryPointer.new(:char, 10 * 1024 * 1024)
+            bytes_read = Bindings.tebako_read(fd, buffer, buffer.size)
+
+            bytes_read > 0 ? buffer.read_string(bytes_read) : ""
+          ensure
+            Bindings.tebako_close(fd)
+          end
+        end
+
+        # Check if file exists in embedded filesystem
+        def exist?(path)
+          return false unless embedded?(path)
+
+          stat_buf = FFI::MemoryPointer.new(:char, 144) # sizeof(struct stat)
+          result = Bindings.tebako_stat(path, stat_buf)
+          result == 0
+        end
+
+        # Get file size
+        def size(path)
+          return nil unless embedded?(path)
+
+          stat_buf = FFI::MemoryPointer.new(:char, 144)
+          return nil if Bindings.tebako_stat(path, stat_buf) != 0
+
+          # Extract st_size from stat structure (offset varies by platform)
+          stat_buf.read_long_long
+        end
+
+        # Check if path is in embedded filesystem
+        def embedded?(path)
+          Bindings.tebako_path_is_embedded(path) == 1
+        end
+      end
+    end
+  end
+end
+----
+
+==== Directory operations wrapper
+
+.lib/tebako/filesystem/dir_ops.rb
+[source,ruby]
+----
+module Tebako
+  module FileSystem
+    class DirOps
+      class << self
+        # List directory contents
+        def entries(path)
+          return [] unless FileOps.embedded?(path)
+
+          dir = Bindings.tebako_opendir(path)
+          return [] if dir.null?
+
+          entries = []
+          begin
+            loop do
+              entry_ptr = Bindings.tebako_readdir(dir)
+              break if entry_ptr.null?
+
+              # Read d_name from dirent structure
+              name = entry_ptr.read_string
+              entries << name unless name == "." || name == ".."
+            end
+          ensure
+            Bindings.tebako_closedir(dir)
+          end
+
+          entries
+        end
+
+        # Check if directory exists
+        def exist?(path)
+          FileOps.exist?(path)
+        end
+      end
+    end
+  end
+end
+----
+
+=== Step 4: Override Ruby core classes
+
+==== Override File class
+
+.lib/tebako/filesystem/file_patch.rb
+[source,ruby]
+----
+# Patch Ruby's File class to use libtfs for embedded files
+class File
+  class << self
+    # Store original methods
+    alias_method :original_read, :read
+    alias_method :original_exist?, :exist?
+    alias_method :original_size, :size
+    alias_method :original_open, :open
+
+    # Override File.read to check embedded filesystem first
+    def read(path, *args)
+      if Tebako::FileSystem::FileOps.embedded?(path)
+        Tebako::FileSystem::FileOps.read(path)
+      else
+        original_read(path, *args)
+      end
+    end
+
+    # Override File.exist? to check embedded filesystem
+    def exist?(path)
+      if Tebako::FileSystem::FileOps.embedded?(path)
+        Tebako::FileSystem::FileOps.exist?(path)
+      else
+        original_exist?(path)
+      end
+    end
+
+    # Override File.size to check embedded filesystem
+    def size(path)
+      if Tebako::FileSystem::FileOps.embedded?(path)
+        Tebako::FileSystem::FileOps.size(path) || 0
+      else
+        original_size(path)
+      end
+    end
+
+    # Override File.open for embedded files
+    def open(path, mode = 'r', *args, &block)
+      if Tebako::FileSystem::FileOps.embedded?(path)
+        # Create file-like object wrapping libtfs
+        file = Tebako::FileSystem::EmbeddedFile.new(path, mode)
+
+        if block_given?
+          begin
+            yield file
+          ensure
+            file.close
+          end
+        else
+          file
+        end
+      else
+        original_open(path, mode, *args, &block)
+      end
+    end
+  end
+end
+----
+
+==== Override Dir class
+
+.lib/tebako/filesystem/dir_patch.rb
+[source,ruby]
+----
+# Patch Ruby's Dir class to use libtfs for embedded directories
+class Dir
+  class << self
+    alias_method :original_entries, :entries
+    alias_method :original_exist?, :exist?
+    alias_method :original_foreach, :foreach
+
+    def entries(path)
+      if Tebako::FileSystem::FileOps.embedded?(path)
+        Tebako::FileSystem::DirOps.entries(path)
+      else
+        original_entries(path)
+      end
+    end
+
+    def exist?(path)
+      if Tebako::FileSystem::FileOps.embedded?(path)
+        Tebako::FileSystem::DirOps.exist?(path)
+      else
+        original_exist?(path)
+      end
+    end
+
+    def foreach(path, &block)
+      if Tebako::FileSystem::FileOps.embedded?(path)
+        Tebako::FileSystem::DirOps.entries(path).each(&block)
+      else
+        original_foreach(path, &block)
+      end
+    end
+  end
+end
+----
+
+=== Step 5: Initialize filesystem at startup
+
+==== Create initialization module
+
+.lib/tebako/filesystem/init.rb
+[source,ruby]
+----
+module Tebako
+  module FileSystem
+    class << self
+      # Initialize embedded filesystem
+      # @param archive_data [String, FFI::Pointer] Archive data (memory) or path (file)
+      # @param mount_point [String] Virtual mount point (default: /__tebako__)
+      # @return [Boolean] true on success, false on failure
+      def initialize(archive_data: nil, archive_path: nil, mount_point: '/__tebako__')
+        if archive_path
+          # Mount from file
+          result = Bindings.tebako_fs_init_from_file(archive_path, mount_point)
+        elsif archive_data
+          # Mount from memory
+          if archive_data.is_a?(String)
+            # Convert String to FFI pointer
+            ptr = FFI::MemoryPointer.new(:char, archive_data.bytesize)
+            ptr.write_string(archive_data)
+            result = Bindings.tebako_fs_init(ptr, archive_data.bytesize, mount_point)
+          elsif archive_data.is_a?(FFI::Pointer)
+            # Use pointer directly
+            result = Bindings.tebako_fs_init(archive_data, archive_data.size, mount_point)
+          else
+            raise ArgumentError, "archive_data must be String or FFI::Pointer"
+          end
+        else
+          raise ArgumentError, "Must provide either archive_data or archive_path"
+        end
+
+        if result != 0
+          errno = Bindings.tebako_get_errno
+          warn "Failed to initialize Tebako filesystem: errno #{errno}"
+          return false
+        end
+
+        backend = Bindings.tebako_get_backend_name
+        puts "Tebako filesystem initialized with #{backend} backend"
+        true
+      end
+
+      # Unmount filesystem
+      def shutdown
+        Bindings.tebako_fs_unmount if initialized?
+      end
+
+      # Check if filesystem is initialized
+      def initialized?
+        Bindings.tebako_is_initialized == 1
+      end
+
+      # Get current mount point
+      def mount_point
+        Bindings.tebako_get_mount_point
+      end
+
+      # Extract entire archive to directory
+      # @param dest_path [String] Destination directory
+      # @return [Boolean] true on success
+      def extract_all(dest_path)
+        result = Bindings.tebako_fs_extract_all(dest_path)
+        if result != 0
+          errno = Bindings.tebako_get_errno
+          warn "Extraction failed: errno #{errno}"
+          return false
+        end
+        true
+      end
+    end
+  end
+end
+
+# Register shutdown hook
+at_exit do
+  Tebako::FileSystem.shutdown
+end
+----
+
+=== Step 6: Modify Tebako entry point
+
+==== Update tebako executable
+
+.exe/tebako/main.rb (or equivalent entry point)
+[source,ruby]
+----
+#!/usr/bin/env ruby
+
+require 'tebako/filesystem/bindings'
+require 'tebako/filesystem/init'
+require 'tebako/filesystem/file_ops'
+require 'tebako/filesystem/dir_ops'
+require 'tebako/filesystem/file_patch'
+require 'tebako/filesystem/dir_patch'
+
+module Tebako
+  class Application
+    def self.run
+      # Get embedded archive data (provided by linker symbols)
+      archive_start = DL::Symbol.new("_binary_app_dwarfs_start").to_ptr
+      archive_end = DL::Symbol.new("_binary_app_dwarfs_end").to_ptr
+      archive_size = archive_end.to_i - archive_start.to_i
+
+      # Initialize filesystem
+      unless FileSystem.initialize(
+        archive_data: FFI::Pointer.new(archive_start.to_i),
+        mount_point: '/__tebako__'
+      )
+        abort "Failed to initialize Tebako filesystem"
+      end
+
+      # Load application entry point from embedded filesystem
+      $LOAD_PATH.unshift('/__tebako__/lib')
+      require '/__tebako__/bin/myapp'
+
+      # Run application
+      MyApp.start(ARGV)
+    end
+  end
+end
+
+Tebako::Application.run if __FILE__ == $PROGRAM_NAME
+----
+
+== Packaging Workflow
+
+=== Create archive
+
+[source,bash]
+----
+# 1. Prepare application bundle
+mkdir -p app_bundle
+cp -r lib/ bin/ Gemfile* app_bundle/
+cd app_bundle && bundle install --standalone
+cd ..
+
+# 2. Create DwarFS archive (best compression)
+mkdwarfs -i app_bundle \
+         -o app.dwarfs \
+         --compression=zstd:level=22 \
+         --file-hash=xxh3-128
+
+# Or create ZIP archive (maximum compatibility)
+cd app_bundle && zip -r ../app.zip . && cd ..
+
+# 3. Verify archive
+dwarfsck app.dwarfs  # For DwarFS
+unzip -t app.zip     # For ZIP
+----
+
+=== Embed archive in executable
+
+==== Using objcopy (Linux)
+
+[source,bash]
+----
+# Convert archive to object file
+objcopy --input binary \
+        --output elf64-x86-64 \
+        --binary-architecture i386 \
+        app.dwarfs app_archive.o
+
+# Link with Tebako
+gcc -o myapp tebako_main.o app_archive.o -ltfs -lruby
+----
+
+==== Using ld (macOS)
+
+[source,bash]
+----
+# Create object file with archive data
+ld -r -o app_archive.o \
+   -sectcreate __DATA __archive app.dwarfs
+
+# Link with Tebako
+clang++ -o myapp tebako_main.o app_archive.o -ltfs -lruby
+----
+
+==== CMake integration
+
+[source,cmake]
+----
+# Add custom command to embed archive
+add_custom_command(
+  OUTPUT ${CMAKE_BINARY_DIR}/app_archive.o
+  COMMAND objcopy --input binary --output elf64-x86-64
+          --binary-architecture i386
+          ${CMAKE_SOURCE_DIR}/app.dwarfs
+          ${CMAKE_BINARY_DIR}/app_archive.o
+  DEPENDS ${CMAKE_SOURCE_DIR}/app.dwarfs
+  COMMENT "Embedding archive into executable"
+)
+
+# Add archive object to executable
+add_executable(tebako_app main.cpp ${CMAKE_BINARY_DIR}/app_archive.o)
+target_link_libraries(tebako_app PRIVATE libtfs::tfs Ruby::Ruby)
+----
+
+== Testing Integration
+
+=== Unit tests
+
+[source,ruby]
+----
+require 'minitest/autorun'
+require 'tebako/filesystem'
+
+class TebakoFileSystemTest < Minitest::Test
+  def setup
+    # Initialize with test archive
+    @test_archive = File.join(__dir__, 'fixtures', 'test.dwarfs')
+    Tebako::FileSystem.initialize(
+      archive_path: @test_archive,
+      mount_point: '/__test__'
+    )
+  end
+
+  def teardown
+    Tebako::FileSystem.shutdown
+  end
+
+  def test_file_read
+    content = File.read('/__test__/README.md')
+    assert_equal "Test content", content
+  end
+
+  def test_directory_listing
+    entries = Dir.entries('/__test__')
+    assert_includes entries, 'README.md'
+  end
+
+  def test_file_extraction
+    Dir.mktmpdir do |tmpdir|
+      assert Tebako::FileSystem.extract_all(tmpdir)
+      assert File.exist?(File.join(tmpdir, 'README.md'))
+    end
+  end
+end
+----
+
+== Performance Considerations
+
+=== Backend selection
+
+[cols="1,1,1,1"]
+|===
+| Use Case | Recommended Backend | Compression | Speed
+
+| **Production deployment**
+| DwarFS
+| 70:1 (best)
+| Fast (215 MB/s)
+
+| **Development/Testing**
+| ZIP
+| 40:1 (good)
+| Medium (155 MB/s)
+
+| **Linux systems**
+| SquashFS
+| 45:1 (excellent)
+| Fast (185 MB/s)
+
+| **Maximum compatibility**
+| ZIP
+| 40:1 (good)
+| Medium (155 MB/s)
+|===
+
+=== Optimization tips
+
+. **Use DwarFS for production** - Best compression and performance
+. **Enable block deduplication** - Add `--file-hash=xxh3-128` to mkdwarfs
+. **Tune compression level** - Use zstd:level=22 for maximum compression
+. **Pre-extract on first run** - Cache extracted files if frequent access needed
+. **Use memory mounting** - Embed small archives (<10MB) in executable
+
+== Troubleshooting
+
+=== Common issues
+
+==== Library not found
+
+[source,ruby]
+----
+LoadError: cannot load such file -- tfs
+
+# Solution: Ensure libtfs is in library path
+export LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH  # Linux
+export DYLD_LIBRARY_PATH=/usr/local/lib:$DYLD_LIBRARY_PATH  # macOS
+----
+
+==== Mount fails with EINVAL
+
+[source,ruby]
+----
+errno = Bindings.tebako_get_errno
+# errno == 22 (EINVAL)
+
+# Causes:
+# 1. Archive format not recognized
+# 2. Corrupted archive file
+# 3. Invalid magic bytes
+
+# Solution: Verify archive integrity
+dwarfsck your_archive.dwarfs
+unzip -t your_archive.zip
+----
+
+==== Segmentation fault on file access
+
+[source,ruby]
+----
+# Cause: Memory buffer freed before unmount
+
+# ✗ WRONG:
+def bad_example
+  data = File.read('archive.dwarfs')  # String on stack
+  Tebako::FileSystem.initialize(archive_data: data)
+  # 'data' gets GC'd here!
+end
+
+# ✓ CORRECT:
+@archive_data = File.read('archive.dwarfs')  # Instance variable
+Tebako::FileSystem.initialize(archive_data: @archive_data)
+# Keep @archive_data alive until shutdown
+----
+
+== Example Implementation
+
+See link:../examples/ruby_integration_example.rb[Ruby Integration Example] for
+a complete working implementation demonstrating all integration patterns.
+
+== Bibliography
+
+* https://github.com/ffi/ffi[Ruby FFI Documentation]
+* https://github.com/tamatebako/tebako[Tebako Project]
+* link:backends/DWARFS_BACKEND.adoc[DwarFS Backend Documentation]
+* link:../README.adoc#c-api-usage[libtfs C API Documentation]

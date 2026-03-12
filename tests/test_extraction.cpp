@@ -45,6 +45,9 @@ namespace fs = std::filesystem;
 
 /**
  * @brief Test fixture for extraction API tests
+ *
+ * NOTE: These tests share global C API state and must be serialized.
+ * CMakeLists.txt uses RESOURCE_LOCK to ensure this.
  */
 class ExtractionTest : public ::testing::Test {
 protected:

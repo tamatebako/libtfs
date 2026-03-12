@@ -124,9 +124,9 @@ void memfs::set_cachesize(const char* cachesize)
 
 void memfs::set_debuglevel(const char* debuglevel)
 {
-  options().debuglevel = (debuglevel != nullptr) ? logger::parse_level(debuglevel) : logger::INFO;
+  options().debuglevel = (debuglevel != nullptr) ? logger::parse_level(debuglevel) : dwarfs::LOGGER_LEVEL_INFO;
   logger().set_threshold(options().debuglevel);
-  logger().set_with_context(options().debuglevel >= logger::DEBUG);
+  logger().set_with_context(options().debuglevel >= dwarfs::LOGGER_LEVEL_DEBUG);
 }
 
 void memfs::set_decompress_ratio(const char* decompress_ratio)
@@ -613,7 +613,7 @@ int memfs::safe_dwarfs_call(Functor&& fn, const char* caller, uint32_t inode, Ar
 {
   int ret = DWARFS_IO_ERROR;
   int err = ENOENT;
-  if (options().debuglevel >= logger::DEBUG) {
+  if (options().debuglevel >= dwarfs::LOGGER_LEVEL_DEBUG) {
     LOG_PROXY(debug_logger_policy, logger());
     LOG_DEBUG << caller << " [ " << inode << " ]";
   }

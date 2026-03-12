@@ -72,7 +72,8 @@ class DwarfsBackendMountedTest : public DwarfsBackendTest {
   void SetUp() override {
     DwarfsBackendTest::SetUp();
     std::string archive = fixtures_path + "simple.dwarfs";
-    ASSERT_TRUE(backend->mount(archive, mount_point));
+    auto mount_result = backend->mount(archive, mount_point);
+    ASSERT_TRUE(mount_result.is_ok()) << "Failed to mount: " << mount_result.error().message;
   }
 };
 
@@ -93,7 +94,8 @@ TEST_F(DwarfsBackendTest, BackendInfoCorrect) {
 
 TEST_F(DwarfsBackendTest, MountValidArchiveSucceeds) {
   std::string archive = fixtures_path + "simple.dwarfs";
-  EXPECT_TRUE(backend->mount(archive, mount_point));
+  auto mount_result = backend->mount(archive, mount_point);
+  EXPECT_TRUE(mount_result.is_ok());
   EXPECT_TRUE(backend->is_mounted());
   EXPECT_EQ(backend->archive_path(), archive);
   EXPECT_EQ(backend->mount_point(), mount_point);
@@ -101,19 +103,22 @@ TEST_F(DwarfsBackendTest, MountValidArchiveSucceeds) {
 
 TEST_F(DwarfsBackendTest, MountNonexistentArchiveFails) {
   std::string archive = fixtures_path + "nonexistent.dwarfs";
-  EXPECT_FALSE(backend->mount(archive, mount_point));
+  auto mount_result = backend->mount(archive, mount_point);
+  EXPECT_TRUE(mount_result.is_err());
   EXPECT_FALSE(backend->is_mounted());
 }
 
 TEST_F(DwarfsBackendTest, MountCorruptedArchiveFails) {
   std::string archive = fixtures_path + "corrupted.dwarfs";
-  EXPECT_FALSE(backend->mount(archive, mount_point));
+  auto mount_result = backend->mount(archive, mount_point);
+  EXPECT_TRUE(mount_result.is_err());
   EXPECT_FALSE(backend->is_mounted());
 }
 
 TEST_F(DwarfsBackendMountedTest, DoubleMountFails) {
   std::string another_archive = fixtures_path + "nested.dwarfs";
-  EXPECT_FALSE(backend->mount(another_archive, "/mnt/another"));
+  auto mount_result = backend->mount(another_archive, "/mnt/another");
+  EXPECT_TRUE(mount_result.is_err());
   // Should still be mounted to original archive
   EXPECT_TRUE(backend->is_mounted());
   EXPECT_EQ(backend->archive_path(), fixtures_path + "simple.dwarfs");
@@ -177,24 +182,26 @@ TEST_F(DwarfsBackendTest, IsDirectoryCorrectForNestedDirs) {
 // ===================================================================
 
 TEST_F(DwarfsBackendMountedTest, OpenValidFileSucceeds) {
-  auto handle = backend->open(mount_point + "/hello.txt", O_RDONLY);
-  ASSERT_NE(handle, nullptr);
+  auto handle_result = backend->open(mount_point + "/hello.txt", O_RDONLY);
+  ASSERT_TRUE(handle_result.is_ok());
+  auto handle = std::move(handle_result).unwrap();
   EXPECT_EQ(handle->path(), mount_point + "/hello.txt");
 }
 
 TEST_F(DwarfsBackendMountedTest, OpenInvalidFileFails) {
-  auto handle = backend->open(mount_point + "/nonexistent.txt", O_RDONLY);
-  EXPECT_EQ(handle, nullptr);
+  auto result = backend->open(mount_point + "/nonexistent.txt", O_RDONLY);
+  EXPECT_TRUE(result.is_err());
 }
 
 TEST_F(DwarfsBackendMountedTest, OpenDirectoryFails) {
-  auto handle = backend->open(mount_point, O_RDONLY);
-  EXPECT_EQ(handle, nullptr);
+  auto result = backend->open(mount_point, O_RDONLY);
+  EXPECT_TRUE(result.is_err());
 }
 
 TEST_F(DwarfsBackendMountedTest, ReadFileContentsCorrect) {
-  auto handle = backend->open(mount_point + "/hello.txt", O_RDONLY);
-  ASSERT_NE(handle, nullptr);
+  auto handle_result = backend->open(mount_point + "/hello.txt", O_RDONLY);
+  ASSERT_TRUE(handle_result.is_ok());
+  auto handle = std::move(handle_result).unwrap();
 
   char buffer[256] = {0};
   ssize_t bytes_read = handle->read(buffer, sizeof(buffer) - 1);
@@ -205,8 +212,9 @@ TEST_F(DwarfsBackendMountedTest, ReadFileContentsCorrect) {
 }
 
 TEST_F(DwarfsBackendMountedTest, ReadIncrementsPosition) {
-  auto handle = backend->open(mount_point + "/hello.txt", O_RDONLY);
-  ASSERT_NE(handle, nullptr);
+  auto handle_result = backend->open(mount_point + "/hello.txt", O_RDONLY);
+  ASSERT_TRUE(handle_result.is_ok());
+  auto handle = std::move(handle_result).unwrap();
 
   EXPECT_EQ(handle->tell(), 0);
 
@@ -217,8 +225,9 @@ TEST_F(DwarfsBackendMountedTest, ReadIncrementsPosition) {
 }
 
 TEST_F(DwarfsBackendMountedTest, ReadSetsEofFlag) {
-  auto handle = backend->open(mount_point + "/hello.txt", O_RDONLY);
-  ASSERT_NE(handle, nullptr);
+  auto handle_result = backend->open(mount_point + "/hello.txt", O_RDONLY);
+  ASSERT_TRUE(handle_result.is_ok());
+  auto handle = std::move(handle_result).unwrap();
 
   EXPECT_FALSE(handle->eof());
 
@@ -232,8 +241,9 @@ TEST_F(DwarfsBackendMountedTest, ReadSetsEofFlag) {
 }
 
 TEST_F(DwarfsBackendMountedTest, SeekSetPositionsCorrectly) {
-  auto handle = backend->open(mount_point + "/hello.txt", O_RDONLY);
-  ASSERT_NE(handle, nullptr);
+  auto handle_result = backend->open(mount_point + "/hello.txt", O_RDONLY);
+  ASSERT_TRUE(handle_result.is_ok());
+  auto handle = std::move(handle_result).unwrap();
 
   off_t new_pos = handle->seek(5, SEEK_SET);
   EXPECT_EQ(new_pos, 5);
@@ -241,8 +251,9 @@ TEST_F(DwarfsBackendMountedTest, SeekSetPositionsCorrectly) {
 }
 
 TEST_F(DwarfsBackendMountedTest, SeekCurPositionsCorrectly) {
-  auto handle = backend->open(mount_point + "/hello.txt", O_RDONLY);
-  ASSERT_NE(handle, nullptr);
+  auto handle_result = backend->open(mount_point + "/hello.txt", O_RDONLY);
+  ASSERT_TRUE(handle_result.is_ok());
+  auto handle = std::move(handle_result).unwrap();
 
   handle->seek(5, SEEK_SET);
   off_t new_pos = handle->seek(3, SEEK_CUR);
@@ -251,8 +262,9 @@ TEST_F(DwarfsBackendMountedTest, SeekCurPositionsCorrectly) {
 }
 
 TEST_F(DwarfsBackendMountedTest, SeekEndPositionsCorrectly) {
-  auto handle = backend->open(mount_point + "/hello.txt", O_RDONLY);
-  ASSERT_NE(handle, nullptr);
+  auto handle_result = backend->open(mount_point + "/hello.txt", O_RDONLY);
+  ASSERT_TRUE(handle_result.is_ok());
+  auto handle = std::move(handle_result).unwrap();
 
   int64_t file_size = handle->size();
   off_t new_pos = handle->seek(0, SEEK_END);
@@ -261,18 +273,20 @@ TEST_F(DwarfsBackendMountedTest, SeekEndPositionsCorrectly) {
 }
 
 TEST_F(DwarfsBackendMountedTest, SeekBeyondBoundsFails) {
-  auto handle = backend->open(mount_point + "/hello.txt", O_RDONLY);
-  ASSERT_NE(handle, nullptr);
+  auto handle_result = backend->open(mount_point + "/hello.txt", O_RDONLY);
+  ASSERT_TRUE(handle_result.is_ok());
+  auto handle = std::move(handle_result).unwrap();
 
   // Seek beyond file size
-  off_t result = handle->seek(10000, SEEK_SET);
-  EXPECT_EQ(result, -1);
+  off_t res = handle->seek(10000, SEEK_SET);
+  EXPECT_EQ(res, -1);
 }
 
 TEST_F(DwarfsBackendMountedTest, NativeSeekDoesNotReopenFile) {
   // DwarFS advantage: native seek support without file reopening
-  auto handle = backend->open(mount_point + "/hello.txt", O_RDONLY);
-  ASSERT_NE(handle, nullptr);
+  auto handle_result = backend->open(mount_point + "/hello.txt", O_RDONLY);
+  ASSERT_TRUE(handle_result.is_ok());
+  auto handle = std::move(handle_result).unwrap();
 
   // Multiple seeks should be fast (no reopening)
   for (int i = 0; i < 10; i++) {
@@ -282,15 +296,16 @@ TEST_F(DwarfsBackendMountedTest, NativeSeekDoesNotReopenFile) {
 }
 
 TEST_F(DwarfsBackendMountedTest, CloseReleasesResource) {
-  auto handle = backend->open(mount_point + "/hello.txt", O_RDONLY);
-  ASSERT_NE(handle, nullptr);
+  auto handle_result = backend->open(mount_point + "/hello.txt", O_RDONLY);
+  ASSERT_TRUE(handle_result.is_ok());
+  auto handle = std::move(handle_result).unwrap();
 
   handle->close();
 
   // After close, operations should fail or return error
   char buffer[10];
-  ssize_t result = handle->read(buffer, sizeof(buffer));
-  EXPECT_EQ(result, -1);
+  ssize_t res = handle->read(buffer, sizeof(buffer));
+  EXPECT_EQ(res, -1);
 }
 
 // ===================================================================
@@ -298,8 +313,9 @@ TEST_F(DwarfsBackendMountedTest, CloseReleasesResource) {
 // ===================================================================
 
 TEST_F(DwarfsBackendMountedTest, ListDirectoryReturnsAllEntries) {
-  auto iter = backend->list_directory(mount_point);
-  ASSERT_NE(iter, nullptr);
+  auto result = backend->list_directory(mount_point);
+  ASSERT_TRUE(result.is_ok());
+  auto iter = std::move(result).unwrap();
 
   std::vector<std::string> entries;
   while (iter->has_next()) {
@@ -313,8 +329,9 @@ TEST_F(DwarfsBackendMountedTest, ListDirectoryReturnsAllEntries) {
 }
 
 TEST_F(DwarfsBackendMountedTest, DirectoryEntryHasCorrectMetadata) {
-  auto iter = backend->list_directory(mount_point);
-  ASSERT_NE(iter, nullptr);
+  auto result = backend->list_directory(mount_point);
+  ASSERT_TRUE(result.is_ok());
+  auto iter = std::move(result).unwrap();
 
   ASSERT_TRUE(iter->has_next());
   DirectoryEntry entry = iter->next();
@@ -325,8 +342,9 @@ TEST_F(DwarfsBackendMountedTest, DirectoryEntryHasCorrectMetadata) {
 }
 
 TEST_F(DwarfsBackendMountedTest, IteratorResetWorks) {
-  auto iter = backend->list_directory(mount_point);
-  ASSERT_NE(iter, nullptr);
+  auto result = backend->list_directory(mount_point);
+  ASSERT_TRUE(result.is_ok());
+  auto iter = std::move(result).unwrap();
 
   // Read first entry
   ASSERT_TRUE(iter->has_next());
@@ -342,10 +360,12 @@ TEST_F(DwarfsBackendMountedTest, IteratorResetWorks) {
 
 TEST_F(DwarfsBackendTest, ListNestedDirectoryWorks) {
   std::string archive = fixtures_path + "nested.dwarfs";
-  ASSERT_TRUE(backend->mount(archive, mount_point));
+  auto mount_result = backend->mount(archive, mount_point);
+  ASSERT_TRUE(mount_result.is_ok());
 
-  auto iter = backend->list_directory(mount_point + "/a/b/c");
-  ASSERT_NE(iter, nullptr);
+  auto result = backend->list_directory(mount_point + "/a/b/c");
+  ASSERT_TRUE(result.is_ok());
+  auto iter = std::move(result).unwrap();
 
   std::vector<std::string> entries;
   while (iter->has_next()) {
@@ -358,10 +378,12 @@ TEST_F(DwarfsBackendTest, ListNestedDirectoryWorks) {
 
 TEST_F(DwarfsBackendTest, ListEmptyDirectoryReturnsNoEntries) {
   std::string archive = fixtures_path + "empty.dwarfs";
-  ASSERT_TRUE(backend->mount(archive, mount_point));
+  auto mount_result = backend->mount(archive, mount_point);
+  ASSERT_TRUE(mount_result.is_ok());
 
-  auto iter = backend->list_directory(mount_point);
-  ASSERT_NE(iter, nullptr);
+  auto result = backend->list_directory(mount_point);
+  ASSERT_TRUE(result.is_ok());
+  auto iter = std::move(result).unwrap();
 
   int count = 0;
   while (iter->has_next()) {
@@ -377,35 +399,41 @@ TEST_F(DwarfsBackendTest, ListEmptyDirectoryReturnsNoEntries) {
 // ===================================================================
 
 TEST_F(DwarfsBackendMountedTest, FileSizeCorrect) {
-  int64_t size = backend->file_size(mount_point + "/hello.txt");
-  EXPECT_EQ(size, 15);  // "Hello, DwarFS!\n" = 15 bytes
+  auto result = backend->file_size(mount_point + "/hello.txt");
+  ASSERT_TRUE(result.is_ok());
+  EXPECT_EQ(result.unwrap(), 15);  // "Hello, DwarFS!\n" = 15 bytes
 }
 
-TEST_F(DwarfsBackendMountedTest, FileSizeInvalidFileReturnsNegative) {
-  int64_t size = backend->file_size(mount_point + "/nonexistent.txt");
-  EXPECT_EQ(size, -1);
+TEST_F(DwarfsBackendMountedTest, FileSizeInvalidFileReturnsError) {
+  auto result = backend->file_size(mount_point + "/nonexistent.txt");
+  EXPECT_TRUE(result.is_err());
 }
 
 TEST_F(DwarfsBackendMountedTest, ModificationTimeNonZero) {
-  time_t mtime = backend->modification_time(mount_point + "/hello.txt");
-  EXPECT_GT(mtime, 0);
+  auto result = backend->modification_time(mount_point + "/hello.txt");
+  ASSERT_TRUE(result.is_ok());
+  EXPECT_GT(result.unwrap(), 0);
 }
 
 TEST_F(DwarfsBackendTest, PermissionsPreservedCorrectly) {
   std::string archive = fixtures_path + "permissions.dwarfs";
-  ASSERT_TRUE(backend->mount(archive, mount_point));
+  auto mount_result = backend->mount(archive, mount_point);
+  ASSERT_TRUE(mount_result.is_ok());
 
   // Read-only file (444)
-  mode_t readonly_perms = backend->permissions(mount_point + "/readonly.txt");
-  EXPECT_EQ(readonly_perms, 0444);
+  auto readonly_result = backend->permissions(mount_point + "/readonly.txt");
+  ASSERT_TRUE(readonly_result.is_ok());
+  EXPECT_EQ(readonly_result.unwrap(), 0444);
 
   // Executable script (755)
-  mode_t exec_perms = backend->permissions(mount_point + "/executable.sh");
-  EXPECT_EQ(exec_perms, 0755);
+  auto exec_result = backend->permissions(mount_point + "/executable.sh");
+  ASSERT_TRUE(exec_result.is_ok());
+  EXPECT_EQ(exec_result.unwrap(), 0755);
 
   // Regular file (644)
-  mode_t regular_perms = backend->permissions(mount_point + "/readable.txt");
-  EXPECT_EQ(regular_perms, 0644);
+  auto regular_result = backend->permissions(mount_point + "/readable.txt");
+  ASSERT_TRUE(regular_result.is_ok());
+  EXPECT_EQ(regular_result.unwrap(), 0644);
 }
 
 // ===================================================================
@@ -414,7 +442,8 @@ TEST_F(DwarfsBackendTest, PermissionsPreservedCorrectly) {
 
 TEST_F(DwarfsBackendTest, NestedDirectoryExists) {
   std::string archive = fixtures_path + "nested.dwarfs";
-  ASSERT_TRUE(backend->mount(archive, mount_point));
+  auto mount_result = backend->mount(archive, mount_point);
+  ASSERT_TRUE(mount_result.is_ok());
 
   EXPECT_TRUE(backend->exists(mount_point + "/a"));
   EXPECT_TRUE(backend->exists(mount_point + "/a/b"));
@@ -424,7 +453,8 @@ TEST_F(DwarfsBackendTest, NestedDirectoryExists) {
 
 TEST_F(DwarfsBackendTest, NestedFileExists) {
   std::string archive = fixtures_path + "nested.dwarfs";
-  ASSERT_TRUE(backend->mount(archive, mount_point));
+  auto mount_result = backend->mount(archive, mount_point);
+  ASSERT_TRUE(mount_result.is_ok());
 
   EXPECT_TRUE(backend->exists(mount_point + "/root.txt"));
   EXPECT_TRUE(backend->exists(mount_point + "/a/b/c/d/deep.txt"));
@@ -432,10 +462,12 @@ TEST_F(DwarfsBackendTest, NestedFileExists) {
 
 TEST_F(DwarfsBackendTest, CanListNestedDirectory) {
   std::string archive = fixtures_path + "nested.dwarfs";
-  ASSERT_TRUE(backend->mount(archive, mount_point));
+  auto mount_result = backend->mount(archive, mount_point);
+  ASSERT_TRUE(mount_result.is_ok());
 
-  auto iter = backend->list_directory(mount_point + "/a/b/c/d");
-  ASSERT_NE(iter, nullptr);
+  auto result = backend->list_directory(mount_point + "/a/b/c/d");
+  ASSERT_TRUE(result.is_ok());
+  auto iter = std::move(result).unwrap();
 
   bool found_deep = false;
   while (iter->has_next()) {
@@ -454,17 +486,20 @@ TEST_F(DwarfsBackendTest, CanListNestedDirectory) {
 
 TEST_F(DwarfsBackendTest, EmptyArchiveMountsSuccessfully) {
   std::string archive = fixtures_path + "empty.dwarfs";
-  EXPECT_TRUE(backend->mount(archive, mount_point));
+  auto mount_result = backend->mount(archive, mount_point);
+  EXPECT_TRUE(mount_result.is_ok());
   EXPECT_TRUE(backend->is_mounted());
 }
 
 TEST_F(DwarfsBackendMountedTest, ReadNestedFileContentsCorrect) {
   backend->unmount();
   std::string archive = fixtures_path + "simple.dwarfs";
-  ASSERT_TRUE(backend->mount(archive, mount_point));
+  auto mount_result = backend->mount(archive, mount_point);
+  ASSERT_TRUE(mount_result.is_ok());
 
-  auto handle = backend->open(mount_point + "/subdir/nested.txt", O_RDONLY);
-  ASSERT_NE(handle, nullptr);
+  auto handle_result = backend->open(mount_point + "/subdir/nested.txt", O_RDONLY);
+  ASSERT_TRUE(handle_result.is_ok());
+  auto handle = std::move(handle_result).unwrap();
 
   char buffer[256] = {0};
   ssize_t bytes_read = handle->read(buffer, sizeof(buffer) - 1);
@@ -476,7 +511,8 @@ TEST_F(DwarfsBackendMountedTest, ReadNestedFileContentsCorrect) {
 
 TEST_F(DwarfsBackendTest, PathNormalizationWorks) {
   std::string archive = fixtures_path + "simple.dwarfs";
-  ASSERT_TRUE(backend->mount(archive, mount_point));
+  auto mount_result = backend->mount(archive, mount_point);
+  ASSERT_TRUE(mount_result.is_ok());
 
   // All these should resolve to the same file
   EXPECT_TRUE(backend->exists(mount_point + "/hello.txt"));
@@ -495,8 +531,9 @@ TEST_F(DwarfsBackendMountedTest, ConcurrentReadsSucceed) {
 
   for (int i = 0; i < num_threads; ++i) {
     threads.emplace_back([this, &success_count]() {
-      auto handle = backend->open(mount_point + "/hello.txt", O_RDONLY);
-      if (handle) {
+      auto result = backend->open(mount_point + "/hello.txt", O_RDONLY);
+      if (result.is_ok()) {
+        auto handle = std::move(result).unwrap();
         char buffer[256];
         ssize_t bytes_read = handle->read(buffer, sizeof(buffer));
         if (bytes_read > 0) {
@@ -520,10 +557,13 @@ TEST_F(DwarfsBackendMountedTest, ConcurrentDirectoryListsSucceed) {
 
   for (int i = 0; i < num_threads; ++i) {
     threads.emplace_back([this, &success_count]() {
-      auto iter = backend->list_directory(mount_point);
-      if (iter && iter->has_next()) {
-        iter->next();
-        success_count++;
+      auto result = backend->list_directory(mount_point);
+      if (result.is_ok()) {
+        auto iter = std::move(result).unwrap();
+        if (iter->has_next()) {
+          iter->next();
+          success_count++;
+        }
       }
     });
   }
@@ -543,35 +583,37 @@ TEST_F(DwarfsBackendTest, OperationsOnUnmountedBackendFail) {
   EXPECT_FALSE(backend->exists(mount_point + "/hello.txt"));
   EXPECT_FALSE(backend->is_file(mount_point + "/hello.txt"));
   EXPECT_FALSE(backend->is_directory(mount_point));
-  EXPECT_EQ(backend->file_size(mount_point + "/hello.txt"), -1);
-  EXPECT_EQ(backend->open(mount_point + "/hello.txt", O_RDONLY), nullptr);
-  EXPECT_EQ(backend->list_directory(mount_point), nullptr);
+  EXPECT_TRUE(backend->file_size(mount_point + "/hello.txt").is_err());
+  EXPECT_TRUE(backend->open(mount_point + "/hello.txt", O_RDONLY).is_err());
+  EXPECT_TRUE(backend->list_directory(mount_point).is_err());
 }
 
 TEST_F(DwarfsBackendMountedTest, InvalidOperationsReturnProperErrors) {
   // Open with write flags should fail (read-only archive)
-  EXPECT_EQ(backend->open(mount_point + "/hello.txt", O_WRONLY), nullptr);
-  EXPECT_EQ(backend->open(mount_point + "/hello.txt", O_RDWR), nullptr);
+  EXPECT_TRUE(backend->open(mount_point + "/hello.txt", O_WRONLY).is_err());
+  EXPECT_TRUE(backend->open(mount_point + "/hello.txt", O_RDWR).is_err());
 
   // List non-directory should fail
-  EXPECT_EQ(backend->list_directory(mount_point + "/hello.txt"), nullptr);
+  EXPECT_TRUE(backend->list_directory(mount_point + "/hello.txt").is_err());
 
   // File operations on directory should fail
-  EXPECT_EQ(backend->file_size(mount_point + "/subdir"), -1);
+  EXPECT_TRUE(backend->file_size(mount_point + "/subdir").is_err());
 }
 
 // ===================================================================
-// 10. Performance Tests (2 tests - optional with GTEST_SKIP)
+// 10. Performance Tests
 // ===================================================================
 
 TEST_F(DwarfsBackendTest, ReadLargeFilePerformance) {
   std::string archive = fixtures_path + "large.dwarfs";
-  if (!backend->mount(archive, mount_point)) {
+  auto mount_result = backend->mount(archive, mount_point);
+  if (mount_result.is_err()) {
     GTEST_SKIP() << "Large test fixture not available";
   }
 
-  auto handle = backend->open(mount_point + "/10mb.bin", O_RDONLY);
-  ASSERT_NE(handle, nullptr);
+  auto handle_result = backend->open(mount_point + "/10mb.bin", O_RDONLY);
+  ASSERT_TRUE(handle_result.is_ok());
+  auto handle = std::move(handle_result).unwrap();
 
   auto start = std::chrono::high_resolution_clock::now();
 
@@ -595,12 +637,14 @@ TEST_F(DwarfsBackendTest, ReadLargeFilePerformance) {
 
 TEST_F(DwarfsBackendTest, RandomAccessPerformance) {
   std::string archive = fixtures_path + "large.dwarfs";
-  if (!backend->mount(archive, mount_point)) {
+  auto mount_result = backend->mount(archive, mount_point);
+  if (mount_result.is_err()) {
     GTEST_SKIP() << "Large test fixture not available";
   }
 
-  auto handle = backend->open(mount_point + "/10mb.bin", O_RDONLY);
-  ASSERT_NE(handle, nullptr);
+  auto handle_result = backend->open(mount_point + "/10mb.bin", O_RDONLY);
+  ASSERT_TRUE(handle_result.is_ok());
+  auto handle = std::move(handle_result).unwrap();
 
   auto start = std::chrono::high_resolution_clock::now();
 

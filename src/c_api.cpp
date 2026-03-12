@@ -53,6 +53,7 @@
 #include <tebako/fs/filesystem.h>
 #include <tebako/fs/file_handle.h>
 #include <tebako/fs/directory_iterator.h>
+#include <tebako/fs/core/error.h>
 
 namespace {
 
@@ -94,6 +95,68 @@ thread_local int g_tebako_errno = 0;
 inline void set_errno(int err) {
     g_tebako_errno = err;
     errno = err;
+}
+
+/**
+ * @brief Map ErrorCode to errno value
+ */
+void map_error_to_errno(const tebako::fs::Error& error) {
+    using namespace tebako::fs;
+
+    switch (error.code) {
+        case ErrorCode::NotFound:
+            set_errno(ENOENT);
+            break;
+        case ErrorCode::NotMounted:
+            set_errno(ENODEV);
+            break;
+        case ErrorCode::AlreadyMounted:
+            set_errno(EALREADY);
+            break;
+        case ErrorCode::InvalidArgument:
+            set_errno(EINVAL);
+            break;
+        case ErrorCode::NotAFile:
+            set_errno(EISDIR);
+            break;
+        case ErrorCode::NotADirectory:
+            set_errno(ENOTDIR);
+            break;
+        case ErrorCode::NotSupported:
+            set_errno(ENOTSUP);
+            break;
+        case ErrorCode::IOError:
+        case ErrorCode::CorruptedArchive:
+            set_errno(EIO);
+            break;
+        case ErrorCode::OutOfMemory:
+            set_errno(ENOMEM);
+            break;
+        case ErrorCode::PermissionDenied:
+            set_errno(EACCES);
+            break;
+        case ErrorCode::AlreadyExists:
+            set_errno(EEXIST);
+            break;
+        case ErrorCode::DirectoryNotEmpty:
+            set_errno(ENOTEMPTY);
+            break;
+        case ErrorCode::NameTooLong:
+            set_errno(ENAMETOOLONG);
+            break;
+        case ErrorCode::BadFileDescriptor:
+            set_errno(EBADF);
+            break;
+        case ErrorCode::CrossDeviceLink:
+            set_errno(EXDEV);
+            break;
+        case ErrorCode::TooManySymlinks:
+            set_errno(ELOOP);
+            break;
+        default:
+            set_errno(EIO);
+            break;
+    }
 }
 
 /**
@@ -384,14 +447,14 @@ extern "C" int tebako_open(const char* path, int flags) {
     }
 
     try {
-        auto handle = g_filesystem->open(path, flags);
-        if (!handle) {
-            set_errno(ENOENT);
+        auto result = g_filesystem->open(path, flags);
+        if (result.is_err()) {
+            map_error_to_errno(result.error());
             return -1;
         }
 
         set_errno(0);
-        return store_handle(std::move(handle));
+        return store_handle(std::move(result).unwrap());
 
     } catch (...) {
         handle_exception();
@@ -485,14 +548,14 @@ extern "C" tebako_dir_t tebako_opendir(const char* path) {
     }
 
     try {
-        auto iter = g_filesystem->list_directory(path);
-        if (!iter) {
-            set_errno(ENOENT);
+        auto result = g_filesystem->list_directory(path);
+        if (result.is_err()) {
+            map_error_to_errno(result.error());
             return nullptr;
         }
 
         set_errno(0);
-        return allocate_dir_handle(std::move(iter));
+        return allocate_dir_handle(std::move(result).unwrap());
 
     } catch (...) {
         handle_exception();
@@ -566,19 +629,40 @@ extern "C" int tebako_stat(const char* path, struct stat* st) {
         // Clear stat structure
         std::memset(st, 0, sizeof(*st));
 
+        // Get permissions
+        auto perms_result = g_filesystem->permissions(path);
+        if (perms_result.is_err()) {
+            map_error_to_errno(perms_result.error());
+            return -1;
+        }
+        mode_t perms = perms_result.unwrap();
+
+        // Get modification time
+        auto mtime_result = g_filesystem->modification_time(path);
+        if (mtime_result.is_err()) {
+            map_error_to_errno(mtime_result.error());
+            return -1;
+        }
+        time_t mtime = mtime_result.unwrap();
+
         // Fill in fields
         if (g_filesystem->is_file(path)) {
-            st->st_mode = S_IFREG | g_filesystem->permissions(path);
-            st->st_size = g_filesystem->file_size(path);
+            auto size_result = g_filesystem->file_size(path);
+            if (size_result.is_err()) {
+                map_error_to_errno(size_result.error());
+                return -1;
+            }
+            st->st_mode = S_IFREG | perms;
+            st->st_size = size_result.unwrap();
         } else if (g_filesystem->is_directory(path)) {
-            st->st_mode = S_IFDIR | g_filesystem->permissions(path);
+            st->st_mode = S_IFDIR | perms;
             st->st_size = 0;
         } else {
             set_errno(EINVAL);
             return -1;
         }
 
-        st->st_mtime = g_filesystem->modification_time(path);
+        st->st_mtime = mtime;
         st->st_nlink = 1;
 
         set_errno(0);
@@ -675,10 +759,11 @@ extern "C" int tebako_fs_extract_all(const char* dest_path) {
         std::function<bool(const std::string&, const std::string&)> extract_dir;
         extract_dir = [&](const std::string& vfs_path, const std::string& disk_path) -> bool {
             // List directory contents
-            auto iter = g_filesystem->list_directory(vfs_path);
-            if (!iter) {
+            auto iter_result = g_filesystem->list_directory(vfs_path);
+            if (iter_result.is_err()) {
                 return false;
             }
+            auto iter = std::move(iter_result).unwrap();
 
             // Process each entry
             while (iter->has_next()) {
@@ -695,17 +780,23 @@ extern "C" int tebako_fs_extract_all(const char* dest_path) {
                     }
 
                     // Set directory permissions
-                    mode_t perms = g_filesystem->permissions(entry_vfs_path);
-                    std::filesystem::permissions(
-                        entry_disk_path,
-                        static_cast<std::filesystem::perms>(perms),
-                        std::filesystem::perm_options::replace);
+                    auto perms_result = g_filesystem->permissions(entry_vfs_path);
+                    if (perms_result.is_ok()) {
+                        mode_t perms = perms_result.unwrap();
+                        std::filesystem::permissions(
+                            entry_disk_path,
+                            static_cast<std::filesystem::perms>(perms),
+                            std::filesystem::perm_options::replace);
+                    }
 
                     // Set directory modification time
-                    time_t mtime = g_filesystem->modification_time(entry_vfs_path);
-                    auto sys_time = std::chrono::system_clock::from_time_t(mtime);
-                    auto file_time = std::chrono::file_clock::from_sys(sys_time);
-                    std::filesystem::last_write_time(entry_disk_path, file_time);
+                    auto mtime_result = g_filesystem->modification_time(entry_vfs_path);
+                    if (mtime_result.is_ok()) {
+                        time_t mtime = mtime_result.unwrap();
+                        auto sys_time = std::chrono::system_clock::from_time_t(mtime);
+                        auto file_time = std::chrono::file_clock::from_sys(sys_time);
+                        std::filesystem::last_write_time(entry_disk_path, file_time);
+                    }
 
                     // Recursively extract subdirectory
                     if (!extract_dir(entry_vfs_path, entry_disk_path)) {
@@ -713,10 +804,11 @@ extern "C" int tebako_fs_extract_all(const char* dest_path) {
                     }
                 } else {
                     // Extract file
-                    auto handle = g_filesystem->open(entry_vfs_path, O_RDONLY);
-                    if (!handle) {
+                    auto handle_result = g_filesystem->open(entry_vfs_path, O_RDONLY);
+                    if (handle_result.is_err()) {
                         return false;
                     }
+                    auto handle = std::move(handle_result).unwrap();
 
                     // Create output file
                     std::ofstream out(entry_disk_path, std::ios::binary | std::ios::trunc);
@@ -744,17 +836,23 @@ extern "C" int tebako_fs_extract_all(const char* dest_path) {
                     out.close();
 
                     // Set file permissions
-                    mode_t perms = g_filesystem->permissions(entry_vfs_path);
-                    std::filesystem::permissions(
-                        entry_disk_path,
-                        static_cast<std::filesystem::perms>(perms),
-                        std::filesystem::perm_options::replace);
+                    auto perms_result = g_filesystem->permissions(entry_vfs_path);
+                    if (perms_result.is_ok()) {
+                        mode_t perms = perms_result.unwrap();
+                        std::filesystem::permissions(
+                            entry_disk_path,
+                            static_cast<std::filesystem::perms>(perms),
+                            std::filesystem::perm_options::replace);
+                    }
 
                     // Set file modification time
-                    time_t mtime = g_filesystem->modification_time(entry_vfs_path);
-                    auto sys_time = std::chrono::system_clock::from_time_t(mtime);
-                    auto file_time = std::chrono::file_clock::from_sys(sys_time);
-                    std::filesystem::last_write_time(entry_disk_path, file_time);
+                    auto mtime_result = g_filesystem->modification_time(entry_vfs_path);
+                    if (mtime_result.is_ok()) {
+                        time_t mtime = mtime_result.unwrap();
+                        auto sys_time = std::chrono::system_clock::from_time_t(mtime);
+                        auto file_time = std::chrono::file_clock::from_sys(sys_time);
+                        std::filesystem::last_write_time(entry_disk_path, file_time);
+                    }
                 }
             }
 

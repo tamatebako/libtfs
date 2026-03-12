@@ -35,6 +35,7 @@
 #include <memory>
 #include <shared_mutex>
 #include <string>
+#include <string_view>
 #include <sys/types.h>
 
 namespace tebako {
@@ -94,12 +95,10 @@ class DwarfsBackend : public FileSystem {
    *
    * @param archive_path Path to the DwarFS file
    * @param mount_point Virtual mount point
-   * @return true if mount succeeded, false otherwise
-   *
-   * @note Returns false if already mounted or if archive cannot be opened
+   * @return Result<void> - success or error with details
    */
-  bool mount(const std::string& archive_path,
-             const std::string& mount_point) override;
+  Result<void> mount(std::string_view archive_path,
+                     std::string_view mount_point) override;
 
   /**
    * @brief Mount a DwarFS archive from memory buffer
@@ -110,13 +109,12 @@ class DwarfsBackend : public FileSystem {
    * @param data Pointer to DwarFS archive data in memory
    * @param size Size of archive in bytes
    * @param mount_point Virtual mount point
-   * @return true if mount succeeded, false otherwise
+   * @return Result<void> - success or error with details
    *
-   * @note Returns false if already mounted or if archive cannot be opened
    * @note The archive_path will be empty for memory-mounted archives
    */
-  bool mount_from_memory(const void* data, size_t size,
-                         const std::string& mount_point) override;
+  Result<void> mount_from_memory(const void* data, size_t size,
+                                 std::string_view mount_point) override;
 
   /**
    * @brief Unmount the DwarFS archive
@@ -142,10 +140,10 @@ class DwarfsBackend : public FileSystem {
    *
    * @param path Absolute path to the file
    * @param flags Open flags (only O_RDONLY supported)
-   * @return Unique pointer to FileHandle, or nullptr on error
+   * @return Result containing FileHandle or error
    */
-  std::unique_ptr<FileHandle> open(const std::string& path,
-                                   int flags) override;
+  Result<std::unique_ptr<FileHandle>> open(std::string_view path,
+                                           int flags) override;
 
   /**
    * @brief Check if a path exists in the archive
@@ -153,7 +151,7 @@ class DwarfsBackend : public FileSystem {
    * @param path Absolute path to check
    * @return true if path exists, false otherwise
    */
-  bool exists(const std::string& path) const override;
+  bool exists(std::string_view path) const override;
 
   /**
    * @brief Check if a path is a regular file
@@ -161,7 +159,7 @@ class DwarfsBackend : public FileSystem {
    * @param path Absolute path to check
    * @return true if path is a file, false otherwise
    */
-  bool is_file(const std::string& path) const override;
+  bool is_file(std::string_view path) const override;
 
   /**
    * @brief Check if a path is a directory
@@ -169,7 +167,7 @@ class DwarfsBackend : public FileSystem {
    * @param path Absolute path to check
    * @return true if path is a directory, false otherwise
    */
-  bool is_directory(const std::string& path) const override;
+  bool is_directory(std::string_view path) const override;
 
   // ===================================================================
   // Directory Operations (FileSystem interface)
@@ -179,10 +177,10 @@ class DwarfsBackend : public FileSystem {
    * @brief List contents of a directory
    *
    * @param path Absolute path to the directory
-   * @return Unique pointer to DirectoryIterator, or nullptr on error
+   * @return Result containing DirectoryIterator or error
    */
-  std::unique_ptr<DirectoryIterator> list_directory(
-      const std::string& path) override;
+  Result<std::unique_ptr<DirectoryIterator>> list_directory(
+      std::string_view path) override;
 
   // ===================================================================
   // Metadata Operations (FileSystem interface)
@@ -192,27 +190,27 @@ class DwarfsBackend : public FileSystem {
    * @brief Get the size of a file
    *
    * @param path Absolute path to the file
-   * @return File size in bytes, or -1 on error
+   * @return Result containing file size or error
    */
-  int64_t file_size(const std::string& path) const override;
+  Result<int64_t> file_size(std::string_view path) const override;
 
   /**
    * @brief Get the modification time of a file
    *
    * @param path Absolute path to the file
-   * @return Modification time as Unix timestamp, or 0 on error
+   * @return Result containing modification time or error
    */
-  time_t modification_time(const std::string& path) const override;
+  Result<time_t> modification_time(std::string_view path) const override;
 
   /**
    * @brief Get the permissions of a file
    *
    * @param path Absolute path to the file
-   * @return File permissions as mode_t, or 0 on error
+   * @return Result containing permissions or error
    *
    * @note DwarFS archives store full POSIX permissions.
    */
-  mode_t permissions(const std::string& path) const override;
+  Result<mode_t> permissions(std::string_view path) const override;
 
   // ===================================================================
   // Backend Information (FileSystem interface)
@@ -264,7 +262,7 @@ class DwarfsBackend : public FileSystem {
    *
    * @example "/mnt/app/file.txt" -> "file.txt"
    */
-  std::string strip_mount_point(const std::string& path) const;
+  std::string strip_mount_point(std::string_view path) const;
 
   /**
    * @brief Normalize a path for DwarFS lookup
@@ -274,7 +272,7 @@ class DwarfsBackend : public FileSystem {
    * @param path Path to normalize
    * @return Normalized path suitable for inode lookup
    */
-  std::string normalize_path(const std::string& path) const;
+  std::string normalize_path(std::string_view path) const;
 
   // Member variables
   std::unique_ptr<Impl> impl_;       ///< PIMPL implementation

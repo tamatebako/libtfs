@@ -1,0 +1,30 @@
+libtfs Backend Benchmark Results
+================================
+Date: Wed Feb 18 23:22:50 HKT 2026
+Iterations: 10
+
+Results:
+--------
+Mount Time:
+  ZIP: 40.09 ms
+  DwarFS: 40.44 ms
+  Winner: ZIP 🏆
+
+Directory Listing:
+  ZIP: 39.24 ms
+  DwarFS: 40.01 ms
+  Winner: ZIP 🏆
+
+File Read:
+  ZIP: 39.40 ms
+  DwarFS: 40.80 ms
+  Winner: ZIP 🏆
+
+Full Suite:
+  ZIP: 46.37 ms
+  DwarFS: 48.12 ms
+  Winner: ZIP 🏆
+
+Overall:
+  ZIP wins: 3
+  DwarFS wins: 0

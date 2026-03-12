@@ -147,6 +147,12 @@ std::unique_ptr<FileSystem> BackendFactory::create_from_memory(
   }
   */
 
+  // Check DwarFS magic ("DWARFS" at offset 0)
+  if (size >= sizeof(DWARFS_MAGIC) &&
+      std::memcmp(bytes, DWARFS_MAGIC, sizeof(DWARFS_MAGIC)) == 0) {
+    return create_dwarfs();
+  }
+
   return nullptr;
 }
 
