@@ -36,6 +36,7 @@ install_manifest.txt
 out
 build
 _CPack_Packages
+vcpkg_installed/
 
 # External dependencies
 deps
