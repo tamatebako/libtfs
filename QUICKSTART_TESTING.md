@@ -53,7 +53,6 @@ Fixture summary:
 
 ```bash
 # From project root
-cd /Users/mulgogi/src/tamatebako/libdwarfs
 
 # Configure (if not already done)
 cmake -B build -DWITH_TESTS=ON \
