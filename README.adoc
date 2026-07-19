@@ -954,17 +954,7 @@ The [`examples/`](examples/) directory contains comprehensive example programs:
 * **basic_usage.cpp** - Basic DwarFS operations (mount, read, unmount)
 * **api_example.cpp** - Comprehensive API demonstration
 
-.Building examples
-[source,bash]
-----
-mkdir build && cd build
-cmake -DBUILD_EXAMPLES=ON ..
-make -j$(nproc)
-
-# Run examples
-./examples/basic_usage filesystem.dwarfs /path/to/file.txt
-./examples/api_example filesystem.dwarfs /path/to/file.txt /path/to/directory
-----
+NOTE: The examples are not currently wired into the build; they return in Stage 1.
 
 For detailed information, see link:examples/README.md[Examples Documentation].
 

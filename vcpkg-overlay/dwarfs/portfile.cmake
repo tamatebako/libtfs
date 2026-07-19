@@ -12,19 +12,21 @@ vcpkg_from_github(
     HEAD_REF main
     PATCHES
         # fmt 12 no longer provides fmt::format via <fmt/core.h>;
-        # fixed on dwarfs-t main, drop this patch at the next tag
+        # fixed-forward in dwarfs-t PR #69 (merged); drop at first tag containing it
         patches/fmt-12-format-include.patch
         # libc++ lacks std::hash<std::filesystem::path>; use the portable
-        # std::filesystem::hash_value. fixed on dwarfs-t main, drop at next tag
+        # std::filesystem::hash_value. landed via dwarfs-t PR #70 (merged);
+        # drop at first tag containing it
         patches/fs-path-hasher.patch
         # TRY_ENABLE_FLAC=OFF was dead: flac.cmake was included unconditionally
         # and dwarfs-config.cmake exported an unguarded find_dependency(FLAC);
-        # fixed on dwarfs-t main, drop this patch at the next tag
+        # landed via dwarfs-t PR #72 (merged); drop at first tag containing it
         patches/flac-option-honored.patch
         # dwarfs-config.cmake resolved jemalloc via raw pkg-config only; an
         # older system jemalloc.pc then shadows the vcpkg one. Prefer the
         # CMake CONFIG package (as the build itself does in vcpkg mode),
-        # keep pkg-config as fallback. fixed on dwarfs-t main, drop at next tag
+        # keep pkg-config as fallback. landing via dwarfs-t PR #73 (open at
+        # this writing); drop at first tag containing it
         patches/jemalloc-config-export.patch
 )
 

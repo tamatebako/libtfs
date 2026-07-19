@@ -48,6 +48,16 @@ All objectives achieved:
 
 **Total: 187 tests passing** (140 ZIP + 47 DwarFS)
 
+### Building with vcpkg
+
+Dependencies are provided by vcpkg (manifest mode, using the ports in `vcpkg-overlay/`):
+
+```bash
+cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE=$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake -DCMAKE_BUILD_TYPE=Release
+cmake --build build
+ctest --test-dir build
+```
+
 ### Testing
 
 ```bash
@@ -79,17 +89,7 @@ The `examples/` directory contains comprehensive example programs demonstrating 
 * **basic_usage.cpp** - Basic DwarFS operations (mount, read, unmount)
 * **api_example.cpp** - Comprehensive API demonstration (file/directory operations, stat, navigation)
 
-To build the examples:
-
-```bash
-mkdir build && cd build
-cmake -DBUILD_EXAMPLES=ON ..
-make -j$(nproc)
-
-# Run examples (requires a DwarFS image)
-./examples/basic_usage filesystem.dwarfs /path/to/file.txt
-./examples/api_example filesystem.dwarfs /path/to/file.txt /path/to/directory
-```
+The examples are not currently wired into the build; they return in Stage 1.
 
 For detailed information about the examples, including API usage patterns and troubleshooting, see [examples/README.md](examples/README.md).
 
