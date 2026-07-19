@@ -21,6 +21,11 @@ vcpkg_from_github(
         # and dwarfs-config.cmake exported an unguarded find_dependency(FLAC);
         # fixed on dwarfs-t main, drop this patch at the next tag
         patches/flac-option-honored.patch
+        # dwarfs-config.cmake resolved jemalloc via raw pkg-config only; an
+        # older system jemalloc.pc then shadows the vcpkg one. Prefer the
+        # CMake CONFIG package (as the build itself does in vcpkg mode),
+        # keep pkg-config as fallback. fixed on dwarfs-t main, drop at next tag
+        patches/jemalloc-config-export.patch
 )
 
 vcpkg_cmake_configure(

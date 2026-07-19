@@ -1,0 +1,16 @@
+diff --git a/cmake/dwarfs-config.cmake.in b/cmake/dwarfs-config.cmake.in
+index a578fe5..64edc80 100644
+--- a/cmake/dwarfs-config.cmake.in
++++ b/cmake/dwarfs-config.cmake.in
+@@ -101,7 +101,10 @@ if(LIBDWARFS_WITH_FLAC)
+ endif()
+ 
+ if(LIBDWARFS_WITH_JEMALLOC)
+-  pkg_check_modules(JEMALLOC REQUIRED IMPORTED_TARGET jemalloc>=@JEMALLOC_REQUIRED_VERSION@)
++  find_package(jemalloc CONFIG QUIET)
++  if(NOT jemalloc_FOUND)
++    pkg_check_modules(JEMALLOC REQUIRED IMPORTED_TARGET jemalloc>=@JEMALLOC_REQUIRED_VERSION@)
++  endif()
+ endif()
+ 
+ if (NOT TARGET dwarfs::dwarfs_common)
