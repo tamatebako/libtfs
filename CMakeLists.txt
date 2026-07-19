@@ -284,9 +284,6 @@ set(CMAKE_CXX_EXTENSIONS   OFF)
 # Find DwarFS via CMake package config (provided by vcpkg)
 find_package(dwarfs CONFIG REQUIRED)
 
-# This is due to a bug in folly's Portability.h
-# Adopted 'as is' from Dwarfs CMake script
-add_compile_definitions(FOLLY_CFG_NO_COROUTINES)
 add_compile_definitions(GLOG_NO_ABBREVIATED_SEVERITIES NOMINMAX NOGDI)
 add_compile_definitions(GLOG_USE_GLOG_EXPORT)
 
@@ -322,15 +319,6 @@ set(__LIBANDROID_NDK "")
 set(__LIBadaliba "")
 set(_LIBEH "")
 set(_LIBNAME "_LIB")
-
-# DwarFS libraries for test linking
-# Note: These are only needed by tests that actually mount filesystems (test_c_api)
-set(__LIBDWARFS_COMMON "${DWARFS_BINARY_DIR}/libdwarfs_common.a")
-set(__LIBDWARFS_READER "${DWARFS_BINARY_DIR}/libdwarfs_reader.a")
-set(__LIBDWARFS_DECOMPRESSOR "${DWARFS_BINARY_DIR}/libdwarfs_decompressor.a")
-set(__LIBDWARFS_COMPRESSOR "${DWARFS_BINARY_DIR}/libdwarfs_compressor.a")
-set(__LIBFLATBUFFERS "${DWARFS_BINARY_DIR}/_deps/flatbuffers-build/libflatbuffers.a")
-set(__LIBRICEPP "${DWARFS_BINARY_DIR}/ricepp/libricepp.a")
 
 # System/dependency libraries for DwarFS
 set(__LIBGLOG "${DEPS_LIB_DIR}/libglog.a")
@@ -501,7 +489,6 @@ target_link_libraries(tfs PUBLIC
 # Find argtable3 for CLI tool
 find_package(argtable3 CONFIG REQUIRED)
 
-add_dependencies(tfs ${DWARFS_PRJ})
 if(WITH_GLOG_BUILD)
   add_dependencies(tfs ${GLOG_PRJ})
 endif(WITH_GLOG_BUILD)
@@ -530,19 +517,11 @@ install(TARGETS
          INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
 )
 
-install(FILES
-        ${__LIBDWARFS}  ${__LIBFSST}   ${__LIBFOLLY} ${__LIBT_METADATA}
-        ${__LIBT_LIGHT} ${__LIBXXHASH} ${__LIBZSTD}  ${__LIBARCHIVE}
-        ${__LIBDWARFS_COMPRESSION}
-        DESTINATION ${CMAKE_INSTALL_LIBDIR}
-)
-
 if (IS_MSYS)
   install(FILES ${__LIBFMT} DESTINATION ${CMAKE_INSTALL_LIBDIR})
   install(DIRECTORY ${DEPS_INCLUDE_DIR}/fmt DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/fmt)
 elseif(NOT IS_WINDOWS)
   install(FILES ${__LIBFMT} DESTINATION ${CMAKE_INSTALL_LIBDIR})
-  install(DIRECTORY ${DWARFS_BINARY_DIR}/_deps/fmt-src/include/fmt DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 endif(IS_MSYS)
 
 if(WITH_GLOG_BUILD)
