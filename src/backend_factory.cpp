@@ -96,8 +96,7 @@ std::unique_ptr<FileSystem> BackendFactory::create_from_file(const std::string& 
     return create_zip();
   }
 
-  if (has_extension(archive_path, ".sqfs") ||
-      has_extension(archive_path, ".squashfs")) {
+  if (has_extension(archive_path, ".sqfs") || has_extension(archive_path, ".squashfs")) {
     return create_squashfs();
   }
 
@@ -122,11 +121,8 @@ std::unique_ptr<FileSystem> BackendFactory::create_from_memory(const void* data,
   }
 
   // Check SquashFS magic (hsqs or sqsh)
-  if (size >= 4 &&
-      ((bytes[0] == 'h' && bytes[1] == 's' &&
-        bytes[2] == 'q' && bytes[3] == 's') ||
-       (bytes[0] == 's' && bytes[1] == 'q' &&
-        bytes[2] == 's' && bytes[3] == 'h'))) {
+  if (size >= 4 && ((bytes[0] == 'h' && bytes[1] == 's' && bytes[2] == 'q' && bytes[3] == 's') ||
+                    (bytes[0] == 's' && bytes[1] == 'q' && bytes[2] == 's' && bytes[3] == 'h'))) {
     return create_squashfs();
   }
 
