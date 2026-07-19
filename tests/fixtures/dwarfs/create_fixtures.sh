@@ -97,4 +97,4 @@ fi
 
 echo ""
 echo "All DwarFS test fixtures created successfully!"
-ls -lh *.dwarfs
+ls -lh ./*.dwarfs

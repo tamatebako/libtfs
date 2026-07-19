@@ -39,8 +39,9 @@ jobs:
             echo "Checking: $file"
 
             # Look for folly:: that is NOT in a comment
-            # This regex matches folly:: not preceded by // or within /* */
-            if grep -n "folly::" "$file" | grep -v "^\s*//" | grep -v "^\s*\*" | grep -v "^\s*/\*"; then
+            # grep -n prefixes matches with "LINENO:", so comment exclusions
+            # must account for the line-number prefix
+            if grep -n "folly::" "$file" | grep -vE '^[0-9]+:[[:space:]]*//' | grep -vE '^[0-9]+:[[:space:]]*\*' | grep -vE '^[0-9]+:[[:space:]]*/\*'; then
               echo "ERROR: Found folly:: usage in $file (not in comment)"
               found_issues=1
             fi
@@ -50,7 +51,7 @@ jobs:
           for file in $(find include -name "*.h" 2>/dev/null); do
             echo "Checking: $file"
 
-            if grep -n "folly::" "$file" | grep -v "^\s*//" | grep -v "^\s*\*" | grep -v "^\s*/\*"; then
+            if grep -n "folly::" "$file" | grep -vE '^[0-9]+:[[:space:]]*//' | grep -vE '^[0-9]+:[[:space:]]*\*' | grep -vE '^[0-9]+:[[:space:]]*/\*'; then
               echo "ERROR: Found folly:: usage in $file (not in comment)"
               found_issues=1
             fi
@@ -74,7 +75,7 @@ jobs:
 
           # Check for #include <folly/ or #include "folly/
           for file in $(find src include -name "*.cpp" -o -name "*.h" 2>/dev/null); do
-            if grep -n '#include.*[<"]folly/' "$file" | grep -v "^\s*//" | grep -v "^\s*\*"; then
+            if grep -n '#include.*[<"]folly/' "$file" | grep -vE '^[0-9]+:[[:space:]]*//' | grep -vE '^[0-9]+:[[:space:]]*\*' | grep -vE '^[0-9]+:[[:space:]]*/\*'; then
               echo "ERROR: Found folly header include in $file"
               found_includes=1
             fi
@@ -98,7 +99,7 @@ jobs:
 
           # Check .cpp files
           for file in $(find src -name "*.cpp" 2>/dev/null); do
-            if grep -n "apache::thrift" "$file" | grep -v "^\s*//" | grep -v "^\s*\*"; then
+            if grep -n "apache::thrift" "$file" | grep -vE '^[0-9]+:[[:space:]]*//' | grep -vE '^[0-9]+:[[:space:]]*\*' | grep -vE '^[0-9]+:[[:space:]]*/\*'; then
               echo "ERROR: Found apache::thrift usage in $file (not in comment)"
               found_thrift=1
             fi
@@ -106,7 +107,7 @@ jobs:
 
           # Check .h files
           for file in $(find include -name "*.h" 2>/dev/null); do
-            if grep -n "apache::thrift" "$file" | grep -v "^\s*//" | grep -v "^\s*\*"; then
+            if grep -n "apache::thrift" "$file" | grep -vE '^[0-9]+:[[:space:]]*//' | grep -vE '^[0-9]+:[[:space:]]*\*' | grep -vE '^[0-9]+:[[:space:]]*/\*'; then
               echo "ERROR: Found apache::thrift usage in $file (not in comment)"
               found_thrift=1
             fi
@@ -128,7 +129,7 @@ jobs:
 
           # Check for #include <thrift/ or similar patterns
           for file in $(find src include -name "*.cpp" -o -name "*.h" 2>/dev/null); do
-            if grep -n '#include.*[<"]thrift/' "$file" | grep -v "^\s*//" | grep -v "^\s*\*"; then
+            if grep -n '#include.*[<"]thrift/' "$file" | grep -vE '^[0-9]+:[[:space:]]*//' | grep -vE '^[0-9]+:[[:space:]]*\*' | grep -vE '^[0-9]+:[[:space:]]*/\*'; then
               echo "ERROR: Found thrift header include in $file"
               found_includes=1
             fi

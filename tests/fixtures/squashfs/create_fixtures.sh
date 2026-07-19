@@ -49,7 +49,7 @@ rm -rf perms
 echo "Creating large.sqfs..."
 mkdir -p large/many_files
 dd if=/dev/urandom of=large/large.txt bs=1M count=10 2>/dev/null
-for i in {1..100}; do echo "File $i" > large/many_files/file$i.txt; done
+for i in {1..100}; do echo "File $i" > "large/many_files/file$i.txt"; done
 mksquashfs large large.sqfs -noappend -quiet
 rm -rf large
 
@@ -59,4 +59,4 @@ cp simple.sqfs corrupted.sqfs
 dd if=/dev/zero of=corrupted.sqfs bs=1 count=100 seek=100 conv=notrunc 2>/dev/null
 
 echo "All SquashFS test fixtures created successfully!"
-ls -lh *.sqfs
+ls -lh ./*.sqfs

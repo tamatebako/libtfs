@@ -38,8 +38,8 @@ if [ $FAILED -eq 0 ]; then
     echo "✅ All fixtures regenerated successfully!"
     echo ""
     echo "Fixture summary:"
-    echo "  ZIP fixtures:      $(ls -1 "$SCRIPT_DIR/zip"/*.zip 2>/dev/null | wc -l) archives"
-    echo "  SquashFS fixtures: $(ls -1 "$SCRIPT_DIR/squashfs"/*.sqfs 2>/dev/null | wc -l) archives"
+    echo "  ZIP fixtures:      $(find "$SCRIPT_DIR/zip" -maxdepth 1 -name '*.zip' -print | wc -l) archives"
+    echo "  SquashFS fixtures: $(find "$SCRIPT_DIR/squashfs" -maxdepth 1 -name '*.sqfs' -print | wc -l) archives"
     echo ""
     echo "Total size:"
     du -sh "$SCRIPT_DIR/zip" "$SCRIPT_DIR/squashfs" 2>/dev/null | awk '{print "  "$2": "$1}'

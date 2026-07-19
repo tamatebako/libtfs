@@ -34,11 +34,11 @@ WARMUP=2
 format_ms() {
     local ms=$1
     if (( $(echo "$ms < 1" | bc -l 2>/dev/null || echo 0) )); then
-        printf "%.2f µs" $(echo "$ms * 1000" | bc -l)
+        printf "%.2f µs" "$(echo "$ms * 1000" | bc -l)"
     elif (( $(echo "$ms < 1000" | bc -l 2>/dev/null || echo 0) )); then
-        printf "%.2f ms" $ms
+        printf "%.2f ms" "$ms"
     else
-        printf "%.2f s" $(echo "$ms / 1000" | bc -l)
+        printf "%.2f s" "$(echo "$ms / 1000" | bc -l)"
     fi
 }
 
@@ -52,14 +52,14 @@ run_benchmark() {
     local count=0
 
     # Warmup runs
-    for i in $(seq 1 $WARMUP); do
-        $binary --gtest_filter="$filter" > /dev/null 2>&1 || true
+    for _ in $(seq 1 "$WARMUP"); do
+        "$binary" --gtest_filter="$filter" > /dev/null 2>&1 || true
     done
 
     # Measured runs
-    for i in $(seq 1 $iterations); do
+    for _ in $(seq 1 "$iterations"); do
         start=$(python3 -c "import time; print(time.perf_counter() * 1000)")
-        $binary --gtest_filter="$filter" > /dev/null 2>&1
+        "$binary" --gtest_filter="$filter" > /dev/null 2>&1
         end=$(python3 -c "import time; print(time.perf_counter() * 1000)")
 
         duration=$(echo "$end - $start" | bc -l)
@@ -73,11 +73,16 @@ run_benchmark() {
     done
 
     # Calculate statistics
-    local mean=$(echo "scale=2; $sum / $count" | bc -l)
+    local mean
+    mean=$(echo "scale=2; $sum / $count" | bc -l)
 
     # Sort values for median
-    local sorted=$(echo $values | tr ' ' '\n' | sort -n)
-    local sorted_arr=($sorted)
+    local sorted
+    sorted=$(echo "$values" | tr ' ' '\n' | sort -n)
+    local -a sorted_arr=()
+    while IFS= read -r line; do
+        sorted_arr+=("$line")
+    done <<< "$sorted"
     local median_idx=$((count / 2))
     local median=${sorted_arr[$median_idx]}
 
@@ -92,14 +97,17 @@ compare_results() {
     local zip_val=$1
     local dwarfs_val=$2
 
-    local ratio=$(echo "scale=2; $dwarfs_val / $zip_val" | bc -l)
+    local ratio
+    ratio=$(echo "scale=2; $dwarfs_val / $zip_val" | bc -l)
 
     if (( $(echo "$ratio < 1" | bc -l) )); then
-        local improvement=$(echo "scale=1; (1 - $ratio) * 100" | bc -l)
+        local improvement
+        improvement=$(echo "scale=1; (1 - $ratio) * 100" | bc -l)
         echo -e "${GREEN}🏆 DwarFS is ${improvement}% faster${NC}"
         echo "dwarfs"
     elif (( $(echo "$ratio > 1" | bc -l) )); then
-        local improvement=$(echo "scale=1; ($ratio - 1) * 100" | bc -l)
+        local improvement
+        improvement=$(echo "scale=1; ($ratio - 1) * 100" | bc -l)
         echo -e "${GREEN}🏆 ZIP is ${improvement}% faster${NC}"
         echo "zip"
     else
@@ -154,21 +162,21 @@ DWARFS_WINS=0
 echo -e "${BLUE}Benchmark 1: Mount/Initialization Time${NC}"
 echo "  Running ZIP mount test..."
 
-result=$(run_benchmark "$ZIP_TEST" "*MountValid*" $ITERATIONS)
-zip_mount_mean=$(echo $result | cut -d: -f1)
-zip_mount_median=$(echo $result | cut -d: -f2)
+result=$(run_benchmark "$ZIP_TEST" "*MountValid*" "$ITERATIONS")
+zip_mount_mean=$(echo "$result" | cut -d: -f1)
+zip_mount_median=$(echo "$result" | cut -d: -f2)
 
-echo "  ZIP mount time: $(format_ms $zip_mount_median) (mean: $(format_ms $zip_mount_mean))"
+echo "  ZIP mount time: $(format_ms "$zip_mount_median") (mean: $(format_ms "$zip_mount_mean"))"
 
 echo "  Running DwarFS mount test..."
-result=$(run_benchmark "$DWARFS_TEST" "*MountValid*" $ITERATIONS)
-dwarfs_mount_mean=$(echo $result | cut -d: -f1)
-dwarfs_mount_median=$(echo $result | cut -d: -f2)
+result=$(run_benchmark "$DWARFS_TEST" "*MountValid*" "$ITERATIONS")
+dwarfs_mount_mean=$(echo "$result" | cut -d: -f1)
+dwarfs_mount_median=$(echo "$result" | cut -d: -f2)
 
-echo "  DwarFS mount time: $(format_ms $dwarfs_mount_median) (mean: $(format_ms $dwarfs_mount_mean))"
+echo "  DwarFS mount time: $(format_ms "$dwarfs_mount_median") (mean: $(format_ms "$dwarfs_mount_mean"))"
 
 echo -n "  "
-winner=$(compare_results $zip_mount_median $dwarfs_mount_median | tail -1)
+winner=$(compare_results "$zip_mount_median" "$dwarfs_mount_median" | tail -1)
 if [ "$winner" = "dwarfs" ]; then
     ((DWARFS_WINS++))
 elif [ "$winner" = "zip" ]; then
@@ -183,21 +191,21 @@ echo ""
 echo -e "${BLUE}Benchmark 2: Directory Listing${NC}"
 echo "  Running ZIP directory listing test..."
 
-result=$(run_benchmark "$ZIP_TEST" "*ListDirectory*" $ITERATIONS)
-zip_list_mean=$(echo $result | cut -d: -f1)
-zip_list_median=$(echo $result | cut -d: -f2)
+result=$(run_benchmark "$ZIP_TEST" "*ListDirectory*" "$ITERATIONS")
+zip_list_mean=$(echo "$result" | cut -d: -f1)
+zip_list_median=$(echo "$result" | cut -d: -f2)
 
-echo "  ZIP list time: $(format_ms $zip_list_median) (mean: $(format_ms $zip_list_mean))"
+echo "  ZIP list time: $(format_ms "$zip_list_median") (mean: $(format_ms "$zip_list_mean"))"
 
 echo "  Running DwarFS directory listing test..."
-result=$(run_benchmark "$DWARFS_TEST" "*ListDirectory*" $ITERATIONS)
-dwarfs_list_mean=$(echo $result | cut -d: -f1)
-dwarfs_list_median=$(echo $result | cut -d: -f2)
+result=$(run_benchmark "$DWARFS_TEST" "*ListDirectory*" "$ITERATIONS")
+dwarfs_list_mean=$(echo "$result" | cut -d: -f1)
+dwarfs_list_median=$(echo "$result" | cut -d: -f2)
 
-echo "  DwarFS list time: $(format_ms $dwarfs_list_median) (mean: $(format_ms $dwarfs_list_mean))"
+echo "  DwarFS list time: $(format_ms "$dwarfs_list_median") (mean: $(format_ms "$dwarfs_list_mean"))"
 
 echo -n "  "
-winner=$(compare_results $zip_list_median $dwarfs_list_median | tail -1)
+winner=$(compare_results "$zip_list_median" "$dwarfs_list_median" | tail -1)
 if [ "$winner" = "dwarfs" ]; then
     ((DWARFS_WINS++))
 elif [ "$winner" = "zip" ]; then
@@ -212,21 +220,21 @@ echo ""
 echo -e "${BLUE}Benchmark 3: File Read${NC}"
 echo "  Running ZIP file read test..."
 
-result=$(run_benchmark "$ZIP_TEST" "*ReadFile*" $ITERATIONS)
-zip_read_mean=$(echo $result | cut -d: -f1)
-zip_read_median=$(echo $result | cut -d: -f2)
+result=$(run_benchmark "$ZIP_TEST" "*ReadFile*" "$ITERATIONS")
+zip_read_mean=$(echo "$result" | cut -d: -f1)
+zip_read_median=$(echo "$result" | cut -d: -f2)
 
-echo "  ZIP read time: $(format_ms $zip_read_median) (mean: $(format_ms $zip_read_mean))"
+echo "  ZIP read time: $(format_ms "$zip_read_median") (mean: $(format_ms "$zip_read_mean"))"
 
 echo "  Running DwarFS file read test..."
-result=$(run_benchmark "$DWARFS_TEST" "*ReadFile*" $ITERATIONS)
-dwarfs_read_mean=$(echo $result | cut -d: -f1)
-dwarfs_read_median=$(echo $result | cut -d: -f2)
+result=$(run_benchmark "$DWARFS_TEST" "*ReadFile*" "$ITERATIONS")
+dwarfs_read_mean=$(echo "$result" | cut -d: -f1)
+dwarfs_read_median=$(echo "$result" | cut -d: -f2)
 
-echo "  DwarFS read time: $(format_ms $dwarfs_read_median) (mean: $(format_ms $dwarfs_read_mean))"
+echo "  DwarFS read time: $(format_ms "$dwarfs_read_median") (mean: $(format_ms "$dwarfs_read_mean"))"
 
 echo -n "  "
-winner=$(compare_results $zip_read_median $dwarfs_read_median | tail -1)
+winner=$(compare_results "$zip_read_median" "$dwarfs_read_median" | tail -1)
 if [ "$winner" = "dwarfs" ]; then
     ((DWARFS_WINS++))
 elif [ "$winner" = "zip" ]; then
@@ -242,20 +250,18 @@ echo -e "${BLUE}Benchmark 4: Full Test Suite (single run)${NC}"
 echo "  Running ZIP full test suite..."
 
 result=$(run_benchmark "$ZIP_TEST" "*" 1)
-zip_full_mean=$(echo $result | cut -d: -f1)
-zip_full_median=$(echo $result | cut -d: -f2)
+zip_full_median=$(echo "$result" | cut -d: -f2)
 
-echo "  ZIP full suite: $(format_ms $zip_full_median)"
+echo "  ZIP full suite: $(format_ms "$zip_full_median")"
 
 echo "  Running DwarFS full test suite..."
 result=$(run_benchmark "$DWARFS_TEST" "*" 1)
-dwarfs_full_mean=$(echo $result | cut -d: -f1)
-dwarfs_full_median=$(echo $result | cut -d: -f2)
+dwarfs_full_median=$(echo "$result" | cut -d: -f2)
 
-echo "  DwarFS full suite: $(format_ms $dwarfs_full_median)"
+echo "  DwarFS full suite: $(format_ms "$dwarfs_full_median")"
 
 echo -n "  "
-winner=$(compare_results $zip_full_median $dwarfs_full_median | tail -1)
+winner=$(compare_results "$zip_full_median" "$dwarfs_full_median" | tail -1)
 if [ "$winner" = "dwarfs" ]; then
     ((DWARFS_WINS++))
 elif [ "$winner" = "zip" ]; then
@@ -298,10 +304,10 @@ fi
 
 echo -e "| Benchmark          | ZIP (median)      | DwarFS (median)   | Winner        |"
 echo -e "|--------------------|-------------------|-------------------|---------------|"
-printf "| %-18s | %-17s | %-17s | %-13s |\n" "Mount Time" "$(format_ms $zip_mount_median)" "$(format_ms $dwarfs_mount_median)" "$mount_winner"
-printf "| %-18s | %-17s | %-17s | %-13s |\n" "Directory Listing" "$(format_ms $zip_list_median)" "$(format_ms $dwarfs_list_median)" "$list_winner"
-printf "| %-18s | %-17s | %-17s | %-13s |\n" "File Read" "$(format_ms $zip_read_median)" "$(format_ms $dwarfs_read_median)" "$read_winner"
-printf "| %-18s | %-17s | %-17s | %-13s |\n" "Full Suite" "$(format_ms $zip_full_median)" "$(format_ms $dwarfs_full_median)" "$full_winner"
+printf "| %-18s | %-17s | %-17s | %-13s |\n" "Mount Time" "$(format_ms "$zip_mount_median")" "$(format_ms "$dwarfs_mount_median")" "$mount_winner"
+printf "| %-18s | %-17s | %-17s | %-13s |\n" "Directory Listing" "$(format_ms "$zip_list_median")" "$(format_ms "$dwarfs_list_median")" "$list_winner"
+printf "| %-18s | %-17s | %-17s | %-13s |\n" "File Read" "$(format_ms "$zip_read_median")" "$(format_ms "$dwarfs_read_median")" "$read_winner"
+printf "| %-18s | %-17s | %-17s | %-13s |\n" "Full Suite" "$(format_ms "$zip_full_median")" "$(format_ms "$dwarfs_full_median")" "$full_winner"
 echo ""
 
 echo -e "${BOLD}Overall Results:${NC}"
@@ -332,23 +338,23 @@ Iterations: $ITERATIONS
 Results:
 --------
 Mount Time:
-  ZIP: $(format_ms $zip_mount_median)
-  DwarFS: $(format_ms $dwarfs_mount_median)
+  ZIP: $(format_ms "$zip_mount_median")
+  DwarFS: $(format_ms "$dwarfs_mount_median")
   Winner: $mount_winner
 
 Directory Listing:
-  ZIP: $(format_ms $zip_list_median)
-  DwarFS: $(format_ms $dwarfs_list_median)
+  ZIP: $(format_ms "$zip_list_median")
+  DwarFS: $(format_ms "$dwarfs_list_median")
   Winner: $list_winner
 
 File Read:
-  ZIP: $(format_ms $zip_read_median)
-  DwarFS: $(format_ms $dwarfs_read_median)
+  ZIP: $(format_ms "$zip_read_median")
+  DwarFS: $(format_ms "$dwarfs_read_median")
   Winner: $read_winner
 
 Full Suite:
-  ZIP: $(format_ms $zip_full_median)
-  DwarFS: $(format_ms $dwarfs_full_median)
+  ZIP: $(format_ms "$zip_full_median")
+  DwarFS: $(format_ms "$dwarfs_full_median")
   Winner: $full_winner
 
 Overall:
