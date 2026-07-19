@@ -1,0 +1,24 @@
+diff --git a/src/metadata/legacy/frozen2_serializer.cpp b/src/metadata/legacy/frozen2_serializer.cpp
+index a786d025..da3a984f 100644
+--- a/src/metadata/legacy/frozen2_serializer.cpp
++++ b/src/metadata/legacy/frozen2_serializer.cpp
+@@ -45,6 +45,7 @@
+ 
+ #include <cstring>
+ #include <fmt/core.h>
++#include <fmt/format.h>
+ #include <stdexcept>
+ #include <vector>
+ 
+diff --git a/src/metadata/legacy/value_encoders.cpp b/src/metadata/legacy/value_encoders.cpp
+index 0b83c0da..d55828e6 100644
+--- a/src/metadata/legacy/value_encoders.cpp
++++ b/src/metadata/legacy/value_encoders.cpp
+@@ -29,6 +29,7 @@
+ #include <cstdint>
+ #include <cstring>
+ #include <fmt/core.h>
++#include <fmt/format.h>
+ #include <stdexcept>
+ #include <span>
+ #include <string>
