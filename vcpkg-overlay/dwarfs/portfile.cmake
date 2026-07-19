@@ -28,6 +28,12 @@ vcpkg_from_github(
         # keep pkg-config as fallback. landing via dwarfs-t PR #73 (open at
         # this writing); drop at first tag containing it
         patches/jemalloc-config-export.patch
+        # dwarfs-config.cmake resolved libarchive via pkg-config only, but
+        # vcpkg's libarchive ships no usable .pc. Prefer CMake's FindLibArchive
+        # module (as the build itself does in vcpkg mode), keep pkg-config as
+        # fallback; fixed-forward via dwarfs-t PR #74 (open); drop at first
+        # tag containing it
+        patches/libarchive-config-export.patch
 )
 
 vcpkg_cmake_configure(
