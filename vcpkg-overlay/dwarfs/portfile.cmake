@@ -17,6 +17,10 @@ vcpkg_from_github(
         # libc++ lacks std::hash<std::filesystem::path>; use the portable
         # std::filesystem::hash_value. fixed on dwarfs-t main, drop at next tag
         patches/fs-path-hasher.patch
+        # TRY_ENABLE_FLAC=OFF was dead: flac.cmake was included unconditionally
+        # and dwarfs-config.cmake exported an unguarded find_dependency(FLAC);
+        # fixed on dwarfs-t main, drop this patch at the next tag
+        patches/flac-option-honored.patch
 )
 
 vcpkg_cmake_configure(
@@ -31,6 +35,8 @@ vcpkg_cmake_configure(
         # need_fuse.cmake is included unconditionally and FATAL_ERRORs without FUSE-T;
         # WITH_FUSE_DRIVER=OFF does not guard it
         -DDWARFS_WITH_FUSE=OFF
+        # keep the port hermetic; host Homebrew flac must not leak in
+        -DTRY_ENABLE_FLAC=OFF
 )
 
 vcpkg_cmake_install()
