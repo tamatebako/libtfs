@@ -64,9 +64,9 @@ namespace fs {
  * buffer; only the wrapper object is freed on destroy.
  */
 struct sqfs_memory_file_t {
-  sqfs_file_t base;   ///< Interface vtable, must be first member
+  sqfs_file_t base;     ///< Interface vtable, must be first member
   const sqfs_u8* data;  ///< Borrowed archive bytes
-  sqfs_u64 size;      ///< Archive size in bytes
+  sqfs_u64 size;        ///< Archive size in bytes
 };
 
 static int sqfs_memory_read_at(sqfs_file_t* file, sqfs_u64 offset, void* buffer, size_t size)
@@ -300,8 +300,7 @@ class SquashFSDirectoryIterator : public DirectoryIterator {
    * @param dir_reader SquashFS directory reader (borrowed, not owned)
    * @param inode Directory inode (borrowed, not owned)
    */
-  SquashFSDirectoryIterator(sqfs_dir_reader_t* dir_reader, sqfs_inode_generic_t* inode)
-      : current_index_(0)
+  SquashFSDirectoryIterator(sqfs_dir_reader_t* dir_reader, sqfs_inode_generic_t* inode) : current_index_(0)
   {
     if (!dir_reader || !inode) {
       return;
@@ -419,7 +418,9 @@ Result<void> SquashFSBackend::mount_from_memory(const void* data, size_t size, s
   return mount_common(file, "", mount_point);
 }
 
-Result<void> SquashFSBackend::mount_common(sqfs_file_t* file, std::string_view archive_path, std::string_view mount_point)
+Result<void> SquashFSBackend::mount_common(sqfs_file_t* file,
+                                           std::string_view archive_path,
+                                           std::string_view mount_point)
 {
   // Read superblock
   auto* super = static_cast<sqfs_super_t*>(std::malloc(sizeof(sqfs_super_t)));
@@ -565,8 +566,8 @@ Result<std::unique_ptr<FileHandle>> SquashFSBackend::open(std::string_view path,
     return Err{ErrorCode::CorruptedArchive, "Failed to load SquashFS fragment table", path};
   }
 
-  return Ok<std::unique_ptr<FileHandle>>{std::make_unique<SquashFSFileHandle>(data_reader, inode, path,
-                                                                              static_cast<int64_t>(size))};
+  return Ok<std::unique_ptr<FileHandle>>{
+      std::make_unique<SquashFSFileHandle>(data_reader, inode, path, static_cast<int64_t>(size))};
 }
 
 bool SquashFSBackend::exists(std::string_view path) const
