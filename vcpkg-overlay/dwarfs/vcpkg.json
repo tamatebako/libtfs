@@ -3,7 +3,7 @@
   "version": "0.14.1",
   "description": "DwarFS - A fast high-compression read-only file system",
   "homepage": "https://github.com/tamatebako/dwarfs-t",
-  "license": "GPL-2.0-only",
+  "license": "GPL-3.0-or-later",
   "supports": "!(uwp & !xbox)",
   "dependencies": [
     {
