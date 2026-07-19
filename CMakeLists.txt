@@ -413,7 +413,7 @@ add_library(tfs STATIC
     "src/internal/memory_file_segment.cpp"
     "src/core/path.cpp"
     "src/core/config.cpp"
-    # "src/backends/squashfs_backend.cpp"  # TODO: Re-enable once squashfs-tools-ng is available
+    "src/backends/squashfs_backend.cpp"
     # Modern C API implementation (replaces old file-ctl/dir-ctl/file-io/dir-io)
     "src/c_api.cpp"
     "src/c_api/fs_context.cpp"
@@ -440,7 +440,7 @@ add_library(tfs STATIC
     "include/tebako/fs/backends/dwarfs_backend.h"
     "include/tebako/fs/internal/memory_file_view.h"
     "include/tebako/fs/internal/memory_file_segment.h"
-    # "include/tebako/fs/backends/squashfs_backend.h"  # TODO: Re-enable
+    "include/tebako/fs/backends/squashfs_backend.h"
     "include/tebako/fs/c_api.h"
     "include/tebako/fs/backend_registry.h"
   )
@@ -477,9 +477,8 @@ target_link_libraries(tfs PUBLIC
 )
 
 # Find and link squashfs-tools-ng (provided by vcpkg)
-# TODO: Re-enable once squashfs-tools-ng is available
-# find_package(squashfs-tools-ng CONFIG REQUIRED)
-# target_link_libraries(tfs PUBLIC squashfs-tools-ng::squashfs)
+find_package(squashfs-tools-ng CONFIG REQUIRED)
+target_link_libraries(tfs PUBLIC squashfs-tools-ng::squashfs)
 
 # Find argtable3 for CLI tool
 find_package(argtable3 CONFIG REQUIRED)
@@ -725,22 +724,28 @@ if (WITH_TESTS)
   gtest_add_tests(TARGET test_dwarfs_integration)
 
   # SquashFS Backend tests
-  # TODO: Re-enable once squashfs-tools-ng is available
-  # add_executable(test_squashfs_backend
-  #   "tests/test_squashfs_backend.cpp"
-  # )
-  # target_compile_options(test_squashfs_backend PUBLIC ${GTEST_CFLAGS})
-  # target_link_libraries(test_squashfs_backend tfs ${GTestMain} ${GTEST_LDFLAGS})
-  # gtest_add_tests(TARGET test_squashfs_backend)
+  add_executable(test_squashfs_backend
+    "tests/test_squashfs_backend.cpp"
+  )
+  target_link_libraries(test_squashfs_backend PRIVATE
+    tfs
+    tebako_dirent_helper_c
+    GTest::gtest
+    GTest::gtest_main
+  )
+  gtest_add_tests(TARGET test_squashfs_backend)
 
   # SquashFS Integration tests
-  # TODO: Re-enable once squashfs-tools-ng is available
-  # add_executable(test_squashfs_integration
-  #   "tests/test_squashfs_integration.cpp"
-  # )
-  # target_compile_options(test_squashfs_integration PUBLIC ${GTEST_CFLAGS})
-  # target_link_libraries(test_squashfs_integration tfs ${GTestMain} ${GTEST_LDFLAGS})
-  # gtest_add_tests(TARGET test_squashfs_integration)
+  add_executable(test_squashfs_integration
+    "tests/test_squashfs_integration.cpp"
+  )
+  target_link_libraries(test_squashfs_integration PRIVATE
+    tfs
+    tebako_dirent_helper_c
+    GTest::gtest
+    GTest::gtest_main
+  )
+  gtest_add_tests(TARGET test_squashfs_integration)
 
   # C API tests
   add_executable(test_c_api
@@ -826,7 +831,7 @@ if (WITH_TESTS)
   # Copy test fixtures to build directory
   file(COPY tests/fixtures/zip DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tests/fixtures)
   file(COPY tests/fixtures/dwarfs DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tests/fixtures)
-  # file(COPY tests/fixtures/squashfs DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tests/fixtures)  # TODO: Re-enable
+  file(COPY tests/fixtures/squashfs DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tests/fixtures)
 
 endif(WITH_TESTS)
 

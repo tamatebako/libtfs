@@ -1,9 +1,10 @@
-﻿{
+{
   "name": "libtfs",
   "version": "0.1.0",
   "description": "Tebako Filesystem library - Multi-format archive mounting support",
   "dependencies": [
     "dwarfs",
+    "squashfs-tools-ng",
     "libzip",
     "argtable3",
     "gtest"

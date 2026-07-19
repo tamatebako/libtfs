@@ -31,8 +31,7 @@
 
 #include <tebako/fs/backends/zip_backend.h>
 #include <tebako/fs/backends/dwarfs_backend.h>
-// TODO: Re-enable once squashfs-tools-ng is available
-// #include <tebako/fs/backends/squashfs_backend.h>
+#include <tebako/fs/backends/squashfs_backend.h>
 
 #include <algorithm>
 #include <cstring>
@@ -82,12 +81,9 @@ std::unique_ptr<FileSystem> BackendFactory::create_from_file(const std::string& 
     return create_zip();
   }
 
-  // TODO: Re-enable once squashfs-tools-ng is available
-  /*
   if (is_squashfs_format(archive_path)) {
     return create_squashfs();
   }
-  */
 
   // Fallback to extension-based detection
   if (has_extension(archive_path, ".dwarfs") || has_extension(archive_path, ".dfs")) {
@@ -100,13 +96,10 @@ std::unique_ptr<FileSystem> BackendFactory::create_from_file(const std::string& 
     return create_zip();
   }
 
-  // TODO: Re-enable once squashfs-tools-ng is available
-  /*
   if (has_extension(archive_path, ".sqfs") ||
       has_extension(archive_path, ".squashfs")) {
     return create_squashfs();
   }
-  */
 
   // Unknown format
   return nullptr;
@@ -128,8 +121,6 @@ std::unique_ptr<FileSystem> BackendFactory::create_from_memory(const void* data,
     return create_zip();
   }
 
-  // TODO: Re-enable once squashfs-tools-ng is available
-  /*
   // Check SquashFS magic (hsqs or sqsh)
   if (size >= 4 &&
       ((bytes[0] == 'h' && bytes[1] == 's' &&
@@ -138,7 +129,6 @@ std::unique_ptr<FileSystem> BackendFactory::create_from_memory(const void* data,
         bytes[2] == 's' && bytes[3] == 'h'))) {
     return create_squashfs();
   }
-  */
 
   // Check DwarFS magic ("DWARFS" at offset 0)
   if (size >= sizeof(DWARFS_MAGIC) && std::memcmp(bytes, DWARFS_MAGIC, sizeof(DWARFS_MAGIC)) == 0) {
@@ -160,9 +150,7 @@ std::unique_ptr<FileSystem> BackendFactory::create_zip()
 
 std::unique_ptr<FileSystem> BackendFactory::create_squashfs()
 {
-  // TODO: Re-enable once squashfs-tools-ng is available
-  // return std::make_unique<SquashFSBackend>();
-  return nullptr;
+  return std::make_unique<SquashFSBackend>();
 }
 
 // ===================================================================
