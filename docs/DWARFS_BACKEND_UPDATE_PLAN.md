@@ -6,7 +6,7 @@
 
 ## Executive Summary
 
-The external DwarFS repository at `/Users/mulgogi/src/external/dwarfs/` has undergone significant API modernization. The current `DwarfsBackend` implementation in libtfs needs updates to match the new API signatures and patterns.
+The external DwarFS repository (the tebako dwarfs fork) has undergone significant API modernization. The current `DwarfsBackend` implementation in libtfs needs updates to match the new API signatures and patterns.
 
 ### Critical Finding: `filesystem_v2_lite` vs `filesystem_v2`
 
@@ -489,14 +489,14 @@ auto fs = dwarfs::reader::filesystem_v2(logger, os, "/path/to/archive.dwarfs", o
 
 ## Related Files to Review
 
-1. `/Users/mulgogi/src/external/dwarfs/include/dwarfs/reader/filesystem_v2.h`
-2. `/Users/mulgogi/src/external/dwarfs/include/dwarfs/reader/filesystem_loader.h`
-3. `/Users/mulgogi/src/external/dwarfs/include/dwarfs/reader/filesystem_options.h`
-4. `/Users/mulgogi/src/external/dwarfs/include/dwarfs/reader/internal/metadata_types.h`
+1. `<dwarfs-repo>/include/dwarfs/reader/filesystem_v2.h`
+2. `<dwarfs-repo>/include/dwarfs/reader/filesystem_loader.h`
+3. `<dwarfs-repo>/include/dwarfs/reader/filesystem_options.h`
+4. `<dwarfs-repo>/include/dwarfs/reader/internal/metadata_types.h`
 
 ## Dependencies
 
-This update requires the external dwarfs repository at `/Users/mulgogi/src/external/dwarfs/` to be properly linked and available during compilation.
+This update requires the external dwarfs repository to be properly linked and available during compilation.
 
 ---
 

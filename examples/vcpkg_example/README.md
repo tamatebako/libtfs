@@ -2,6 +2,8 @@
 
 This example demonstrates how to use libtfs with vcpkg for unified archive handling.
 
+NOTE: the `libtfs` vcpkg port is published in Stage 1; until then this example is illustrative.
+
 ## Features
 
 - Unified interface for DwarFS, ZIP, and SquashFS archives
