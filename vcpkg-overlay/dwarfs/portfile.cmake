@@ -19,6 +19,11 @@ vcpkg_cmake_configure(
         -DWITH_LIBDWARFS=ON
         -DWITH_TOOLS=ON
         -DWITH_FUSE_DRIVER=OFF
+        # tarball builds have no git metadata; version.cmake's source-build override
+        -DNIXPKGS_DWARFS_VERSION_OVERRIDE=v0.14.1
+        # need_fuse.cmake is included unconditionally and FATAL_ERRORs without FUSE-T;
+        # WITH_FUSE_DRIVER=OFF does not guard it
+        -DDWARFS_WITH_FUSE=OFF
 )
 
 vcpkg_cmake_install()
