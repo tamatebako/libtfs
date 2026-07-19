@@ -849,4 +849,4 @@ target_link_libraries(tebakofs PRIVATE
   argtable3::argtable3
 )
 
-install(TARGETS tebakofs DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(TARGETS tebakofs DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT tebakofs)

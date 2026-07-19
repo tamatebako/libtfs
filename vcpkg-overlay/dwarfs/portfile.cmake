@@ -44,6 +44,8 @@ vcpkg_cmake_configure(
         -DDWARFS_WITH_FUSE=OFF
         # keep the port hermetic; host Homebrew flac must not leak in
         -DTRY_ENABLE_FLAC=OFF
+        # keep consumers hermetic; stops a brew probe leaking into dwarfs-config.cmake
+        -DUSE_HOMEBREW_LIBARCHIVE=OFF
 )
 
 vcpkg_cmake_install()
