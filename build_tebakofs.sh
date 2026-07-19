@@ -50,7 +50,7 @@ echo -e "${GREEN}✓ Configuration complete${NC}"
 
 # Build tebakofs
 echo -e "${YELLOW}Building tebakofs...${NC}"
-cmake --build . --target tebakofs -j$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
+cmake --build . --target tebakofs -j"$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)"
 
 echo -e "${GREEN}✓ Build complete${NC}"
 
