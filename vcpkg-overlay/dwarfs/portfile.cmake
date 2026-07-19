@@ -14,6 +14,9 @@ vcpkg_from_github(
         # fmt 12 no longer provides fmt::format via <fmt/core.h>;
         # fixed on dwarfs-t main, drop this patch at the next tag
         patches/fmt-12-format-include.patch
+        # libc++ lacks std::hash<std::filesystem::path>; use the portable
+        # std::filesystem::hash_value. fixed on dwarfs-t main, drop at next tag
+        patches/fs-path-hasher.patch
 )
 
 vcpkg_cmake_configure(
