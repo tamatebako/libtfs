@@ -10,6 +10,10 @@ vcpkg_from_github(
     REF tebako-v0.14.1
     SHA512 7526e6f17b8bfdf9d10af7be91bc66b41de840a5bbb11cd4310e2d6bb20957d9629c0db42956ba0ac5f8931764a9f488446833f84faedea2647283096236b0a1
     HEAD_REF main
+    PATCHES
+        # fmt 12 no longer provides fmt::format via <fmt/core.h>;
+        # fixed on dwarfs-t main, drop this patch at the next tag
+        patches/fmt-12-format-include.patch
 )
 
 vcpkg_cmake_configure(
