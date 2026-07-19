@@ -87,9 +87,10 @@ TEST_F(BackendFactorySquashFSTest, HandlesCorruptedSquashFSFiles)
 
   // create_from_file should return nullptr for corrupted files
   auto backend = BackendFactory::create_from_file(path);
-  // Even if it creates a backend, mounting should fail
+  // Even if it creates a backend (e.g. via the .sqfs extension), mounting should fail
   if (backend) {
-    EXPECT_FALSE(backend->mount(path, mount_point));
+    auto mount_result = backend->mount(path, mount_point);
+    EXPECT_TRUE(mount_result.is_err());
   }
 }
 
@@ -143,12 +144,14 @@ TEST_F(BackendFactorySquashFSTest, FactoryCreatesMountReadsFile)
   ASSERT_NE(backend, nullptr);
 
   // Mount archive
-  ASSERT_TRUE(backend->mount(path, mount_point));
+  auto mount_result = backend->mount(path, mount_point);
+  ASSERT_TRUE(mount_result.is_ok());
   EXPECT_TRUE(backend->is_mounted());
 
   // Read file
-  auto handle = backend->open(mount_point + "/test.txt", O_RDONLY);
-  ASSERT_NE(handle, nullptr);
+  auto open_result = backend->open(mount_point + "/test.txt", O_RDONLY);
+  ASSERT_TRUE(open_result.is_ok());
+  auto handle = std::move(open_result).unwrap();
 
   char buffer[256] = {0};
   ssize_t bytes_read = handle->read(buffer, sizeof(buffer) - 1);
@@ -166,12 +169,14 @@ TEST_F(BackendFactorySquashFSTest, FactoryHandlesMultipleSquashFSArchives)
   // Create backend for first archive
   auto backend1 = BackendFactory::create_from_file(fixtures_path + "simple.sqfs");
   ASSERT_NE(backend1, nullptr);
-  ASSERT_TRUE(backend1->mount(fixtures_path + "simple.sqfs", "/mnt/archive1"));
+  auto mount_result1 = backend1->mount(fixtures_path + "simple.sqfs", "/mnt/archive1");
+  ASSERT_TRUE(mount_result1.is_ok());
 
   // Create backend for second archive
   auto backend2 = BackendFactory::create_from_file(fixtures_path + "nested.sqfs");
   ASSERT_NE(backend2, nullptr);
-  ASSERT_TRUE(backend2->mount(fixtures_path + "nested.sqfs", "/mnt/archive2"));
+  auto mount_result2 = backend2->mount(fixtures_path + "nested.sqfs", "/mnt/archive2");
+  ASSERT_TRUE(mount_result2.is_ok());
 
   // Both should be mounted simultaneously
   EXPECT_TRUE(backend1->is_mounted());
@@ -196,7 +201,8 @@ TEST_F(BackendFactorySquashFSTest, FactoryAutoDetectsAndInstantiates)
   EXPECT_EQ(backend->backend_name(), "SquashFS");
 
   // Should be able to mount and use
-  ASSERT_TRUE(backend->mount(path, mount_point));
+  auto mount_result = backend->mount(path, mount_point);
+  ASSERT_TRUE(mount_result.is_ok());
   EXPECT_TRUE(backend->exists(mount_point + "/test.txt"));
 
   backend->unmount();
@@ -211,14 +217,17 @@ TEST_F(BackendFactorySquashFSTest, PreservesPermissionsCorrectly)
   std::string path = fixtures_path + "permissions.sqfs";
   auto backend = BackendFactory::create_from_file(path);
   ASSERT_NE(backend, nullptr);
-  ASSERT_TRUE(backend->mount(path, mount_point));
+  auto mount_result = backend->mount(path, mount_point);
+  ASSERT_TRUE(mount_result.is_ok());
 
   // SquashFS preserves POSIX permissions (unlike ZIP's defaults)
-  mode_t readonly_perms = backend->permissions(mount_point + "/readonly.txt");
-  EXPECT_EQ(readonly_perms, 0444);
+  auto readonly_result = backend->permissions(mount_point + "/readonly.txt");
+  ASSERT_TRUE(readonly_result.is_ok());
+  EXPECT_EQ(readonly_result.unwrap(), 0444);
 
-  mode_t script_perms = backend->permissions(mount_point + "/script.sh");
-  EXPECT_EQ(script_perms, 0755);
+  auto script_result = backend->permissions(mount_point + "/script.sh");
+  ASSERT_TRUE(script_result.is_ok());
+  EXPECT_EQ(script_result.unwrap(), 0755);
 
   backend->unmount();
 }
@@ -228,10 +237,12 @@ TEST_F(BackendFactorySquashFSTest, SupportsNativeSeek)
   std::string path = fixtures_path + "simple.sqfs";
   auto backend = BackendFactory::create_from_file(path);
   ASSERT_NE(backend, nullptr);
-  ASSERT_TRUE(backend->mount(path, mount_point));
+  auto mount_result = backend->mount(path, mount_point);
+  ASSERT_TRUE(mount_result.is_ok());
 
-  auto handle = backend->open(mount_point + "/test.txt", O_RDONLY);
-  ASSERT_NE(handle, nullptr);
+  auto open_result = backend->open(mount_point + "/test.txt", O_RDONLY);
+  ASSERT_TRUE(open_result.is_ok());
+  auto handle = std::move(open_result).unwrap();
 
   // SquashFS supports native seek (advantage over ZIP)
   off_t pos = handle->seek(10, SEEK_SET);

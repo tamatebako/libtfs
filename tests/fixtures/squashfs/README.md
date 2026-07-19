@@ -64,7 +64,7 @@ Test fixtures for SquashFS backend validation.
 ### corrupted.sqfs
 - **Purpose**: Error handling
 - **Size**: ~4 KB (corrupted)
-- **Contents**: Copy of simple.sqfs with 100 bytes overwritten at offset 100
+- **Contents**: Copy of simple.sqfs with the first 100 bytes (superblock including magic) zeroed
 - **Tests**: Corrupted archive detection, error handling
 
 ## Regenerating

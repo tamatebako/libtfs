@@ -54,9 +54,11 @@ mksquashfs large large.sqfs -noappend -quiet
 rm -rf large
 
 # 6. corrupted.sqfs - Error handling
+# The superblock (including the magic bytes) is destroyed so the image fails
+# both format detection and mounting.
 echo "Creating corrupted.sqfs..."
 cp simple.sqfs corrupted.sqfs
-dd if=/dev/zero of=corrupted.sqfs bs=1 count=100 seek=100 conv=notrunc 2>/dev/null
+dd if=/dev/zero of=corrupted.sqfs bs=1 count=100 seek=0 conv=notrunc 2>/dev/null
 
 echo "All SquashFS test fixtures created successfully!"
 ls -lh ./*.sqfs

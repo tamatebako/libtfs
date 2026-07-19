@@ -35,13 +35,15 @@
 #include <memory>
 #include <shared_mutex>
 #include <string>
+#include <string_view>
 #include <sys/types.h>
 
 // Forward declarations for squashfs-tools-ng to avoid exposing implementation details
 struct sqfs_file_t;
 struct sqfs_super_t;
-struct sqfs_inode_generic_t;
+struct sqfs_compressor_t;
 struct sqfs_dir_reader_t;
+struct sqfs_inode_generic_t;
 
 namespace tebako {
 namespace fs {
@@ -52,8 +54,9 @@ namespace fs {
  * Provides read-only access to SquashFS archives through the FileSystem interface.
  * Uses squashfs-tools-ng library for archive operations.
  *
- * Thread Safety: All methods are thread-safe for concurrent access using
- * std::shared_mutex for read/write locking.
+ * Thread Safety: All methods are thread-safe for concurrent access. Calls are
+ * serialized with an exclusive lock because the underlying libsquashfs readers
+ * keep mutable internal state.
  *
  * Advantages over ZIP:
  * - Native seek support (no need to reopen files)
@@ -64,8 +67,9 @@ namespace fs {
  * @example
  * @code
  * auto backend = std::make_unique<SquashFSBackend>();
- * if (backend->mount("/data/app.sqfs", "/mnt/app")) {
- *     auto handle = backend->open("/mnt/app/file.txt", O_RDONLY);
+ * auto mount_result = backend->mount("/data/app.sqfs", "/mnt/app");
+ * if (mount_result.is_ok()) {
+ *     auto handle_result = backend->open("/mnt/app/file.txt", O_RDONLY);
  *     // ... use file ...
  *     backend->unmount();
  * }
@@ -98,11 +102,11 @@ class SquashFSBackend : public FileSystem {
    *
    * @param archive_path Path to the SquashFS file
    * @param mount_point Virtual mount point
-   * @return true if mount succeeded, false otherwise
+   * @return Result<void> - success or error with details
    *
-   * @note Returns false if already mounted or if archive cannot be opened
+   * @note Fails if already mounted or if archive cannot be opened
    */
-  bool mount(const std::string& archive_path, const std::string& mount_point) override;
+  Result<void> mount(std::string_view archive_path, std::string_view mount_point) override;
 
   /**
    * @brief Mount a SquashFS archive from memory buffer
@@ -113,12 +117,12 @@ class SquashFSBackend : public FileSystem {
    * @param data Pointer to SquashFS archive data in memory
    * @param size Size of archive in bytes
    * @param mount_point Virtual mount point
-   * @return true if mount succeeded, false otherwise
+   * @return Result<void> - success or error with details
    *
-   * @note Returns false if already mounted or if archive cannot be opened
+   * @note Fails if already mounted or if archive cannot be opened
    * @note The archive_path will be empty for memory-mounted archives
    */
-  bool mount_from_memory(const void* data, size_t size, const std::string& mount_point) override;
+  Result<void> mount_from_memory(const void* data, size_t size, std::string_view mount_point) override;
 
   /**
    * @brief Unmount the SquashFS archive
@@ -144,9 +148,9 @@ class SquashFSBackend : public FileSystem {
    *
    * @param path Absolute path to the file
    * @param flags Open flags (only O_RDONLY supported)
-   * @return Unique pointer to FileHandle, or nullptr on error
+   * @return Result containing FileHandle or error
    */
-  std::unique_ptr<FileHandle> open(const std::string& path, int flags) override;
+  Result<std::unique_ptr<FileHandle>> open(std::string_view path, int flags) override;
 
   /**
    * @brief Check if a path exists in the archive
@@ -154,7 +158,7 @@ class SquashFSBackend : public FileSystem {
    * @param path Absolute path to check
    * @return true if path exists, false otherwise
    */
-  bool exists(const std::string& path) const override;
+  bool exists(std::string_view path) const override;
 
   /**
    * @brief Check if a path is a regular file
@@ -162,7 +166,7 @@ class SquashFSBackend : public FileSystem {
    * @param path Absolute path to check
    * @return true if path is a file, false otherwise
    */
-  bool is_file(const std::string& path) const override;
+  bool is_file(std::string_view path) const override;
 
   /**
    * @brief Check if a path is a directory
@@ -170,7 +174,7 @@ class SquashFSBackend : public FileSystem {
    * @param path Absolute path to check
    * @return true if path is a directory, false otherwise
    */
-  bool is_directory(const std::string& path) const override;
+  bool is_directory(std::string_view path) const override;
 
   // ===================================================================
   // Directory Operations (FileSystem interface)
@@ -180,9 +184,9 @@ class SquashFSBackend : public FileSystem {
    * @brief List contents of a directory
    *
    * @param path Absolute path to the directory
-   * @return Unique pointer to DirectoryIterator, or nullptr on error
+   * @return Result containing DirectoryIterator or error
    */
-  std::unique_ptr<DirectoryIterator> list_directory(const std::string& path) override;
+  Result<std::unique_ptr<DirectoryIterator>> list_directory(std::string_view path) override;
 
   // ===================================================================
   // Metadata Operations (FileSystem interface)
@@ -192,27 +196,27 @@ class SquashFSBackend : public FileSystem {
    * @brief Get the size of a file
    *
    * @param path Absolute path to the file
-   * @return File size in bytes, or -1 on error
+   * @return Result containing file size or error
    */
-  int64_t file_size(const std::string& path) const override;
+  Result<int64_t> file_size(std::string_view path) const override;
 
   /**
    * @brief Get the modification time of a file
    *
    * @param path Absolute path to the file
-   * @return Modification time as Unix timestamp, or 0 on error
+   * @return Result containing modification time or error
    */
-  time_t modification_time(const std::string& path) const override;
+  Result<time_t> modification_time(std::string_view path) const override;
 
   /**
    * @brief Get the permissions of a file
    *
    * @param path Absolute path to the file
-   * @return File permissions as mode_t, or 0 on error
+   * @return Result containing permissions or error
    *
    * @note SquashFS archives store full POSIX permissions.
    */
-  mode_t permissions(const std::string& path) const override;
+  Result<mode_t> permissions(std::string_view path) const override;
 
   // ===================================================================
   // Backend Information (FileSystem interface)
@@ -248,10 +252,24 @@ class SquashFSBackend : public FileSystem {
 
  private:
   /**
+   * @brief Common mount tail for file-backed and memory-backed archives
+   *
+   * Reads and validates the superblock, creates the compressor and the
+   * directory reader, and resolves the root inode to prove the archive
+   * metadata is readable. Takes ownership of @p file on success.
+   *
+   * @param file Opened SquashFS file object (consumed on success AND failure)
+   * @param archive_path Archive path to record (empty for memory mounts)
+   * @param mount_point Virtual mount point
+   * @return Result<void> - success or error with details
+   */
+  Result<void> mount_common(sqfs_file_t* file, std::string_view archive_path, std::string_view mount_point);
+
+  /**
    * @brief Lookup an inode by path
    *
    * @param path Relative path (without mount point)
-   * @return Pointer to inode, or nullptr if not found
+   * @return Pointer to inode (free with sqfs_free), or nullptr if not found
    */
   sqfs_inode_generic_t* lookup_inode(const std::string& path) const;
 
@@ -265,7 +283,7 @@ class SquashFSBackend : public FileSystem {
    *
    * @example "/mnt/app/file.txt" -> "file.txt"
    */
-  std::string strip_mount_point(const std::string& path) const;
+  std::string strip_mount_point(std::string_view path) const;
 
   /**
    * @brief Normalize a path for SquashFS lookup
@@ -275,15 +293,16 @@ class SquashFSBackend : public FileSystem {
    * @param path Path to normalize
    * @return Normalized path suitable for inode lookup
    */
-  std::string normalize_path(const std::string& path) const;
+  std::string normalize_path(std::string_view path) const;
 
   // Member variables
-  sqfs_file_t* sqfs_file_;              ///< SquashFS file handle
+  sqfs_file_t* sqfs_file_;              ///< SquashFS file object
   sqfs_super_t* sqfs_super_;            ///< SquashFS superblock
+  sqfs_compressor_t* sqfs_cmp_;         ///< Compressor matching the superblock
   sqfs_dir_reader_t* sqfs_dir_reader_;  ///< Directory reader
   std::string archive_path_;            ///< Path to the SquashFS file
   std::string mount_point_;             ///< Virtual mount point
-  mutable std::shared_mutex mutex_;     ///< Thread-safe access synchronization
+  mutable std::shared_mutex mutex_;     ///< Access synchronization
 };
 
 }  // namespace fs
