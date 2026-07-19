@@ -168,7 +168,6 @@ test_install_script() {
                            "$DIR_INS_L/dwarfs.lib"             \
                            "$DIR_INS_L/dwarfs_compression.lib" \
                            "$DIR_INS_L/fsst.lib"               \
-                           "$DIR_INS_L/folly.lib"              \
                            "$DIR_INS_L/xxhash.lib"             \
                            "$DIR_INS_L/zstd.lib"               \
                            "$NM_MKDWARFS"                      \
@@ -183,7 +182,6 @@ test_install_script() {
                            "$DIR_INS_L/libdwarfs.a"             \
                            "$DIR_INS_L/libdwarfs_compression.a" \
                            "$DIR_INS_L/libfsst.a"               \
-                           "$DIR_INS_L/libfolly.a"              \
                            "$DIR_INS_L/libxxhash.a"             \
                            "$DIR_INS_L/libzstd.a"               \
                            "$DIR_INS_L/libfmt.a"                \
