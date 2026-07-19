@@ -1,0 +1,130 @@
+{
+  "name": "dwarfs",
+  "version": "0.14.1",
+  "description": "DwarFS - A fast high-compression read-only file system",
+  "homepage": "https://github.com/tamatebako/dwarfs-t",
+  "license": "GPL-2.0-only",
+  "supports": "!(uwp & !xbox)",
+  "dependencies": [
+    {
+      "name": "vcpkg-cmake",
+      "host": true
+    },
+    {
+      "name": "vcpkg-cmake-config",
+      "host": true
+    },
+    {
+      "name": "jemalloc",
+      "version>=": "5.5.0"
+    },
+    {
+      "name": "boost-program-options",
+      "version>=": "1.90.0"
+    },
+    {
+      "name": "boost-filesystem",
+      "version>=": "1.90.0"
+    },
+    {
+      "name": "boost-iostreams",
+      "version>=": "1.90.0"
+    },
+    {
+      "name": "boost-context",
+      "version>=": "1.90.0"
+    },
+    {
+      "name": "boost-chrono",
+      "version>=": "1.90.0"
+    },
+    {
+      "name": "boost-algorithm",
+      "version>=": "1.90.0"
+    },
+    {
+      "name": "boost-convert",
+      "version>=": "1.90.0"
+    },
+    {
+      "name": "boost-process",
+      "version>=": "1.90.0"
+    },
+    {
+      "name": "boost-range",
+      "version>=": "1.90.0"
+    },
+    {
+      "name": "boost-align",
+      "version>=": "1.90.0"
+    },
+    {
+      "name": "boost-uuid",
+      "version>=": "1.90.0"
+    },
+    {
+      "name": "argtable3",
+      "version>=": "3.3.1"
+    },
+    {
+      "name": "openssl",
+      "version>=": "3.6.0"
+    },
+    {
+      "name": "libarchive",
+      "version>=": "3.8.4"
+    },
+    {
+      "name": "xxhash",
+      "version>=": "0.8.3"
+    },
+    {
+      "name": "zstd",
+      "version>=": "1.5.7"
+    },
+    {
+      "name": "lz4",
+      "version>=": "1.10.0"
+    },
+    {
+      "name": "liblzma",
+      "version>=": "5.8.2"
+    },
+    {
+      "name": "brotli",
+      "version>=": "1.2.0"
+    },
+    {
+      "name": "libflac",
+      "version>=": "1.5.0"
+    },
+    {
+      "name": "fmt",
+      "version>=": "12.1.0"
+    },
+    {
+      "name": "range-v3",
+      "version>=": "0.12.0"
+    },
+    {
+      "name": "parallel-hashmap",
+      "version>=": "2.0.0"
+    },
+    {
+      "name": "flatbuffers",
+      "version>=": "25.9.23"
+    },
+    {
+      "name": "date",
+      "version>=": "3.0.4"
+    },
+    {
+      "name": "nlohmann-json",
+      "version>=": "3.12.0"
+    },
+    {
+      "name": "utfcpp",
+      "version>=": "4.0.6"
+    }
+  ]
+}

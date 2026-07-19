@@ -5,6 +5,5 @@
     "repository": "https://github.com/microsoft/vcpkg",
     "baseline": "11bbc873e00e9e58d4e9dffb30b7a5493a030e0b"
   },
-  "overlay-ports": ["/Users/mulgogi/src/external/dwarfs/vcpkg_ports"],
-  "overlay-triplets": ["/Users/mulgogi/src/external/dwarfs/vcpkg_triplets"]
+  "overlay-ports": ["./vcpkg-overlay"]
 }
