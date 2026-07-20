@@ -64,6 +64,7 @@ option(PREFER_SYSTEM_GTEST "Use system Google test" OFF)
 option(WITH_TESTS "Find Google test, install INCBIN, build test applications" ON)
 option(WITH_LINK_TESTS "Include tests for hard and symbolic links" ON)
 option(WITH_SQUASHFS "Build the SquashFS backend" ON)
+option(WITH_LEGACY_TEBAKO_API "Build the legacy tebako C++ API (tebako-io/memfs/fd/kfd)" ON)
 
 # squashfs-tools-ng is a POSIX/autotools-only library (requires unistd.h and
 # friends) and does not build with MSVC, so the SquashFS backend is disabled
@@ -227,6 +228,19 @@ else()
   endif()
 endif(MSVC)
 
+# Legacy tebako API availability
+# -----------------------------------------------------------------------------
+# The legacy tebako C++ API (libdwarfs-wr lineage: tebako-memfs/fd/kfd, mount
+# tables) carries the RB_W32 ruby-win32 shims (include/tebako-io-rb-w32.h),
+# which need ruby's win32 types (WCHAR, ino_t, _dev_t, stati128) and only
+# compile inside the ruby build context. The Stage-2 tebako build injects
+# -DTEBAKO_BUILD_SCOPE=... (a cache variable); standalone MinGW has no ruby
+# headers, so the legacy layer is skipped there (modern API + backends only).
+if(IS_MSYS AND NOT DEFINED CACHE{TEBAKO_BUILD_SCOPE} AND WITH_LEGACY_TEBAKO_API)
+  set(WITH_LEGACY_TEBAKO_API OFF CACHE BOOL "Build the legacy tebako C++ API (tebako-io/memfs/fd/kfd)" FORCE)
+  message(STATUS "WITH_LEGACY_TEBAKO_API forced OFF — standalone MinGW: legacy tebako API skipped (ruby-win32 shims need the ruby build context)")
+endif()
+
 # RB_W32
 # -----------------------------------------------------------------------------
 #  - windows (enforced)         will have IS_WINDOWS flag set
@@ -237,11 +251,11 @@ endif(MSVC)
 #    RB_W32 means use of Ruby Linux-like Dir IO functions
 #    Possible other methods may be MinGW Dir IO (== posix), folly portability (== posix)
 #    These two most likely would work but are not tested
-if(NOT IS_WINDOWS AND NOT IS_MSYS)
-  set(RB_W32 OFF)
-else(NOT IS_WINDOWS AND NOT IS_MSYS)
+if(WITH_LEGACY_TEBAKO_API AND (IS_WINDOWS OR (IS_MSYS AND DEFINED CACHE{TEBAKO_BUILD_SCOPE})))
   set(RB_W32 ON)
-endif(NOT IS_WINDOWS AND NOT IS_MSYS)
+else()
+  set(RB_W32 OFF)
+endif()
 # -----------------------------------------------------------------------------
 #  - "darwin.*"                 will have IS_DARWIN flag set
 # -----------------------------------------------------------------------------
@@ -258,9 +272,10 @@ endif(OSTYPE_RES EQUAL 0)
 
 message("Configuraion summary:")
 message(STATUS "Tebako build scope: ${TEBAKO_BUILD_SCOPE}")
-if (IS_WINDOWS)
+message(STATUS "Legacy tebako API: ${WITH_LEGACY_TEBAKO_API}")
+if (IS_WINDOWS OR IS_MSYS)
   message(STATUS "Building for Ruby Win32: ${RB_W32}")
-endif(IS_WINDOWS)
+endif(IS_WINDOWS OR IS_MSYS)
 message(STATUS "Use jemalloc: ${USE_JEMALLOC}${JEMALLOC_LG_VADDR_MSG}${JEMALLOC_LG_PAGE_MSG}")
 message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 message(STATUS "  with ASAN: ${WITH_ASAN}")
@@ -464,17 +479,6 @@ set(TFS_SOURCE_FILES
 )
 
 add_library(tfs STATIC
-    "src/dl-ctl.cpp"
-    "src/tebako-cmdline.cpp"
-    "src/tebako-io-helpers.cpp"
-    "src/tebako-io-root.cpp"
-    "src/tebako-kfd.cpp"
-    "src/tebako-mount-table.cpp"
-    "src/tebako-memfs.cpp"
-    "src/tebako-memfs-table.cpp"
-    "src/tebako-fd.cpp"
-    "src/tebako-dirent.cpp"
-    "src/tebako-package-descriptor.cpp"
     "src/backend_factory.cpp"
     "src/backends/zip_backend.cpp"
     "src/backends/dwarfs_backend.cpp"
@@ -486,10 +490,38 @@ add_library(tfs STATIC
     "src/c_api.cpp"
     "src/c_api/fs_context.cpp"
     "src/backend_registry.cpp"
-    "include/tebako-cmdline.h"
     "include/tebako-common.h"
     "include/tebako-config.h"
     "include/tebako-defines.h"
+    "include/version.h"
+    "include/tebako/fs/backend_factory.h"
+    "include/tebako/fs/backends/zip_backend.h"
+    "include/tebako/fs/backends/dwarfs_backend.h"
+    "include/tebako/fs/internal/memory_file_view.h"
+    "include/tebako/fs/internal/memory_file_segment.h"
+    "include/tebako/fs/backends/squashfs_backend.h"
+    "include/tebako/fs/c_api.h"
+    "include/tebako/fs/backend_registry.h"
+  )
+
+# Legacy tebako C++ API (libdwarfs-wr lineage: tebako-io/memfs/fd/kfd, mount/fd
+# tables, cmdline, package descriptor). The modern API (c_api, backends,
+# fs_context, cli) has no dependency on this layer; it is skipped where
+# WITH_LEGACY_TEBAKO_API is OFF (standalone MinGW — see above).
+if(WITH_LEGACY_TEBAKO_API)
+  target_sources(tfs PRIVATE
+    "src/dl-ctl.cpp"
+    "src/tebako-cmdline.cpp"
+    "src/tebako-io-helpers.cpp"
+    "src/tebako-io-root.cpp"
+    "src/tebako-kfd.cpp"
+    "src/tebako-mount-table.cpp"
+    "src/tebako-memfs.cpp"
+    "src/tebako-memfs-table.cpp"
+    "src/tebako-fd.cpp"
+    "src/tebako-dirent.cpp"
+    "src/tebako-package-descriptor.cpp"
+    "include/tebako-cmdline.h"
     "include/tebako-dirent.h"
     "include/tebako-fd.h"
     "include/tebako-io.h"
@@ -502,16 +534,8 @@ add_library(tfs STATIC
     "include/tebako-package-descriptor.h"
     "include/tebako-pch.h"
     "include/tebako-pch-pp.h"
-    "include/version.h"
-    "include/tebako/fs/backend_factory.h"
-    "include/tebako/fs/backends/zip_backend.h"
-    "include/tebako/fs/backends/dwarfs_backend.h"
-    "include/tebako/fs/internal/memory_file_view.h"
-    "include/tebako/fs/internal/memory_file_segment.h"
-    "include/tebako/fs/backends/squashfs_backend.h"
-    "include/tebako/fs/c_api.h"
-    "include/tebako/fs/backend_registry.h"
   )
+endif(WITH_LEGACY_TEBAKO_API)
 
 # SquashFS backend sources (POSIX-only; see WITH_SQUASHFS option above)
 if(WITH_SQUASHFS)
@@ -639,11 +663,17 @@ endif(INSTALL_OPENSSL)
 install(FILES
         "include/tebako-config.h"
         "include/tebako-defines.h"
-        "include/tebako-io.h"
-        "include/tebako-cmdline.h"
-        "include/tebako-package-descriptor.h"
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/tebako
 )
+
+if(WITH_LEGACY_TEBAKO_API)
+  install(FILES
+          "include/tebako-io.h"
+          "include/tebako-cmdline.h"
+          "include/tebako-package-descriptor.h"
+          DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/tebako
+  )
+endif(WITH_LEGACY_TEBAKO_API)
 
 if(RB_W32)
   install(FILES
@@ -692,12 +722,24 @@ install(EXPORT libtfsTargets
 )
 
 # Install public headers for libtfs API
+# Legacy tebako API headers (common/io/memfs/dirent/package_descriptor) are
+# installed only with the legacy layer; internal/ and ruby/ are never public.
+if(NOT WITH_LEGACY_TEBAKO_API)
+  set(TFS_LEGACY_HEADER_EXCLUDES
+    PATTERN "common.h" EXCLUDE
+    PATTERN "dirent.h" EXCLUDE
+    PATTERN "io.h" EXCLUDE
+    PATTERN "memfs.h" EXCLUDE
+    PATTERN "package_descriptor.h" EXCLUDE
+  )
+endif()
 install(DIRECTORY
   "include/tebako/fs"
   DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/tebako
   FILES_MATCHING PATTERN "*.h"
   PATTERN "internal" EXCLUDE
   PATTERN "ruby" EXCLUDE
+  ${TFS_LEGACY_HEADER_EXCLUDES}
 )
 
 if(IS_WINDOWS OR IS_MSYS)
