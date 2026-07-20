@@ -379,6 +379,65 @@ include_directories(BEFORE ${CMAKE_CURRENT_SOURCE_DIR}/include
 
 link_directories(BEFORE ${DEPS_LIB_DIR})
 
+# Generated headers -----------------------------------------------------------
+# version.h and tebako-config.h are generated into the source tree (both are
+# gitignored) and are listed as target sources below, so they must exist at
+# configure time. This block was lost in the libtfs rewrite; CI checkouts then
+# failed at add_library with "Cannot find source file: include/tebako-config.h".
+configure_file(
+   ${CMAKE_CURRENT_SOURCE_DIR}/resources/version.h.in
+   ${CMAKE_CURRENT_SOURCE_DIR}/include/version.h
+   @ONLY
+)
+
+check_symbol_exists(getattrlist "unistd.h" TEBAKO_HAS_GETATTRLIST)
+check_symbol_exists(fgetattrlist "unistd.h" TEBAKO_HAS_FGETATTRLIST)
+
+check_symbol_exists(eaccess "unistd.h" TEBAKO_HAS_EACCESS)
+
+check_symbol_exists(lstat "sys/stat.h" TEBAKO_HAS_LSTAT)
+check_symbol_exists(fstatat "sys/stat.h" TEBAKO_HAS_FSTATAT)
+
+check_symbol_exists(opendir "dirent.h" TEBAKO_HAS_OPENDIR)
+check_symbol_exists(closedir "dirent.h" TEBAKO_HAS_CLOSEDIR)
+check_symbol_exists(readdir "dirent.h" TEBAKO_HAS_READDIR)
+check_symbol_exists(seekdir "dirent.h" TEBAKO_HAS_SEEKDIR)
+check_symbol_exists(telldir "dirent.h" TEBAKO_HAS_TELLDIR)
+
+check_symbol_exists(dirfd "dirent.h" TEBAKO_HAS_DIRFD)
+check_symbol_exists(fdopendir "dirent.h" TEBAKO_HAS_FDOPENDIR)
+check_symbol_exists(scandir "dirent.h" TEBAKO_HAS_SCANDIR)
+
+check_symbol_exists(openat "fcntl.h" TEBAKO_HAS_OPENAT)
+check_symbol_exists(readv "sys/uio.h" TEBAKO_HAS_READV)
+
+check_symbol_exists(pread "unistd.h" TEBAKO_HAS_PREAD)
+
+check_symbol_exists(flock "sys/file.h" TEBAKO_HAS_FLOCK)
+
+check_cxx_source_compiles(
+    "#include <sys/stat.h>
+     int main() {
+      return mkdir(\"tmp\", 0700);
+     }"
+    TEBAKO_HAS_POSIX_MKDIR)
+
+check_cxx_source_compiles(
+    "#include <direct.h>
+     int main() {
+      return mkdir(\"tmp\");
+     }"
+    TEBAKO_HAS_WINDOWS_MKDIR)
+
+if(NOT TEBAKO_HAS_POSIX_MKDIR AND NOT TEBAKO_HAS_WINDOWS_MKDIR)
+  message(FATAL_ERROR "Configuration script did not find neither Posix nor Windows mkdir")
+endif()
+
+configure_file(
+  ${CMAKE_CURRENT_SOURCE_DIR}/resources/tebako-config.h.in
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/tebako-config.h
+)
+
 set(TFS_SOURCE_FILES
   src/backend_factory.cpp
   src/c_api.cpp
