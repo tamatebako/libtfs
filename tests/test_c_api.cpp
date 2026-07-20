@@ -60,7 +60,7 @@ class CApiTest : public ::testing::Test {
   void SetUp() override
   {
     // Create temporary directory
-    test_dir = fs::temp_directory_path() / "tebako_c_api_test";
+    test_dir = (fs::temp_directory_path() / "tebako_c_api_test").generic_string();
     fs::create_directories(test_dir);
 
     // Create test files
