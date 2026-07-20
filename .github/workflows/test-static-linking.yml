@@ -41,7 +41,12 @@ jobs:
 
       - name: Install fixture tools (macOS)
         if: runner.os == 'macOS'
-        run: brew install squashfs
+        # mistletoe: the vcpkg dwarfs build generates tools man pages with the
+        # mistletoe Python module; Homebrew python3 is PEP 668
+        # externally-managed, hence --break-system-packages
+        run: |
+          brew install squashfs
+          python3 -m pip install --break-system-packages mistletoe
 
       - name: Setup vcpkg
         uses: lukka/run-vcpkg@v11
