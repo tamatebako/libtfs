@@ -22,6 +22,14 @@
 # CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
 # ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 # POSSIBILITY OF SUCH DAMAGE.
+#
+# Windows lane: MSYS2 UCRT64 (MinGW-w64 gcc), vcpkg triplet x64-mingw-static.
+# MSYS2 UCRT64 is tebako's actual Windows packaging target (see tebako CI
+# windows-msys.yml). MSVC support is a deferred decision: the legacy tebako
+# API (src/c_helpers/tebako-dirent-helper.c, include/tebako-pch.h) is
+# MinGW-lineage code (libdwarfs-wr / RB_W32 heritage) that relies on POSIX
+# facilities (mode_t, <dlfcn.h>) for which no MSVC shim layer exists, and
+# writing one is out of Stage-1 scope.
 
 name: Windows
 
@@ -44,7 +52,7 @@ env:
 
 jobs:
   build:
-    name: windows-latest (MSVC, x64-windows-static)
+    name: windows-latest (MSYS2 UCRT64, x64-mingw-static)
     runs-on: windows-latest
 
     steps:
@@ -52,9 +60,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: true
-
-      - name: Set MSVC Dev Environment
-        uses: ilammy/msvc-dev-cmd@v1
 
       - name: Setup vcpkg
         uses: lukka/run-vcpkg@v11
@@ -66,34 +71,49 @@ jobs:
         uses: actions/cache@v4
         with:
           path: build/vcpkg_installed
-          key: vcpkg-installed-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json', 'vcpkg-overlay/**') }}
-          restore-keys: vcpkg-installed-${{ runner.os }}-${{ runner.arch }}-
+          key: vcpkg-installed-${{ runner.os }}-${{ runner.arch }}-mingw-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json', 'vcpkg-overlay/**') }}
+          restore-keys: vcpkg-installed-${{ runner.os }}-${{ runner.arch }}-mingw-
 
-      - name: Configure
-        shell: bash
-        run: cmake -S . -B build -G Ninja -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-windows-static -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/build/vcpkg_installed" -DCMAKE_BUILD_TYPE=Release
-
-      - name: Build
-        shell: bash
-        run: cmake --build build --parallel
-
-      - name: Setup MSYS2 (fixture tools)
-        # zip and mksquashfs for tests/fixtures/regenerate_all.sh; the vcpkg
-        # overlay ships libraries only, not the CLI tools
+      - name: Setup MSYS2 (UCRT64 toolchain)
+        # Build toolchain (UCRT64 gcc/cmake/ninja) plus zip and mksquashfs for
+        # tests/fixtures/regenerate_all.sh; the vcpkg overlay ships libraries
+        # only, not the CLI tools. vcpkg needs git on PATH for the git
+        # default-registry baseline.
         uses: msys2/setup-msys2@v2
         with:
-          msystem: ucrt64
+          msystem: UCRT64
           path-type: minimal
-          update: false
+          update: true
           install: >-
+            base-devel
+            git
+            tar
             zip
             squashfs-tools
+          pacboy: >-
+            toolchain:p
+            ninja:p
+            cmake:p
+
+      - name: Configure
+        shell: msys2 {0}
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_TOOLCHAIN_FILE="$(cygpath -m "$VCPKG_ROOT")/scripts/buildsystems/vcpkg.cmake" \
+            -DVCPKG_TARGET_TRIPLET=x64-mingw-static \
+            -DVCPKG_INSTALLED_DIR="$(cygpath -m "$GITHUB_WORKSPACE")/build/vcpkg_installed" \
+            -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        shell: msys2 {0}
+        run: cmake --build build --parallel
 
       - name: Regenerate test fixtures
         # Test fixtures (*.zip/*.dwarfs/*.sqfs) are gitignored and must be
-        # recreated. mkdwarfs comes from the vcpkg build (dwarfs WITH_TOOLS=ON);
-        # fixtures are copied into the build tree by CMake at configure time,
-        # so configure is re-run afterwards to pick up the fresh ones.
+        # recreated. mkdwarfs comes from the vcpkg build (dwarfs WITH_TOOLS=ON;
+        # build/vcpkg_installed/x64-mingw-static/bin); fixtures are copied into
+        # the build tree by CMake at configure time, so configure is re-run
+        # afterwards to pick up the fresh ones.
         shell: msys2 {0}
         run: |
           bash tests/fixtures/regenerate_all.sh
@@ -101,9 +121,14 @@ jobs:
           PATH="$PWD/$MKDWARFS_DIR:$PATH" bash tests/fixtures/dwarfs/create_fixtures.sh
 
       - name: Refresh fixtures in build tree
-        shell: bash
-        run: cmake -S . -B build -G Ninja -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-windows-static -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/build/vcpkg_installed" -DCMAKE_BUILD_TYPE=Release
+        shell: msys2 {0}
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_TOOLCHAIN_FILE="$(cygpath -m "$VCPKG_ROOT")/scripts/buildsystems/vcpkg.cmake" \
+            -DVCPKG_TARGET_TRIPLET=x64-mingw-static \
+            -DVCPKG_INSTALLED_DIR="$(cygpath -m "$GITHUB_WORKSPACE")/build/vcpkg_installed" \
+            -DCMAKE_BUILD_TYPE=Release
 
       - name: Run unit tests
-        shell: bash
+        shell: msys2 {0}
         run: ctest --test-dir build --output-on-failure --parallel
