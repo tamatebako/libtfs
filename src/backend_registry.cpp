@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <mutex>
 
 namespace tebako {
 namespace fs {

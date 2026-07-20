@@ -14,6 +14,7 @@
 #include <unistd.h>
 #include <cerrno>
 #include <cstring>
+#include <mutex>
 
 namespace tebako {
 namespace fs {

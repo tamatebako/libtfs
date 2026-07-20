@@ -37,6 +37,7 @@
 #include <fcntl.h>
 #include <algorithm>
 #include <cstring>
+#include <mutex>
 #include <stdexcept>
 #include <vector>
 #include <string>
