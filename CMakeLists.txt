@@ -481,7 +481,11 @@ find_package(squashfs-tools-ng CONFIG REQUIRED)
 target_link_libraries(tfs PUBLIC squashfs-tools-ng::squashfs)
 
 # Find argtable3 for CLI tool
-find_package(argtable3 CONFIG REQUIRED)
+# NOTE: the vcpkg port installs Argtable3Config.cmake (capital A); the
+# lowercase name only resolves on case-insensitive filesystems (macOS/Windows)
+# and fails on Linux (vcpkg's own usage message says find_package(Argtable3)).
+# The imported target stays argtable3::argtable3.
+find_package(Argtable3 CONFIG REQUIRED)
 
 if(WITH_GLOG_BUILD)
   add_dependencies(tfs ${GLOG_PRJ})
