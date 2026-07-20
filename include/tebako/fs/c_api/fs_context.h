@@ -28,6 +28,10 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
+// <dirent.h> must precede the DT_* fallbacks: glibc defines DT_* as an enum
+// (not macros), so without this include the fallbacks below become macros that
+// collide with a later <dirent.h> inclusion and break the enum.
+#include <dirent.h>
 
 // DT_* constants may not be available on all platforms
 #ifndef DT_UNKNOWN

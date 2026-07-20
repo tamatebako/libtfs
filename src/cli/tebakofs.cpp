@@ -20,6 +20,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <fnmatch.h>
+#include <functional>
 
 namespace tebako {
 namespace fs {
