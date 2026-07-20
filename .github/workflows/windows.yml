@@ -80,6 +80,9 @@ jobs:
         # only, not the CLI tools. vcpkg needs git on PATH for the git
         # default-registry baseline. dlfcn provides <dlfcn.h> for
         # include/tebako-pch.h (mingw-w64 base doesn't ship it).
+        # python-mistletoe is needed by the vcpkg dwarfs build to render tools
+        # man pages (same as the pip install in macos.yml/alpine.yml, here via
+        # the native UCRT64 package for the python3 the build invokes).
         uses: msys2/setup-msys2@v2
         with:
           msystem: UCRT64
@@ -96,6 +99,7 @@ jobs:
             ninja:p
             cmake:p
             dlfcn:p
+            python-mistletoe:p
 
       - name: Configure
         shell: msys2 {0}
