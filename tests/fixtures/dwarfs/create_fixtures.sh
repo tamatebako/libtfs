@@ -57,21 +57,31 @@ else
 fi
 
 # 4. large.dwarfs - Performance testing
+# The source blobs (*.bin, ~11M) are gitignored; generate them on the fly like
+# the zip/squashfs fixture scripts do instead of failing on a clean checkout.
 echo "Creating large.dwarfs..."
-if [ -d "$SOURCE_DIR/large" ]; then
-    mkdwarfs -i "$SOURCE_DIR/large" \
-             -o large.dwarfs \
-             -l 9 \
-             --no-progress \
-             --force
-    echo "✓ large.dwarfs created"
-else
-    echo "✗ Source directory $SOURCE_DIR/large not found"
-    exit 1
+LARGE_SRC="$SOURCE_DIR/large"
+LARGE_TMP=""
+if [ ! -d "$LARGE_SRC" ]; then
+    LARGE_TMP="$(mktemp -d)"
+    dd if=/dev/urandom of="$LARGE_TMP/1mb.bin" bs=1M count=1 2>/dev/null
+    dd if=/dev/urandom of="$LARGE_TMP/10mb.bin" bs=1M count=10 2>/dev/null
+    LARGE_SRC="$LARGE_TMP"
 fi
+mkdwarfs -i "$LARGE_SRC" \
+         -o large.dwarfs \
+         -l 9 \
+         --no-progress \
+         --force
+if [ -n "$LARGE_TMP" ]; then
+    rm -rf "$LARGE_TMP"
+fi
+echo "✓ large.dwarfs created"
 
 # 5. empty.dwarfs - Edge case testing
+# git cannot track an empty directory; create it if it is missing.
 echo "Creating empty.dwarfs..."
+mkdir -p "$SOURCE_DIR/empty"
 if [ -d "$SOURCE_DIR/empty" ]; then
     mkdwarfs -i "$SOURCE_DIR/empty" \
              -o empty.dwarfs \
