@@ -38,10 +38,6 @@ extern "C" {
 #include <stdint.h>
 #include <sys/types.h>
 #include <sys/stat.h>
-/* <dirent.h> must precede the DT_* fallbacks: glibc defines DT_* as an enum
- * (not macros), so without this include the fallbacks below become macros that
- * collide with a later <dirent.h> inclusion and break the enum. */
-#include <dirent.h>
 
 /* Directory entry type constants (from POSIX dirent.h) */
 #ifndef DT_REG
