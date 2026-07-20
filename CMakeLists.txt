@@ -392,6 +392,7 @@ endif(INSTALL_OPENSSL AND WITH_CXX11_ABI)
 # This completely isolates it from C++ headers in the parent scope
 add_subdirectory(src/c_helpers)
 
+if(WITH_LEGACY_TEBAKO_API)
 include_directories(BEFORE ${CMAKE_CURRENT_SOURCE_DIR}/include
                     ${CMAKE_CURRENT_SOURCE_DIR}/include/tebako
                     ${CMAKE_CURRENT_SOURCE_DIR}/include/tebako/fs
@@ -401,6 +402,16 @@ include_directories(BEFORE ${CMAKE_CURRENT_SOURCE_DIR}/include
                     ${DEPS}/include
                     ${DEPS}/include/libxml2-2.9.1
 )
+else()
+# Modern-only build: all modern includes are <tebako/fs/...>-prefixed, so the
+# legacy sub-directories stay off the global include path. This matters on
+# MinGW, where include/tebako/fs/io.h shadows the system <io.h> pulled in by
+# <fcntl.h>/<sys/stat.h> (and include/tebako/fs/dirent.h shadows <dirent.h>).
+include_directories(BEFORE ${CMAKE_CURRENT_SOURCE_DIR}/include
+                    ${DEPS}/include
+                    ${DEPS}/include/libxml2-2.9.1
+)
+endif(WITH_LEGACY_TEBAKO_API)
 
 link_directories(BEFORE ${DEPS_LIB_DIR})
 
