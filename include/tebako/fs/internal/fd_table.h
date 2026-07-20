@@ -29,6 +29,8 @@
 
 #pragma once
 
+#include <tebako/fs/platform.h>
+
 namespace tebako {
 #ifdef _WIN32
 struct tebako_dirent;

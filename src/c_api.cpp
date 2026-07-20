@@ -44,8 +44,11 @@
 
 #include <fcntl.h>
 #include <sys/stat.h>
+#ifndef _WIN32
+// DT_* fallbacks for Windows live in <tebako/fs/c_api.h>; unistd.h is POSIX-only
 #include <dirent.h>
 #include <unistd.h>
+#endif
 
 // Now include tebako headers
 #include <tebako/fs/c_api.h>

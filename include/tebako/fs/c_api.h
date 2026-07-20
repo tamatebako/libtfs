@@ -38,6 +38,7 @@ extern "C" {
 #include <stdint.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <tebako/fs/platform.h>
 
 /* Directory entry type constants (from POSIX dirent.h) */
 #ifndef DT_REG

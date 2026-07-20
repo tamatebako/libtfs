@@ -5,7 +5,10 @@
  * IMPORTANT: This is a pure C file with NO project headers
  */
 
+#ifndef _WIN32
+// struct dirent exists only on POSIX; the function body is a no-op on Windows
 #include <dirent.h>
+#endif
 #include <string.h>
 #include <sys/types.h>
 #include <sys/stat.h>

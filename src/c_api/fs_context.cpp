@@ -9,9 +9,14 @@
 #include <tebako/fs/c_api/fs_context.h>
 
 #include <sys/stat.h>
+#ifndef _WIN32
+// DT_* fallbacks for Windows live in <tebako/fs/c_api/fs_context.h>
 #include <dirent.h>
+#endif
 #include <fcntl.h>
+#ifndef _WIN32
 #include <unistd.h>
+#endif
 #include <cerrno>
 #include <cstring>
 #include <mutex>
