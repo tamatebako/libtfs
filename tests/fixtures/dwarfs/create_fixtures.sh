@@ -43,8 +43,15 @@ else
 fi
 
 # 3. permissions.dwarfs - POSIX permissions (DwarFS advantage)
+# git tracks only the executable bit, so clean checkouts materialize all files
+# with default modes; enforce the exact modes the tests assert on (0444/0755/
+# 0644) before packing. Mode-only changes are invisible to git (readonly stays
+# non-executable, executable stays executable), so this cannot dirty the tree.
 echo "Creating permissions.dwarfs..."
 if [ -d "$SOURCE_DIR/permissions" ]; then
+    chmod 0444 "$SOURCE_DIR/permissions/readonly.txt"
+    chmod 0755 "$SOURCE_DIR/permissions/executable.sh"
+    chmod 0644 "$SOURCE_DIR/permissions/readable.txt"
     mkdwarfs -i "$SOURCE_DIR/permissions" \
              -o permissions.dwarfs \
              -l 9 \
