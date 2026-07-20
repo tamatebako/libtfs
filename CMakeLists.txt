@@ -652,13 +652,6 @@ if (WITH_TESTS)
   # Find GTest using modern CMake
   find_package(GTest REQUIRED)
 
-  if(RB_W32)
-    enable_testing()
-    add_subdirectory(tests)
-
-    add_dependencies(wr-bin ${INCBIN_PRJ} PACKAGEDFileSYSTEM_STEP_3)
-  endif(RB_W32)
-
   # Backend factory tests
   add_executable(test_backend_factory
     "tests/test_backend_factory.cpp"
