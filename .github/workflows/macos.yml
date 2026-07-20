@@ -64,6 +64,14 @@ jobs:
         # libraries only, not the CLI tools)
         run: brew install squashfs
 
+      - name: Install mistletoe
+        # The vcpkg dwarfs build generates tools man pages with the mistletoe
+        # Python module. The runner's Homebrew python3 is PEP 668
+        # externally-managed (pip --user fails, and dwarfs' own
+        # ensure_mistletoe.cmake fallback cannot help), so install system-wide
+        # with --break-system-packages; no brew formula exists.
+        run: python3 -m pip install --break-system-packages mistletoe
+
       - name: Setup vcpkg
         uses: lukka/run-vcpkg@v11
         with:
