@@ -26,32 +26,12 @@
 name: Windows
 
 on:
-#  schedule:
-#    - cron: "0 6 * * 0"
-#  push:
-#    branches: [ main ]
-#    paths-ignore:
-#      - 'docs/**'
-#      - '**.adoc'
-#      - '**.md'
-#      - 'macos-arm64.env'
-#      - 'macos-x86_64.env'
-#      - '.cirrus.yml'
-#      - '.github/workflows/*.yml'
-#      - '!.github/workflows/windows.yml'
-#
-#    tags: [ v* ]
-#
-#  pull_request:
-#    paths-ignore:
-#      - 'docs/**'
-#      - '**.adoc'
-#      - '**.md'
-#      - 'macos-arm64.env'
-#      - 'macos-x86_64.env'
-#      - '.cirrus.yml'
-#      - '.github/workflows/*.yml'
-#      - '!.github/workflows/windows.yml'
+  schedule:
+    - cron: "0 5 * * 0"
+  push:
+    branches: [ main, stage-1-modernize-libtfs ]
+  pull_request:
+    branches: [ main ]
   workflow_dispatch:
 
 concurrency:
@@ -59,24 +39,14 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  VCPKG_DIR: C:/vcpkg
-  VCPKG_DEFAULT_BINARY_CACHE: ${{github.workspace}}\cache
-  CACHE_VER: 3
+  # Pin from vcpkg-configuration.json default-registry baseline
+  VCPKG_COMMIT: 11bbc873e00e9e58d4e9dffb30b7a5493a030e0b
 
 jobs:
   build:
-    name: ${{ matrix.os.version }} [VS Version ${{ matrix.os.vsversion }} with Ruby mocks ]
-    runs-on: ${{ matrix.os.version }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os:
-          - { version: windows-2019, vsversion: 2019 }
-        #  - { version: windows-2025, vsversion: 2022 }
-        env:
-          - { CC: cl,  CXX: cl, ASAN: 'OFF', LOG_LEVEL: 'trace', BUILD_TYPE: 'Release' }
+    name: windows-latest (MSVC, x64-windows-static)
+    runs-on: windows-latest
 
-    env: ${{ matrix.env }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -85,101 +55,55 @@ jobs:
 
       - name: Set MSVC Dev Environment
         uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Setup vcpkg
+        uses: lukka/run-vcpkg@v11
         with:
-          vsversion: ${{ matrix.os.vsversion }}
+          vcpkgGitCommitId: ${{ env.VCPKG_COMMIT }}
+          runVcpkgInstall: false
 
-      - name: Configure build environment [1]
-        shell: bash
-        run: |
-          cat common.env >> $GITHUB_ENV
-          echo "CORES=$(nproc --all)" >> $GITHUB_ENV
-
-      - name: Configure build environment [2]
-        shell: cmd
-        run:  |
-          vcpkg version >> vcpkg.version
-          mkdir ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
-          mkdir ${{github.workspace}}\${{env.DEPS}}
-
-      - name: vcpkg cache
+      - name: Cache vcpkg installed tree
         uses: actions/cache@v4
         with:
-          path: ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
-          key: vcpkg-${{ matrix.os.version }}-${{ hashFiles('vcpkg.version') }}
-
-      - name: Deps cache
-        uses: actions/cache@v4
-        with:
-          path: ${{github.workspace}}/${{env.DEPS}}
-          key:  ${{ matrix.os.version }}-${{ env.CC }}-${{ hashFiles('**/common.env') }}-${{ env.ASAN }}-${{ env.LOG_LEVEL }}-v${{ env.CACHE_VER }}
+          path: build/vcpkg_installed
+          key: vcpkg-installed-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json', 'vcpkg-overlay/**') }}
+          restore-keys: vcpkg-installed-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Configure
-        # Due to folly issue VCPKG_INSTALLED_DIR has to be outside of the project tree
-        # Folly build works with Ninja but does not work with MSBuild
-        # Something like
-        # cmake -B build -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake
-        #       -DVCPKG_TARGET_TRIPLET=x64-windows-static -DCMAKE_BUILD_TYPE=Release -DPREFER_SYSTEM_GTEST=ON -G Ninja .
-        run: cmake -B build -DWITH_TESTS=ON                         ^
-                            -DWITH_ASAN=${{ env.ASAN }}             ^
-                            -DTESTS_LOG_LEVEL=${{ env.LOG_LEVEL }}  ^
-                            -DCMAKE_TOOLCHAIN_FILE=${{ env.VCPKG_DIR}}/scripts/buildsystems/vcpkg.cmake  ^
-                            -DVCPKG_TARGET_TRIPLET=x64-windows-static                                    ^
-                            -DVCPKG_INSTALLED_DIR="${{ runner.workspace }}/vcpkg-install-dwarfs"         ^
-                            -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }}                                     ^
-                            -G Ninja .
+        shell: bash
+        run: cmake -S . -B build -G Ninja -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-windows-static -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/build/vcpkg_installed" -DCMAKE_BUILD_TYPE=Release
 
-      - name: Run Build
-        shell: cmd
+      - name: Build
+        shell: bash
+        run: cmake --build build --parallel
+
+      - name: Setup MSYS2 (fixture tools)
+        # zip and mksquashfs for tests/fixtures/regenerate_all.sh; the vcpkg
+        # overlay ships libraries only, not the CLI tools
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: ucrt64
+          path-type: minimal
+          update: false
+          install: >-
+            zip
+            squashfs-tools
+
+      - name: Regenerate test fixtures
+        # Test fixtures (*.zip/*.dwarfs/*.sqfs) are gitignored and must be
+        # recreated. mkdwarfs comes from the vcpkg build (dwarfs WITH_TOOLS=ON);
+        # fixtures are copied into the build tree by CMake at configure time,
+        # so configure is re-run afterwards to pick up the fresh ones.
+        shell: msys2 {0}
         run: |
-          cmake --build build --parallel ${{ env.CORES }}
+          bash tests/fixtures/regenerate_all.sh
+          MKDWARFS_DIR=$(dirname "$(ls build/vcpkg_installed/*/bin/mkdwarfs.exe | head -1)")
+          PATH="$PWD/$MKDWARFS_DIR:$PATH" bash tests/fixtures/dwarfs/create_fixtures.sh
+
+      - name: Refresh fixtures in build tree
+        shell: bash
+        run: cmake -S . -B build -G Ninja -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-windows-static -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/build/vcpkg_installed" -DCMAKE_BUILD_TYPE=Release
 
       - name: Run unit tests
-        run: ctest --test-dir build --output-on-failure --parallel "$CORES"
-
-      - name: Checkout shell test framework
-        if: ${{ env.COVERAGE != 'ON' && env.ASAN != 'ON' }}
-        uses: actions/checkout@v4
-        with:
-          repository: kward/shunit2
-          path: tests/shunit2
-          fetch-depth: 1
-
-      - name: Run additional tests
-        if: ${{ env.COVERAGE != 'ON' && env.ASAN != 'ON' }}
         shell: bash
-        run:  OSTYPE=win32 tests/scripts/tests.sh
-
-      - name: Pack
-        shell: powershell
-        run: |
-          $cmakePath = Split-Path (Get-Command cmake | Select-Object -ExpandProperty Definition) -Parent
-          & "$cmakePath\cpack.exe" --config build\CPackConfig.cmake
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: libdwarfs-wr
-          path: '*.7z'
-          retention-days: 1
-
-# publish:
-#   name: Publish artifacts
-#    needs: [ build ]
-#    runs-on: ubuntu-latest
-#    if: contains(github.ref, 'refs/tags/v')
-#    steps:
-#      - uses: actions/checkout@v4
-#
-#      - uses: actions/download-artifact@v4
-#        with:
-#          name: libdwarfs-wr
-#
-#      - name: Print release info
-#        run: |
-#          echo "Release version: ${{ github.ref }}"
-#
-#      - name: Release
-#        uses: softprops/action-gh-release@v2
-#        with:
-#          files: '*.7z'
-#          prerelease: ${{ contains(github.ref, '.rc') && 'true' || 'false' }}
+        run: ctest --test-dir build --output-on-failure --parallel

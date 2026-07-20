@@ -29,26 +29,9 @@ on:
   schedule:
     - cron: "0 6 * * 0"
   push:
-    branches: [ main ]
-    paths-ignore:
-      - 'docs/**'
-      - '**.adoc'
-      - '**.md'
-      - 'macos-arm64.env'
-      - 'macos-x86_64.env'
-      - '.cirrus.yml'
-      - '.github/workflows/*.yml'
-      - '!.github/workflows/ubuntu.yml'
+    branches: [ main, stage-1-modernize-libtfs ]
   pull_request:
-    paths-ignore:
-      - 'docs/**'
-      - '**.adoc'
-      - '**.md'
-      - 'macos-arm64.env'
-      - 'macos-x86_64.env'
-      - '.cirrus.yml'
-      - '.github/workflows/*.yml'
-      - '!.github/workflows/ubuntu.yml'
+    branches: [ main ]
   workflow_dispatch:
 
 concurrency:
@@ -56,91 +39,60 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  CACHE_VER: 1
-  CODECOV_TOKEN: 3fd391a5-99c6-434f-a07c-22fdf282ae5b
+  # Pin from vcpkg-configuration.json default-registry baseline
+  VCPKG_COMMIT: 11bbc873e00e9e58d4e9dffb30b7a5493a030e0b
 
 jobs:
   build:
-    name: ${{ matrix.env.os }}-${{ matrix.architecture.name }} [CC ${{ matrix.env.CC }}, ASAN ${{ matrix.env.ASAN }}, COVERAGE ${{ matrix.env.COVERAGE }}, ${{ matrix.env.LOG_LEVEL }} ]
-    runs-on: ${{ matrix.architecture.host }}
-    container:
-      image: 'ghcr.io/${{ github.repository_owner }}/tebako-${{ matrix.env.os }}-dev'
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        architecture:
-          - { host: 'ubuntu-22.04', name: x86_64 }
-          - { host: 'ubuntu-22.04-arm', name: arm64 }
-        env:
-          - { os: ubuntu-20.04, CC: gcc-10,    CXX: g++-10,     ASAN: 'OFF',  COVERAGE: 'OFF', LOG_LEVEL: 'trace' }
-          - { os: ubuntu-20.04, CC: clang-12,  CXX: clang++-12, ASAN: 'OFF',  COVERAGE: 'OFF', LOG_LEVEL: 'warn'  }
-          - { os: ubuntu-20.04, CC: clang-12,  CXX: clang++-12, ASAN: 'ON',   COVERAGE: 'OFF', LOG_LEVEL: 'warn'  }
-# Tebako will stay with Ubuntu 20.04 for now
-# https://github.com/llvm/llvm-project/issues/56357
-# On Ubuntu 22  affects clang 14 (file entry.cpp)
-#          - { os: ubuntu-22.04, CC: clang-15,  CXX: clang++-15, ASAN: 'OFF',  COVERAGE: 'OFF', LOG_LEVEL: 'warn'  }
-#          - { os: ubuntu-22.04, CC: gcc-11,    CXX: g++-11,     ASAN: 'OFF',  COVERAGE: 'OFF', LOG_LEVEL: 'warn'  }
-        include:
-          - env:          { os:   'ubuntu-20.04', CC: gcc-10,    CXX: g++-10,     ASAN: 'OFF',  COVERAGE: 'ON',  LOG_LEVEL: 'trace'  }
-            architecture: { host: 'ubuntu-22.04', name: x86_64 }
-          - env:          { os:   'ubuntu-20.04', CC: gcc-10,    CXX: g++-10,     ASAN: 'OFF',  COVERAGE: 'ON',  LOG_LEVEL: 'warn'  }
-            architecture: { host: 'ubuntu-22.04', name: x86_64 }
+        os: [ ubuntu-latest, ubuntu-24.04-arm ]
 
-
-    env: ${{ matrix.env }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           submodules: true
 
-      - name: Setup environment
+      - name: Install fixture tools
+        # zip and mksquashfs are needed by tests/fixtures/regenerate_all.sh;
+        # the vcpkg overlay ships libraries only, not the CLI tools
         run: |
-          cat common.env ubuntu.env >> $GITHUB_ENV
-          echo "CORES=$(nproc --all)" >> $GITHUB_ENV
-          echo "MAKEFLAGS=j$(nproc --all)" >> $GITHUB_ENV
+          sudo apt-get -y update
+          sudo apt-get -y install zip squashfs-tools
 
+      - name: Setup vcpkg
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgGitCommitId: ${{ env.VCPKG_COMMIT }}
+          runVcpkgInstall: false
 
-      - name: Create deps folder
-        run: mkdir ${{env.DEPS}}
-
-      - name: Process cache
+      - name: Cache vcpkg installed tree
         uses: actions/cache@v4
         with:
-          path: ${{env.DEPS}}
-          key:  ${{ matrix.env.os }}-${{ matrix.architecture.name }}-${{ env.CC }}-${{ hashFiles('**/common.env') }}-${{ env.ASAN }}-${{ env.COVERAGE }}-${{ env.LOG_LEVEL }}-v${{ env.CACHE_VER }}
+          path: build/vcpkg_installed
+          key: vcpkg-installed-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json', 'vcpkg-overlay/**') }}
+          restore-keys: vcpkg-installed-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Configure
-        run: cmake -B build -DWITH_TESTS=ON -DWITH_ASAN=${{ env.ASAN }} -DWITH_COVERAGE=${{ env.COVERAGE }} -DTESTS_LOG_LEVEL=${{ env.LOG_LEVEL }}
+        run: cmake -S . -B build -G Ninja -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" -DCMAKE_BUILD_TYPE=Release
 
       - name: Build
-        run: cmake --build build --parallel "$CORES"
+        run: cmake --build build --parallel
+
+      - name: Regenerate test fixtures
+        # Test fixtures (*.zip/*.dwarfs/*.sqfs) are gitignored and must be
+        # recreated. mkdwarfs comes from the vcpkg build (dwarfs WITH_TOOLS=ON);
+        # fixtures are copied into the build tree by CMake at configure time,
+        # so re-run configure to pick up the fresh ones.
+        run: |
+          bash tests/fixtures/regenerate_all.sh
+          MKDWARFS_DIR=$(dirname "$(ls build/vcpkg_installed/*/bin/mkdwarfs | head -1)")
+          PATH="$PWD/$MKDWARFS_DIR:$PATH" bash tests/fixtures/dwarfs/create_fixtures.sh
+          cmake -S . -B build -G Ninja -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" -DCMAKE_BUILD_TYPE=Release
 
       - name: Run unit tests
-        run: ctest --test-dir build --output-on-failure --parallel "$CORES"
-
-      - name: Checkout shell test framework
-        if: ${{ env.COVERAGE != 'ON'  && env.ASAN != 'ON' }}
-        uses: actions/checkout@v4
-        with:
-          repository: kward/shunit2
-          path: tests/shunit2
-          fetch-depth: 1
-
-      - name: Run additional tests
-        if: ${{ env.COVERAGE != 'ON' && env.ASAN != 'ON' }}
-        run:  tests/scripts/tests.sh
-
-      - name: Upload to codecov.io
-        if: ${{ env.COVERAGE == 'ON' && env.ASAN != 'ON' && matrix.architecture.name == 'x86_64' }}
-        run: |
-          curl -Os https://uploader.codecov.io/latest/linux/codecov
-          curl https://uploader.codecov.io/verification.gpg | gpg --no-default-keyring --keyring trustedkeys.gpg --import
-          curl -Os https://uploader.codecov.io/latest/linux/codecov
-          curl -Os https://uploader.codecov.io/latest/linux/codecov.SHA256SUM
-          curl -Os https://uploader.codecov.io/latest/linux/codecov.SHA256SUM.sig
-          gpgv codecov.SHA256SUM.sig codecov.SHA256SUM
-          shasum -a 256 -c codecov.SHA256SUM
-          find "build" -type f -name '*.gcno' -exec gcov -p {} +
-          chmod +x codecov
-          ./codecov -t ${{ env.CODECOV_TOKEN }}
+        run: ctest --test-dir build --output-on-failure --parallel

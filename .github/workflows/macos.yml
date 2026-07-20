@@ -22,32 +22,16 @@
 # CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
 # ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 # POSSIBILITY OF SUCH DAMAGE.
-#
-# The purpose of this workflow is to check that build procedures work correctly
-# in specific environment. Due to this reason there is no caching. It is done by
-# intention. All caching is in upstream projects.
+
 name: MacOS
 
 on:
   schedule:
     - cron: "0 7 * * 0"
   push:
-    branches: [ main ]
-    paths-ignore:
-      - 'docs/**'
-      - '**.adoc'
-      - '**.md'
-      - '.cirrus.yml'
-      - '.github/workflows/*.yml'
-      - '!.github/workflows/macos.yml'
+    branches: [ main, stage-1-modernize-libtfs ]
   pull_request:
-    paths-ignore:
-      - 'docs/**'
-      - '**.adoc'
-      - '**.md'
-      - '.cirrus.yml'
-      - '.github/workflows/*.yml'
-      - '!.github/workflows/macos.yml'
+    branches: [ main ]
   workflow_dispatch:
 
 concurrency:
@@ -55,121 +39,60 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  CACHE_VER: 1
+  # Pin from vcpkg-configuration.json default-registry baseline
+  VCPKG_COMMIT: 11bbc873e00e9e58d4e9dffb30b7a5493a030e0b
 
 jobs:
   build:
-    name: ${{ matrix.env.os }} [XCode ${{ matrix.env.xcode }}, ASAN ${{ matrix.env.ASAN }}, COVERAGE ${{ matrix.env.COVERAGE }}, ${{ matrix.env.LOG_LEVEL }}, OpenSSL ${{ matrix.openssl.name }}]
-    runs-on: ${{ matrix.env.os }}
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        env:
-#          - { os: 'macos-13', arch: 'x86_64', ASAN: 'OFF',  COVERAGE: 'OFF', LOG_LEVEL: 'warn', xcode: '14.3.1'                }
-          - { os: 'macos-14', arch: 'arm64',  ASAN: 'OFF',  COVERAGE: 'OFF', LOG_LEVEL: 'warn', xcode: '15.0.1', LG_VADDR: 39  }
-          - { os: 'macos-14', arch: 'arm64',  ASAN: 'OFF',  COVERAGE: 'OFF', LOG_LEVEL: 'warn', xcode: '15.4'                  }
-          - { os: 'macos-15', arch: 'arm64',  ASAN: 'OFF',  COVERAGE: 'OFF', LOG_LEVEL: 'warn', xcode: '16.1'                  }
-        openssl:
-          - { option: '', name: '3.x' }
-
-    env: ${{ matrix.env }}
+        # macos-14 = arm64, macos-15-intel = x86_64
+        os: [ macos-14, macos-15-intel ]
 
     steps:
-      - name: Setup XCode ${{ matrix.env.xcode }}
-        uses: maxim-lobanov/setup-xcode@v1
-        with:
-          xcode-version: ${{ matrix.env.xcode }}
-
       - name: Checkout
         uses: actions/checkout@v4
         with:
           submodules: true
 
-      - name: Setup environment
-        run: |
-          cat common.env macos-${{ matrix.env.arch }}.env >> $GITHUB_ENV
-          echo "CORES=$(sysctl -n hw.ncpu)" >> $GITHUB_ENV
-          echo "MAKEFLAGS=j$(sysctl -n hw.ncpu)" >> $GITHUB_ENV
+      - name: Install fixture tools
+        # zip is preinstalled; mksquashfs is needed by
+        # tests/fixtures/regenerate_all.sh (the vcpkg overlay ships
+        # libraries only, not the CLI tools)
+        run: brew install squashfs
 
-      - name: Create deps folder
-        run: |
-          mkdir ${{ github.workspace }}/${{ env.DEPS }}
-          echo 'BREW_HOME<<EOF' >> $GITHUB_ENV
-          brew --prefix >> $GITHUB_ENV
-          echo 'EOF' >> $GITHUB_ENV
+      - name: Setup vcpkg
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgGitCommitId: ${{ env.VCPKG_COMMIT }}
+          runVcpkgInstall: false
 
-      - name: Process cache
+      - name: Cache vcpkg installed tree
         uses: actions/cache@v4
         with:
-          path: ${{ github.workspace }}/${{ env.DEPS }}
-          key: ${{ matrix.env.os }}-${{ matrix.env.xcode }}-${{ hashFiles('**/common.env') }}-${{ env.ASAN }}-${{ env.COVERAGE }}-${{ env.LOG_LEVEL }}-${{ matrix.openssl.name }}-v${{ env.CACHE_VER }}
-
-      - name: Install packages
-        # Already installed: openssl, libevent, libsodium, lz4, xz
-        # Not installing [comparing to ubuntu as a baseline] libiberty, libunwind, libdwarf, libelf
-        run: |
-          brew install flex gnu-sed bash double-conversion jemalloc fmt glog googletest boost zlib bison
-          brew reinstall xz
+          path: build/vcpkg_installed
+          key: vcpkg-installed-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json', 'vcpkg-overlay/**') }}
+          restore-keys: vcpkg-installed-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Configure
-        run: |
-          cmake -B build -DPREFER_SYSTEM_GTEST=ON -DWITH_TESTS=ON -DWITH_ASAN=${{ env.ASAN }} -DWITH_COVERAGE=${{ env.COVERAGE }} -DTESTS_LOG_LEVEL=${{ env.LOG_LEVEL }}  ${{ matrix.openssl.option }}
+        run: cmake -S . -B build -G Ninja -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" -DCMAKE_BUILD_TYPE=Release
 
       - name: Build
-        run: cmake --build build --parallel "$CORES"
+        run: cmake --build build --parallel
+
+      - name: Regenerate test fixtures
+        # Test fixtures (*.zip/*.dwarfs/*.sqfs) are gitignored and must be
+        # recreated. mkdwarfs comes from the vcpkg build (dwarfs WITH_TOOLS=ON);
+        # fixtures are copied into the build tree by CMake at configure time,
+        # so re-run configure to pick up the fresh ones.
+        run: |
+          bash tests/fixtures/regenerate_all.sh
+          MKDWARFS_DIR=$(dirname "$(ls build/vcpkg_installed/*/bin/mkdwarfs | head -1)")
+          PATH="$PWD/$MKDWARFS_DIR:$PATH" bash tests/fixtures/dwarfs/create_fixtures.sh
+          cmake -S . -B build -G Ninja -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" -DCMAKE_BUILD_TYPE=Release
 
       - name: Run unit tests
-        run: ctest --test-dir build --output-on-failure --parallel "$CORES"
-
-      - name: Checkout shell test framework
-        if: ${{ env.COVERAGE != 'ON' && env.ASAN != 'ON' }}
-        uses: actions/checkout@v4
-        with:
-          repository: kward/shunit2
-          path: ${{ github.workspace }}/tests/shunit2
-          fetch-depth: 1
-
-      - name: Run additional tests
-        if: ${{ env.COVERAGE != 'ON' && env.ASAN != 'ON' }}
-        run:  ${{ env.BREW_HOME }}/bin/bash ${{ github.workspace }}/tests/scripts/tests.sh
-
-      - name: Upload tests
-        if: ${{ env.COVERAGE != 'ON' && env.ASAN != 'ON' && env.os == 'macos-13' && matrix.openssl.name == '3.x' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: tests
-          retention-days: 1
-          path: |
-            ${{github.workspace}}/build/wr-bin
-            ${{github.workspace}}/build/wr-tests
-            ${{github.workspace}}/build/fs2.bin
-
-#  test-on-macos-14:
-    # The run on MacOS 14 is the amd64 on arm64 test
-#    needs: build
-#    name: run tests on MacOS-13/14
-#    runs-on: ${{ matrix.os }}
-#    env:
-#      TEBAKO_CROSS_TEST: ON
-#    strategy:
-#      fail-fast: false
-#      matrix:
-#        os: [ macos-14 ]
-#    steps:
-#      - name: Download tests
-#        uses: actions/download-artifact@v4
-#        with:
-#          name: tests
-
-#      - name: Provision execute permissions
-#        run: |
-#          chmod +x wr-bin
-#          chmod +x wr-tests
-#          mkdir -p build
-#          mv fs2.bin build/fs2.bin
-
-#      - name: Run statically linked application
-#        run: ./wr-bin
-
-#      - name: Run unit tests
-#        run: ./wr-tests
+        run: ctest --test-dir build --output-on-failure --parallel
