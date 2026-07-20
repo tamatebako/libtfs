@@ -41,6 +41,8 @@
 #include <dwarfs/util.h>
 #include <dwarfs/reader/mlock_mode.h>
 
+#include <algorithm>
+
 // Ensure IFTODT is defined (some systems don't have it)
 #ifndef IFTODT
 #define IFTODT(mode) (((mode)&0170000) >> 12)
