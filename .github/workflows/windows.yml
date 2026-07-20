@@ -79,10 +79,9 @@ jobs:
         # tests/fixtures/regenerate_all.sh; the vcpkg overlay ships libraries
         # only, not the CLI tools. vcpkg needs git on PATH for the git
         # default-registry baseline. dlfcn provides <dlfcn.h> for
-        # include/tebako-pch.h (mingw-w64 base doesn't ship it).
-        # python-mistletoe is needed by the vcpkg dwarfs build to render tools
-        # man pages (same as the pip install in macos.yml/alpine.yml, here via
-        # the native UCRT64 package for the python3 the build invokes).
+        # include/tebako-pch.h (mingw-w64 base doesn't ship it). python-pip is
+        # needed for the mistletoe install below (MSYS2 ships no
+        # python-mistletoe package for UCRT64).
         uses: msys2/setup-msys2@v2
         with:
           msystem: UCRT64
@@ -99,7 +98,14 @@ jobs:
             ninja:p
             cmake:p
             dlfcn:p
-            python-mistletoe:p
+            python-pip:p
+
+      - name: Install mistletoe (dwarfs tools man pages)
+        # The vcpkg dwarfs build generates tools man pages with the mistletoe
+        # Python module; install it via pip into the UCRT64 python3 the build
+        # invokes (matches macos.yml/alpine.yml/test-static-linking.yml).
+        shell: msys2 {0}
+        run: python3 -m pip install --break-system-packages mistletoe
 
       - name: Configure
         shell: msys2 {0}
