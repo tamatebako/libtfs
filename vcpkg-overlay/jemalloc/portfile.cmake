@@ -95,8 +95,23 @@ configure_file(
     @ONLY
 )
 
+# Ship a proper version file so versioned find_package(jemalloc 5.5.0 CONFIG)
+# works (configs without a version file are skipped when a version is requested)
+include(CMakePackageConfigHelpers)
+write_basic_package_version_file(
+    "${CMAKE_CONFIG_DIR}/jemallocConfigVersion.cmake"
+    VERSION 5.5.0
+    COMPATIBILITY SameMajorVersion
+)
+
 file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug/share")
-# Remove CMake generated config files from debug directory (they have wrong relative paths)
+# Remove the fork's native CMake config files (release and debug). Its version is
+# detected from the enclosing git repo's tags, so vcpkg's own date tags (e.g.
+# "2025.12.12") leak in and break versioned find_package() consumers; the debug
+# ones also have wrong relative paths. The share config above is the intended one.
+if(EXISTS "${CURRENT_PACKAGES_DIR}/lib/cmake")
+    file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/lib/cmake")
+endif()
 if(EXISTS "${CURRENT_PACKAGES_DIR}/debug/lib/cmake")
     file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug/lib/cmake")
 endif()
