@@ -78,7 +78,8 @@ jobs:
         # Build toolchain (UCRT64 gcc/cmake/ninja) plus zip and mksquashfs for
         # tests/fixtures/regenerate_all.sh; the vcpkg overlay ships libraries
         # only, not the CLI tools. vcpkg needs git on PATH for the git
-        # default-registry baseline.
+        # default-registry baseline. dlfcn provides <dlfcn.h> for
+        # include/tebako-pch.h (mingw-w64 base doesn't ship it).
         uses: msys2/setup-msys2@v2
         with:
           msystem: UCRT64
@@ -94,6 +95,7 @@ jobs:
             toolchain:p
             ninja:p
             cmake:p
+            dlfcn:p
 
       - name: Configure
         shell: msys2 {0}
