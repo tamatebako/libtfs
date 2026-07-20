@@ -1,39 +1,15 @@
 # vcpkg portfile for dwarfs
 # DwarFS - A fast high-compression read-only file system
-# Source: tamatebako/dwarfs-t fork, tag tebako-v0.14.1
+# Source: tamatebako/dwarfs-t fork, tag tebako-v0.14.1-1
 
 vcpkg_check_linkage(ONLY_STATIC_LIBRARY)
 
 vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
     REPO tamatebako/dwarfs-t
-    REF tebako-v0.14.1
-    SHA512 7526e6f17b8bfdf9d10af7be91bc66b41de840a5bbb11cd4310e2d6bb20957d9629c0db42956ba0ac5f8931764a9f488446833f84faedea2647283096236b0a1
+    REF tebako-v0.14.1-1
+    SHA512 b19afc30523c504213258dde0d2a0658d5700ab2bf1caa93a3034fe7bd9ebe20a5d297f83401da558782491ce29c77b3b06f704c9d1ba8a9a8e3505b4d2c012a
     HEAD_REF main
-    PATCHES
-        # fmt 12 no longer provides fmt::format via <fmt/core.h>;
-        # fixed-forward in dwarfs-t PR #69 (merged); drop at first tag containing it
-        patches/fmt-12-format-include.patch
-        # libc++ lacks std::hash<std::filesystem::path>; use the portable
-        # std::filesystem::hash_value. landed via dwarfs-t PR #70 (merged);
-        # drop at first tag containing it
-        patches/fs-path-hasher.patch
-        # TRY_ENABLE_FLAC=OFF was dead: flac.cmake was included unconditionally
-        # and dwarfs-config.cmake exported an unguarded find_dependency(FLAC);
-        # landed via dwarfs-t PR #72 (merged); drop at first tag containing it
-        patches/flac-option-honored.patch
-        # dwarfs-config.cmake resolved jemalloc via raw pkg-config only; an
-        # older system jemalloc.pc then shadows the vcpkg one. Prefer the
-        # CMake CONFIG package (as the build itself does in vcpkg mode),
-        # keep pkg-config as fallback. landing via dwarfs-t PR #73 (open at
-        # this writing); drop at first tag containing it
-        patches/jemalloc-config-export.patch
-        # dwarfs-config.cmake resolved libarchive via pkg-config only, but
-        # vcpkg's libarchive ships no usable .pc. Prefer CMake's FindLibArchive
-        # module (as the build itself does in vcpkg mode), keep pkg-config as
-        # fallback; fixed-forward via dwarfs-t PR #74 (open); drop at first
-        # tag containing it
-        patches/libarchive-config-export.patch
 )
 
 vcpkg_cmake_configure(
