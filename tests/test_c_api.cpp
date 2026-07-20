@@ -30,6 +30,7 @@
 #include <gtest/gtest.h>
 #include <tebako/fs/c_api.h>
 
+#include <algorithm>
 #include <cstdio>
 #include <cstring>
 #include <string>

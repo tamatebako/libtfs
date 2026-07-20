@@ -29,6 +29,8 @@
 
 #pragma once
 
+#include <algorithm>
+
 namespace tebako {
 
 #ifndef _INO_T_DEFINED

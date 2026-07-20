@@ -35,6 +35,7 @@
 #include <fcntl.h>
 #include <thread>
 #include <vector>
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 

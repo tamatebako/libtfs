@@ -29,6 +29,8 @@
 
 #pragma once
 
+#include <algorithm>
+
 #include <tebako-io-inner.h>  // For DWARFS_IO_ERROR and related constants
 
 namespace tebako {
