@@ -97,6 +97,7 @@ TEST_F(BackendFactoryTest, CreateZip)
   // EXPECT_EQ(backend->backend_name(), "ZIP");
 }
 
+#ifdef TEBAKO_WITH_SQUASHFS
 TEST_F(BackendFactoryTest, CreateSquashFS)
 {
   auto backend = BackendFactory::create_squashfs();
@@ -104,6 +105,7 @@ TEST_F(BackendFactoryTest, CreateSquashFS)
   // ASSERT_NE(backend, nullptr);
   // EXPECT_EQ(backend->backend_name(), "SquashFS");
 }
+#endif
 
 // ===================================================================
 // Magic Number Detection Tests
@@ -145,6 +147,7 @@ TEST_F(BackendFactoryTest, DetectZipCentralMagic)
   EXPECT_FALSE(BackendFactory::is_squashfs_format(path));
 }
 
+#ifdef TEBAKO_WITH_SQUASHFS
 TEST_F(BackendFactoryTest, DetectSquashFSLittleEndian)
 {
   // SquashFS little-endian magic: "hsqs"
@@ -168,6 +171,7 @@ TEST_F(BackendFactoryTest, DetectSquashFSBigEndian)
   EXPECT_FALSE(BackendFactory::is_dwarfs_format(path));
   EXPECT_FALSE(BackendFactory::is_zip_format(path));
 }
+#endif
 
 // ===================================================================
 // Auto-Detection Tests
@@ -199,6 +203,7 @@ TEST_F(BackendFactoryTest, AutoDetectZip)
   // EXPECT_EQ(backend->backend_name(), "ZIP");
 }
 
+#ifdef TEBAKO_WITH_SQUASHFS
 TEST_F(BackendFactoryTest, AutoDetectSquashFS)
 {
   uint8_t sqfs_magic[] = {0x68, 0x73, 0x71, 0x73};
@@ -211,6 +216,7 @@ TEST_F(BackendFactoryTest, AutoDetectSquashFS)
   // ASSERT_NE(backend, nullptr);
   // EXPECT_EQ(backend->backend_name(), "SquashFS");
 }
+#endif
 
 // ===================================================================
 // Extension Fallback Tests
@@ -340,6 +346,7 @@ TEST_F(BackendFactoryTest, ZipVariantExtensions)
   }
 }
 
+#ifdef TEBAKO_WITH_SQUASHFS
 TEST_F(BackendFactoryTest, SquashFSExtensions)
 {
   uint8_t dummy[] = {0x00, 0x00, 0x00, 0x00};
@@ -359,6 +366,7 @@ TEST_F(BackendFactoryTest, SquashFSExtensions)
     // EXPECT_EQ(backend->backend_name(), "SquashFS");
   }
 }
+#endif
 
 // ===================================================================
 // Main

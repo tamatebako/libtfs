@@ -63,6 +63,15 @@ project(libtfs VERSION ${LIBDWARFS_WR_VERSION})
 option(PREFER_SYSTEM_GTEST "Use system Google test" OFF)
 option(WITH_TESTS "Find Google test, install INCBIN, build test applications" ON)
 option(WITH_LINK_TESTS "Include tests for hard and symbolic links" ON)
+option(WITH_SQUASHFS "Build the SquashFS backend" ON)
+
+# squashfs-tools-ng is a POSIX/autotools-only library (requires unistd.h and
+# friends) and does not build with MSVC, so the SquashFS backend is disabled
+# on Windows. Gated on WIN32 (which also covers MinGW) because the backend
+# has only been validated with POSIX toolchains.
+if(WIN32)
+  set(WITH_SQUASHFS OFF)
+endif()
 
 include(ExternalProject)
 include(GNUInstallDirs)
@@ -257,6 +266,7 @@ message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 message(STATUS "  with ASAN: ${WITH_ASAN}")
 message(STATUS "  with coverage: ${WITH_COVERAGE}")
 message(STATUS "  with tests: ${WITH_TESTS}")
+message(STATUS "  with SquashFS backend: ${WITH_SQUASHFS}")
 if(WITH_TESTS)
   message(STATUS "    using mkdwarfs at: ${MKDWARFS}")
   message(STATUS "    test applications logging: ${TESTS_LOG_LEVEL}")
@@ -472,7 +482,6 @@ add_library(tfs STATIC
     "src/internal/memory_file_segment.cpp"
     "src/core/path.cpp"
     "src/core/config.cpp"
-    "src/backends/squashfs_backend.cpp"
     # Modern C API implementation (replaces old file-ctl/dir-ctl/file-io/dir-io)
     "src/c_api.cpp"
     "src/c_api/fs_context.cpp"
@@ -503,6 +512,15 @@ add_library(tfs STATIC
     "include/tebako/fs/c_api.h"
     "include/tebako/fs/backend_registry.h"
   )
+
+# SquashFS backend sources (POSIX-only; see WITH_SQUASHFS option above)
+if(WITH_SQUASHFS)
+  target_sources(tfs PRIVATE "src/backends/squashfs_backend.cpp")
+endif()
+
+# PUBLIC: consumers (tests, CLI tool) need TEBAKO_WITH_SQUASHFS to guard
+# SquashFS code paths of their own
+target_compile_definitions(tfs PUBLIC $<$<BOOL:${WITH_SQUASHFS}>:TEBAKO_WITH_SQUASHFS>)
 
 if(RB_W32)
   target_sources(tfs PUBLIC
@@ -536,8 +554,10 @@ target_link_libraries(tfs PUBLIC
 )
 
 # Find and link squashfs-tools-ng (provided by vcpkg)
-find_package(squashfs-tools-ng CONFIG REQUIRED)
-target_link_libraries(tfs PUBLIC squashfs-tools-ng::squashfs)
+if(WITH_SQUASHFS)
+  find_package(squashfs-tools-ng CONFIG REQUIRED)
+  target_link_libraries(tfs PUBLIC squashfs-tools-ng::squashfs)
+endif()
 
 # Find argtable3 for CLI tool
 # NOTE: the vcpkg port installs Argtable3Config.cmake (capital A); the
@@ -780,28 +800,30 @@ if (WITH_TESTS)
   gtest_add_tests(TARGET test_dwarfs_integration)
 
   # SquashFS Backend tests
-  add_executable(test_squashfs_backend
-    "tests/test_squashfs_backend.cpp"
-  )
-  target_link_libraries(test_squashfs_backend PRIVATE
-    tfs
-    tebako_dirent_helper_c
-    GTest::gtest
-    GTest::gtest_main
-  )
-  gtest_add_tests(TARGET test_squashfs_backend)
+  if(WITH_SQUASHFS)
+    add_executable(test_squashfs_backend
+      "tests/test_squashfs_backend.cpp"
+    )
+    target_link_libraries(test_squashfs_backend PRIVATE
+      tfs
+      tebako_dirent_helper_c
+      GTest::gtest
+      GTest::gtest_main
+    )
+    gtest_add_tests(TARGET test_squashfs_backend)
 
-  # SquashFS Integration tests
-  add_executable(test_squashfs_integration
-    "tests/test_squashfs_integration.cpp"
-  )
-  target_link_libraries(test_squashfs_integration PRIVATE
-    tfs
-    tebako_dirent_helper_c
-    GTest::gtest
-    GTest::gtest_main
-  )
-  gtest_add_tests(TARGET test_squashfs_integration)
+    # SquashFS Integration tests
+    add_executable(test_squashfs_integration
+      "tests/test_squashfs_integration.cpp"
+    )
+    target_link_libraries(test_squashfs_integration PRIVATE
+      tfs
+      tebako_dirent_helper_c
+      GTest::gtest
+      GTest::gtest_main
+    )
+    gtest_add_tests(TARGET test_squashfs_integration)
+  endif()
 
   # C API tests
   add_executable(test_c_api
@@ -887,7 +909,9 @@ if (WITH_TESTS)
   # Copy test fixtures to build directory
   file(COPY tests/fixtures/zip DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tests/fixtures)
   file(COPY tests/fixtures/dwarfs DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tests/fixtures)
-  file(COPY tests/fixtures/squashfs DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tests/fixtures)
+  if(WITH_SQUASHFS)
+    file(COPY tests/fixtures/squashfs DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tests/fixtures)
+  endif()
 
 endif(WITH_TESTS)
 

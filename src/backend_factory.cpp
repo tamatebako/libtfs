@@ -31,7 +31,9 @@
 
 #include <tebako/fs/backends/zip_backend.h>
 #include <tebako/fs/backends/dwarfs_backend.h>
+#ifdef TEBAKO_WITH_SQUASHFS
 #include <tebako/fs/backends/squashfs_backend.h>
+#endif
 
 #include <algorithm>
 #include <cstring>
@@ -53,8 +55,10 @@ constexpr uint8_t ZIP_LOCAL_MAGIC[] = {0x50, 0x4B, 0x03, 0x04};    // PK\x03\x04
 constexpr uint8_t ZIP_CENTRAL_MAGIC[] = {0x50, 0x4B, 0x05, 0x06};  // PK\x05\x06
 
 // SquashFS: "hsqs" (LE) or "sqsh" (BE) at offset 0
+#ifdef TEBAKO_WITH_SQUASHFS
 constexpr uint8_t SQUASHFS_MAGIC_LE[] = {0x68, 0x73, 0x71, 0x73};  // "hsqs"
 constexpr uint8_t SQUASHFS_MAGIC_BE[] = {0x73, 0x71, 0x73, 0x68};  // "sqsh"
+#endif
 
 constexpr size_t MAX_MAGIC_SIZE = 16;
 }  // namespace
@@ -81,9 +85,11 @@ std::unique_ptr<FileSystem> BackendFactory::create_from_file(const std::string& 
     return create_zip();
   }
 
+#ifdef TEBAKO_WITH_SQUASHFS
   if (is_squashfs_format(archive_path)) {
     return create_squashfs();
   }
+#endif
 
   // Fallback to extension-based detection
   if (has_extension(archive_path, ".dwarfs") || has_extension(archive_path, ".dfs")) {
@@ -96,9 +102,11 @@ std::unique_ptr<FileSystem> BackendFactory::create_from_file(const std::string& 
     return create_zip();
   }
 
+#ifdef TEBAKO_WITH_SQUASHFS
   if (has_extension(archive_path, ".sqfs") || has_extension(archive_path, ".squashfs")) {
     return create_squashfs();
   }
+#endif
 
   // Unknown format
   return nullptr;
@@ -121,10 +129,12 @@ std::unique_ptr<FileSystem> BackendFactory::create_from_memory(const void* data,
   }
 
   // Check SquashFS magic (hsqs or sqsh)
+#ifdef TEBAKO_WITH_SQUASHFS
   if (size >= 4 && ((bytes[0] == 'h' && bytes[1] == 's' && bytes[2] == 'q' && bytes[3] == 's') ||
                     (bytes[0] == 's' && bytes[1] == 'q' && bytes[2] == 's' && bytes[3] == 'h'))) {
     return create_squashfs();
   }
+#endif
 
   // Check DwarFS magic ("DWARFS" at offset 0)
   if (size >= sizeof(DWARFS_MAGIC) && std::memcmp(bytes, DWARFS_MAGIC, sizeof(DWARFS_MAGIC)) == 0) {
@@ -146,7 +156,12 @@ std::unique_ptr<FileSystem> BackendFactory::create_zip()
 
 std::unique_ptr<FileSystem> BackendFactory::create_squashfs()
 {
+#ifdef TEBAKO_WITH_SQUASHFS
   return std::make_unique<SquashFSBackend>();
+#else
+  // SquashFS backend is not available in this build (POSIX-only library)
+  return nullptr;
+#endif
 }
 
 // ===================================================================
@@ -187,6 +202,7 @@ bool BackendFactory::is_zip_format(const std::string& path)
 
 bool BackendFactory::is_squashfs_format(const std::string& path)
 {
+#ifdef TEBAKO_WITH_SQUASHFS
   uint8_t buffer[MAX_MAGIC_SIZE] = {0};
 
   if (!read_magic_bytes(path, buffer, sizeof(SQUASHFS_MAGIC_LE))) {
@@ -204,6 +220,11 @@ bool BackendFactory::is_squashfs_format(const std::string& path)
   }
 
   return false;
+#else
+  // SquashFS support is not compiled in; the format is never detected
+  (void)path;
+  return false;
+#endif
 }
 
 // ===================================================================
