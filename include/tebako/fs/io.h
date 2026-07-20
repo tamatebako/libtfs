@@ -34,6 +34,8 @@
 
 #pragma once
 
+#include <tebako/fs/platform.h>
+
 #if defined(RB_W32)
 #define STAT_TYPE stati128
 #include "tebako-io-rb-w32.h"

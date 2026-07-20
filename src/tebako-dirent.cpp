@@ -27,8 +27,11 @@
  *
  */
 
-// CRITICAL: Include dirent.h BEFORE PCH
+// CRITICAL: Include dirent.h BEFORE PCH (POSIX only; struct dirent is not
+// used in RB_W32 builds, see populate_tebako_dirent below)
+#ifndef _WIN32
 #include <dirent.h>
+#endif
 
 #include <tebako-pch.h>
 #include <tebako-pch-pp.h>

@@ -18,9 +18,120 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <fcntl.h>
+#ifndef _WIN32
 #include <unistd.h>
 #include <fnmatch.h>
+#endif
 #include <functional>
+
+#ifdef _WIN32
+namespace {
+
+// Minimal fnmatch(pattern, name, 0) replacement for Windows, which has no
+// <fnmatch.h>. Full-string match supporting '*', '?' and [...] classes
+// ('!' negation, '\' escape). Patterns are matched against a single path
+// component, so FNM_PATHNAME semantics do not apply.
+bool wildcard_match(const char* pattern, const char* name)
+{
+  while (*pattern) {
+    switch (*pattern) {
+      case '*': {
+        while (*pattern == '*')
+          ++pattern;
+        if (!*pattern)
+          return true;
+        for (const char* rest = name;; ++rest) {
+          if (wildcard_match(pattern, rest))
+            return true;
+          if (!*rest)
+            return false;
+        }
+      }
+      case '?':
+        if (!*name)
+          return false;
+        ++pattern;
+        ++name;
+        break;
+      case '[': {
+        if (!*name)
+          return false;
+        // An unterminated '[' is matched literally (POSIX)
+        {
+          const char* scan = pattern + 1;
+          if (*scan == '!')
+            ++scan;
+          if (*scan == ']')
+            ++scan;
+          while (*scan && *scan != ']')
+            ++scan;
+          if (!*scan) {
+            if (*name != '[')
+              return false;
+            ++pattern;
+            ++name;
+            break;
+          }
+        }
+        ++pattern;
+        bool negate = (*pattern == '!');
+        if (negate)
+          ++pattern;
+        bool matched = false;
+        char lo = 0;
+        bool have_lo = false;
+        if (*pattern == ']') {  // literal ']' as first class member
+          matched = (*name == ']');
+          ++pattern;
+        }
+        while (*pattern != ']') {
+          if (*pattern == '-' && have_lo && pattern[1] != ']') {
+            ++pattern;
+            if (*name >= lo && *name <= *pattern)
+              matched = true;
+            have_lo = false;
+          }
+          else {
+            if (*name == *pattern)
+              matched = true;
+            lo = *pattern;
+            have_lo = true;
+          }
+          ++pattern;
+        }
+        ++pattern;  // consume ']'
+        if (matched == negate)
+          return false;
+        ++name;
+        break;
+      }
+      case '\\':
+        ++pattern;
+        if (!*pattern)
+          return false;
+        [[fallthrough]];
+      default:
+        if (*pattern != *name)
+          return false;
+        ++pattern;
+        ++name;
+    }
+  }
+  return *name == '\0';
+}
+
+}  // namespace
+#endif
+
+// Single-component name match: fnmatch on POSIX, local matcher on Windows
+static bool name_matches(const std::string& pattern, const std::string& name)
+{
+#ifdef _WIN32
+  return wildcard_match(pattern.c_str(), name.c_str());
+#else
+  return fnmatch(pattern.c_str(), name.c_str(), 0) == 0;
+#endif
+}
 
 namespace tebako {
 namespace fs {
@@ -734,7 +845,7 @@ int TebakofsCLI::cmd_find(const std::string& archive, const std::string& pattern
       std::string display_path = entry_path.substr(4);  // Remove "/mnt"
 
       // Match against pattern
-      if (fnmatch(pattern.c_str(), entry.name.c_str(), 0) == 0) {
+      if (name_matches(pattern, entry.name)) {
         std::cout << display_path << std::endl;
       }
 

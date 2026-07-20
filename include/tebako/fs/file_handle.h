@@ -32,6 +32,7 @@
 #include <cstdint>
 #include <string>
 #include <sys/types.h>
+#include <tebako/fs/platform.h>
 
 namespace tebako {
 namespace fs {
