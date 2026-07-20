@@ -60,7 +60,7 @@ class LnTests : public testing::Test {
                      NULL /* decompress_ratio*/, NULL /* image_offset */
     );
 #ifdef WITH_LINK_TESTS
-    std::string tdp_template = (stdfs::temp_directory_path() / "libdwarfs.tests.XXXXXX");
+    std::string tdp_template = (stdfs::temp_directory_path() / "libdwarfs.tests.XXXXXX").generic_string();
     size_t l = tdp_template.length();
     char* dir_name = new char[l + 1];
     if (dir_name) {
