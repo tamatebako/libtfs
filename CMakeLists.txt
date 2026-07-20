@@ -523,8 +523,10 @@ endif()
 target_compile_definitions(tfs PUBLIC $<$<BOOL:${WITH_SQUASHFS}>:TEBAKO_WITH_SQUASHFS>)
 
 if(RB_W32)
-  target_sources(tfs PUBLIC
-    ""
+  # PRIVATE: PUBLIC would leak source-prefixed paths into INTERFACE_SOURCES
+  # and break install(EXPORT) at generate time ("prefixed in the source
+  # directory"). These are header listings for IDE visibility only.
+  target_sources(tfs PRIVATE
     "include/tebako-io.h"
     "include/tebako-io-rb-w32-inner.h"
   )
