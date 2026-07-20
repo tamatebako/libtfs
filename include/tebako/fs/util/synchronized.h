@@ -31,6 +31,7 @@
 
 #include <shared_mutex>
 #include <memory>
+#include <mutex>
 #include <utility>
 
 namespace tebako {
