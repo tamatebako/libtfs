@@ -4,11 +4,18 @@ on:
   push:
     branches:
       - main
-      - develop
+      - stage-1-modernize-libtfs
   pull_request:
     branches:
       - main
-      - develop
+
+concurrency:
+  group: '${{ github.workflow }}-${{ github.job }}-${{ github.head_ref || github.ref_name }}'
+  cancel-in-progress: true
+
+env:
+  # Pin from vcpkg-configuration.json default-registry baseline
+  VCPKG_COMMIT: 11bbc873e00e9e58d4e9dffb30b7a5493a030e0b
 
 jobs:
   test-static-linking:
@@ -24,98 +31,81 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: recursive
-          fetch-depth: 0
 
-      - name: Install dependencies (Ubuntu)
+      - name: Install fixture tools (Ubuntu)
+        # zip and mksquashfs are needed by tests/fixtures/regenerate_all.sh
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y \
-            build-essential \
-            cmake \
-            ninja-build \
-            pkg-config \
-            binutils
+          sudo apt-get install -y zip squashfs-tools
 
-      - name: Install dependencies (macOS)
+      - name: Install fixture tools (macOS)
         if: runner.os == 'macOS'
-        run: |
-          brew install cmake ninja pkg-config
+        run: brew install squashfs
 
-      - name: Configure CMake with Tebako flags
-        # Verify build configuration:
-        # - TEBAKO_BUILD=ON: Enable Tebako-specific build mode
-        # - DWARFS_WITH_THRIFT=OFF: Disable thrift dependency
-        # - DWARFS_WITH_FOLLY=OFF: Disable folly dependency
-        # - DWARFS_WITH_CEREAL=ON: Enable Cereal serialization
-        # - DWARFS_WITH_BITSERY=ON: Enable Bitsery serialization
+      - name: Setup vcpkg
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgGitCommitId: ${{ env.VCPKG_COMMIT }}
+          runVcpkgInstall: false
+
+      - name: Cache vcpkg installed tree
+        uses: actions/cache@v4
+        with:
+          path: build/vcpkg_installed
+          key: vcpkg-installed-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json', 'vcpkg-overlay/**') }}
+          restore-keys: vcpkg-installed-${{ runner.os }}-${{ runner.arch }}-
+
+      - name: Configure CMake (vcpkg toolchain)
+        # All dependencies (dwarfs-t, squashfs-tools-ng, libzip, argtable3,
+        # gtest) come from the vcpkg manifest; the dwarfs-t port is built
+        # without folly/thrift.
         run: |
-          cmake -B build -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DTEBAKO_BUILD=ON \
-            -DDWARFS_WITH_THRIFT=OFF \
-            -DDWARFS_WITH_FOLLY=OFF \
-            -DDWARFS_WITH_CEREAL=ON \
-            -DDWARFS_WITH_BITSERY=ON \
-            -DCMAKE_VERBOSE_MAKEFILE=ON
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+            -DCMAKE_BUILD_TYPE=Release
 
       - name: Verify CMake configuration
-        # Check that CMake correctly detected our configuration:
-        # - Cereal serialization is enabled
-        # - Bitsery serialization is enabled
-        # - No folly/thrift references in final configuration
+        # Fail if folly/thrift show up as enabled options or as libraries in
+        # the CMake cache. (Lines merely mentioning folly/thrift without a
+        # library path or an ON value are not dependencies.)
         run: |
-          echo "=== Checking CMake cache for serialization settings ==="
-          grep -i "cereal" build/CMakeCache.txt || echo "WARNING: Cereal not found in cache"
-          grep -i "bitsery" build/CMakeCache.txt || echo "WARNING: Bitsery not found in cache"
-
-          echo ""
           echo "=== Verifying NO folly/thrift in configuration ==="
-          if grep -i "folly" build/CMakeCache.txt | grep -v "DWARFS_WITH_FOLLY:BOOL=OFF" | grep -v "BUILD_BYPRODUCTS"; then
-            echo "ERROR: Found unexpected folly references in CMake configuration"
+          if grep -iE "folly|thrift" build/CMakeCache.txt | grep -E ":BOOL=ON|/lib[^ ;]*\.(a|so|dylib|lib)"; then
+            echo "ERROR: Found folly/thrift as enabled option or library in CMake configuration"
             exit 1
           fi
 
-          if grep -i "thrift" build/CMakeCache.txt | grep -v "DWARFS_WITH_THRIFT:BOOL=OFF" | grep -v "BUILD_BYPRODUCTS"; then
-            echo "ERROR: Found unexpected thrift references in CMake configuration"
-            exit 1
-          fi
-
-          echo "✓ Configuration verified: No folly/thrift dependencies"
+          echo "Configuration verified: No folly/thrift dependencies"
 
       - name: Build project
-        run: |
-          cmake --build build --config Release --verbose
+        run: cmake --build build --parallel
 
-      - name: Check build output for serialization
-        # Verify the build output shows correct serialization backends:
-        # - Should mention Cereal
-        # - Should mention Bitsery
-        # - Should NOT mention folly or thrift as active dependencies
+      - name: Regenerate test fixtures
+        # Test fixtures (*.zip/*.dwarfs/*.sqfs) are gitignored and must be
+        # recreated. mkdwarfs comes from the vcpkg build (dwarfs WITH_TOOLS=ON);
+        # fixtures are copied into the build tree by CMake at configure time,
+        # so re-run configure to pick up the fresh ones.
         run: |
-          echo "=== Checking build configuration summary ==="
-          if [ -f build/CMakeFiles/CMakeOutput.log ]; then
-            cat build/CMakeFiles/CMakeOutput.log
-          fi
-
-          echo "✓ Build completed successfully"
+          bash tests/fixtures/regenerate_all.sh
+          MKDWARFS_DIR=$(dirname "$(ls build/vcpkg_installed/*/bin/mkdwarfs | head -1)")
+          PATH="$PWD/$MKDWARFS_DIR:$PATH" bash tests/fixtures/dwarfs/create_fixtures.sh
+          cmake -S . -B build -G Ninja -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" -DCMAKE_BUILD_TYPE=Release
 
       - name: Run tests
-        # Execute test suite to verify functionality without folly/thrift
-        run: |
-          cd build
-          ctest --output-on-failure --verbose
+        run: ctest --test-dir build --output-on-failure --parallel
 
       - name: Verify no folly symbols in binaries (Linux)
         if: runner.os == 'Linux'
-        # Use nm to check for folly namespace symbols in compiled objects
-        # Any folly:: symbols would indicate dependency leakage
+        # Use nm to check for folly namespace symbols in compiled objects.
+        # Only our own build products are scanned (vcpkg_installed contains
+        # third-party static libraries and is skipped).
         run: |
           echo "=== Checking for folly symbols in object files ==="
           found_folly=0
 
-          for obj in $(find build -name "*.o" -o -name "*.so" -o -name "*.a" 2>/dev/null); do
-            if nm -C "$obj" 2>/dev/null | grep -i "folly::" | grep -v "BUILD_BYPRODUCTS"; then
+          for obj in $(find build -path build/vcpkg_installed -prune -o \( -name "*.o" -o -name "*.so" -o -name "*.a" \) -print 2>/dev/null); do
+            if nm -C "$obj" 2>/dev/null | grep -i "folly::"; then
               echo "ERROR: Found folly symbols in $obj"
               found_folly=1
             fi
@@ -126,18 +116,16 @@ jobs:
             exit 1
           fi
 
-          echo "✓ No folly symbols found in binaries"
+          echo "No folly symbols found in binaries"
 
       - name: Verify no folly symbols in binaries (macOS)
         if: runner.os == 'macOS'
-        # Use nm to check for folly namespace symbols in compiled objects
-        # Any folly:: symbols would indicate dependency leakage
         run: |
           echo "=== Checking for folly symbols in object files ==="
           found_folly=0
 
-          for obj in $(find build -name "*.o" -o -name "*.dylib" -o -name "*.a" 2>/dev/null); do
-            if nm -C "$obj" 2>/dev/null | grep -i "folly::" | grep -v "BUILD_BYPRODUCTS"; then
+          for obj in $(find build -path build/vcpkg_installed -prune -o \( -name "*.o" -o -name "*.dylib" -o -name "*.a" \) -print 2>/dev/null); do
+            if nm -C "$obj" 2>/dev/null | grep -i "folly::"; then
               echo "ERROR: Found folly symbols in $obj"
               found_folly=1
             fi
@@ -148,17 +136,15 @@ jobs:
             exit 1
           fi
 
-          echo "✓ No folly symbols found in binaries"
+          echo "No folly symbols found in binaries"
 
       - name: Verify no thrift symbols in binaries (Linux)
         if: runner.os == 'Linux'
-        # Use nm to check for thrift namespace symbols
-        # Any apache::thrift:: symbols would indicate dependency leakage
         run: |
           echo "=== Checking for thrift symbols in object files ==="
           found_thrift=0
 
-          for obj in $(find build -name "*.o" -o -name "*.so" -o -name "*.a" 2>/dev/null); do
+          for obj in $(find build -path build/vcpkg_installed -prune -o \( -name "*.o" -o -name "*.so" -o -name "*.a" \) -print 2>/dev/null); do
             if nm -C "$obj" 2>/dev/null | grep -i "apache::thrift"; then
               echo "ERROR: Found thrift symbols in $obj"
               found_thrift=1
@@ -170,17 +156,15 @@ jobs:
             exit 1
           fi
 
-          echo "✓ No thrift symbols found in binaries"
+          echo "No thrift symbols found in binaries"
 
       - name: Verify no thrift symbols in binaries (macOS)
         if: runner.os == 'macOS'
-        # Use nm to check for thrift namespace symbols
-        # Any apache::thrift:: symbols would indicate dependency leakage
         run: |
           echo "=== Checking for thrift symbols in object files ==="
           found_thrift=0
 
-          for obj in $(find build -name "*.o" -o -name "*.dylib" -o -name "*.a" 2>/dev/null); do
+          for obj in $(find build -path build/vcpkg_installed -prune -o \( -name "*.o" -o -name "*.dylib" -o -name "*.a" \) -print 2>/dev/null); do
             if nm -C "$obj" 2>/dev/null | grep -i "apache::thrift"; then
               echo "ERROR: Found thrift symbols in $obj"
               found_thrift=1
@@ -192,30 +176,33 @@ jobs:
             exit 1
           fi
 
-          echo "✓ No thrift symbols found in binaries"
+          echo "No thrift symbols found in binaries"
 
       - name: Verify static linking
-        # Check that libraries are properly statically linked
-        # For Linux: use ldd to verify minimal dynamic dependencies
-        # For macOS: use otool to verify minimal dynamic dependencies
+        # Check that test executables do not link folly/thrift dynamically.
+        # For Linux: use ldd; for macOS: use otool.
         run: |
           echo "=== Verifying static linking ==="
 
           if [ "$RUNNER_OS" == "Linux" ]; then
-            # Find test executables and check their dependencies
-            for exe in $(find build/tests -type f -executable 2>/dev/null); do
+            for exe in $(find build -maxdepth 1 -type f -name "test_*" -executable 2>/dev/null); do
               echo "Checking dependencies for: $exe"
-              ldd "$exe" || true
+              if ldd "$exe" | grep -iE "folly|thrift"; then
+                echo "ERROR: $exe links folly/thrift dynamically"
+                exit 1
+              fi
             done
           elif [ "$RUNNER_OS" == "macOS" ]; then
-            # Find test executables and check their dependencies
-            for exe in $(find build/tests -type f -perm +111 2>/dev/null); do
+            for exe in $(find build -maxdepth 1 -type f -name "test_*" -perm +111 2>/dev/null); do
               echo "Checking dependencies for: $exe"
-              otool -L "$exe" || true
+              if otool -L "$exe" | grep -iE "folly|thrift"; then
+                echo "ERROR: $exe links folly/thrift dynamically"
+                exit 1
+              fi
             done
           fi
 
-          echo "✓ Static linking verification complete"
+          echo "Static linking verification complete"
 
       - name: Report results
         if: always()
@@ -226,10 +213,5 @@ jobs:
           echo "OS: ${{ matrix.os }}"
           echo "Build Status: ${{ job.status }}"
           echo ""
-          echo "Configuration:"
-          echo "  - Folly: DISABLED"
-          echo "  - Thrift: DISABLED"
-          echo "  - Cereal: ENABLED"
-          echo "  - Bitsery: ENABLED"
-          echo ""
-          echo "All checks completed."
+          echo "Verified: no folly/thrift in CMake configuration,"
+          echo "binaries, or dynamic dependencies."

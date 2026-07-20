@@ -22,34 +22,13 @@
 # CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
 # ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 # POSSIBILITY OF SUCH DAMAGE.
-#
-# The purpose of this workflow is to check that build procedures work correctly
-# in specific environment. Due to this reason there is no caching. It is done by
-# intention. All caching is in upstream projects.
+
 name: coverity
 
 on:
   push:
-    branches: [ main ]
-    paths-ignore:
-      - 'docs/**'
-      - '**.adoc'
-      - '**.md'
-      - 'macos-arm64.env'
-      - 'macos-x86_64.env'
-      - '.cirrus.yml'
-      - '.github/workflows/*.yml'
-      - '!.github/workflows/coverity.yml'
+    branches: [ main, stage-1-modernize-libtfs ]
   pull_request:
-    paths-ignore:
-      - 'docs/**'
-      - '**.adoc'
-      - '**.md'
-      - 'macos-arm64.env'
-      - 'macos-x86_64.env'
-      - '.cirrus.yml'
-      - '.github/workflows/*.yml'
-      - '!.github/workflows/coverity.yml'
     branches: [ main ]
 
 concurrency:
@@ -57,8 +36,9 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  CACHE_VER: 5
   COVERITY_TOKEN: "MmhAl7FrANiA8oF25A9hEg"
+  # Pin from vcpkg-configuration.json default-registry baseline
+  VCPKG_COMMIT: 11bbc873e00e9e58d4e9dffb30b7a5493a030e0b
 
 jobs:
   analyze:
@@ -70,34 +50,21 @@ jobs:
       with:
         submodules: true
 
-    - name: Setup environment
-      run: |
-        cat common.env ubuntu.env >> $GITHUB_ENV
-        echo "CORES=$(nproc --all)" >> $GITHUB_ENV
-        echo "MAKEFLAGS=j$(nproc --all)" >> $GITHUB_ENV
+    - name: Setup vcpkg
+      uses: lukka/run-vcpkg@v11
+      with:
+        vcpkgGitCommitId: ${{ env.VCPKG_COMMIT }}
+        runVcpkgInstall: false
 
-    - name: Create deps folder
-      run: mkdir ${{github.workspace}}/${{env.DEPS}}
-
-    - name: Process cache
+    - name: Cache vcpkg installed tree
       uses: actions/cache@v4
       with:
-        path: ${{github.workspace}}/${{env.DEPS}}
-        key:  coverity-${{ hashFiles('**/common.env') }}-v${{ env.CACHE_VER }}
-
-    - name: Install packages
-      run: |
-        sudo apt-get -y update
-        sudo apt-get -y install \
-        binutils-dev libevent-dev acl-dev libfmt-dev libjemalloc-dev                \
-        libdouble-conversion-dev libiberty-dev liblz4-dev libssl-dev liblzma-dev    \
-        libunwind-dev libdwarf-dev libelf-dev libgoogle-glog-dev libutfcpp-dev      \
-        libboost-filesystem-dev libboost-program-options-dev libboost-system-dev    \
-        libboost-iostreams-dev  libboost-date-time-dev libboost-context-dev         \
-        libboost-regex-dev libboost-thread-dev libbrotli-dev libbz2-dev
+        path: build/vcpkg_installed
+        key: vcpkg-installed-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json', 'vcpkg-overlay/**') }}
+        restore-keys: vcpkg-installed-${{ runner.os }}-${{ runner.arch }}-
 
     - name: Configure
-      run: cmake -B build -DWITH_TESTS=OFF -DWITH_ASAN=OFF -DWITH_COVERAGE=OFF -DTESTS_LOG_LEVEL=warn
+      run: cmake -S . -B build -G Ninja -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" -DCMAKE_BUILD_TYPE=Release -DWITH_TESTS=OFF
 
     - name: Download Coverity
       run: |
@@ -109,7 +76,7 @@ jobs:
       run: |
         set -x
         export PATH="$PWD/cov-analysis-linux64/bin:$PATH"
-        cov-build --dir cov-int cmake --build build --parallel "$CORES"
+        cov-build --dir cov-int cmake --build build --parallel
 
     - name: Submit
       run: |
