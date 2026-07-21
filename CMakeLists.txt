@@ -228,6 +228,21 @@ else()
   endif()
 endif(MSVC)
 
+# mkdwarfs location on vcpkg builds
+# -----------------------------------------------------------------------------
+# The dwarfs vcpkg port (WITH_TOOLS=ON) installs mkdwarfs into the vcpkg
+# installed tree; the legacy ExternalProject path (deps/bin/mkdwarfs) is only
+# produced by non-vcpkg builds. Fall back to the vcpkg binary so that
+# install(FILES ${MKDWARFS}) below works on vcpkg builds. The check runs after
+# project(), when the vcpkg toolchain has already populated the installed tree.
+if(NOT EXISTS "${MKDWARFS}" AND VCPKG_INSTALLED_DIR AND VCPKG_TARGET_TRIPLET)
+  set(__MKDWARFS_VCPKG "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/bin/mkdwarfs${CMAKE_EXECUTABLE_SUFFIX}")
+  if(EXISTS "${__MKDWARFS_VCPKG}")
+    set(MKDWARFS "${__MKDWARFS_VCPKG}")
+    message(STATUS "mkdwarfs not found at legacy path; using vcpkg tools binary: ${MKDWARFS}")
+  endif()
+endif()
+
 # Legacy tebako API availability
 # -----------------------------------------------------------------------------
 # The legacy tebako C++ API (libdwarfs-wr lineage: tebako-memfs/fd/kfd, mount
@@ -631,11 +646,18 @@ install(TARGETS
          INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
 )
 
+# These legacy third-party installs reference files produced by the old
+# ExternalProject dependency build (deps/, Homebrew). On vcpkg builds those
+# paths do not exist, so guard them to keep `cmake --install` working there.
 if (IS_MSYS)
-  install(FILES ${__LIBFMT} DESTINATION ${CMAKE_INSTALL_LIBDIR})
-  install(DIRECTORY ${DEPS_INCLUDE_DIR}/fmt DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/fmt)
+  if(EXISTS "${DEPS_INCLUDE_DIR}/fmt")
+    install(FILES ${__LIBFMT} DESTINATION ${CMAKE_INSTALL_LIBDIR})
+    install(DIRECTORY ${DEPS_INCLUDE_DIR}/fmt DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/fmt)
+  endif()
 elseif(NOT IS_WINDOWS)
-  install(FILES ${__LIBFMT} DESTINATION ${CMAKE_INSTALL_LIBDIR})
+  if(__LIBFMT AND EXISTS "${__LIBFMT}")
+    install(FILES ${__LIBFMT} DESTINATION ${CMAKE_INSTALL_LIBDIR})
+  endif()
 endif(IS_MSYS)
 
 if(WITH_GLOG_BUILD)
@@ -659,8 +681,12 @@ if(WITH_LZ4_BUILD)
 endif(WITH_LZ4_BUILD)
 
 if(WITH_JEMALLOC_BUILD)
-  install(FILES ${__LIBJEMALLOC} DESTINATION ${CMAKE_INSTALL_LIBDIR})
-  install(DIRECTORY ${DEPS_INCLUDE_DIR}/jemalloc DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+  if(__LIBJEMALLOC AND EXISTS "${__LIBJEMALLOC}")
+    install(FILES ${__LIBJEMALLOC} DESTINATION ${CMAKE_INSTALL_LIBDIR})
+  endif()
+  if(EXISTS "${DEPS_INCLUDE_DIR}/jemalloc")
+    install(DIRECTORY ${DEPS_INCLUDE_DIR}/jemalloc DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+  endif()
 endif(WITH_JEMALLOC_BUILD)
 
 if(INSTALL_OPENSSL)
