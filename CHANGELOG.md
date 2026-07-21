@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.4] - 2026-07-22
+
+### Fixed
+- dwarfs-t tebako-v0.14.1-12: fix nondeterministic mount/read failures (file_extents_iterable UAF — the iterable now owns a copy of the extents).
+
 ## [0.12.3] - 2026-07-22
 
 ### Fixed
