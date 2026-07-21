@@ -328,7 +328,8 @@ class DwarfsBackend::Impl {
       return true;
     }
     catch (const std::exception& e) {
-      // Log error for debugging
+      // Preserve the loader error so mount() can report it
+      last_error_ = e.what();
       return false;
     }
   }
@@ -361,7 +362,8 @@ class DwarfsBackend::Impl {
       return true;
     }
     catch (const std::exception& e) {
-      // Log error for debugging
+      // Preserve the loader error so mount_from_memory() can report it
+      last_error_ = e.what();
       return false;
     }
   }
@@ -375,6 +377,8 @@ class DwarfsBackend::Impl {
   }
 
   bool is_mounted() const { return is_mounted_; }
+
+  const std::string& last_error() const { return last_error_; }
 
   dwarfs::reader::filesystem_v2_lite* get_fs() { return fs_.get(); }
 
@@ -415,6 +419,7 @@ class DwarfsBackend::Impl {
 
  private:
   bool is_mounted_;
+  std::string last_error_;
   std::shared_ptr<dwarfs::stream_logger> logger_;
   std::unique_ptr<dwarfs::reader::filesystem_v2_lite> fs_;
 };
@@ -440,7 +445,11 @@ Result<void> DwarfsBackend::mount(std::string_view archive_path, std::string_vie
 
   std::string archive_path_str(archive_path);
   if (!impl_->mount_file(archive_path_str)) {
-    return Err{ErrorCode::IOError, "Failed to mount DwarFS archive", archive_path};
+    std::string message = "Failed to mount DwarFS archive";
+    if (!impl_->last_error().empty()) {
+      message += ": " + impl_->last_error();
+    }
+    return Err{ErrorCode::IOError, message, archive_path};
   }
 
   archive_path_ = archive_path_str;
@@ -461,7 +470,11 @@ Result<void> DwarfsBackend::mount_from_memory(const void* data, size_t size, std
   }
 
   if (!impl_->mount_memory(data, size)) {
-    return Err{ErrorCode::IOError, "Failed to mount DwarFS archive from memory"};
+    std::string message = "Failed to mount DwarFS archive from memory";
+    if (!impl_->last_error().empty()) {
+      message += ": " + impl_->last_error();
+    }
+    return Err{ErrorCode::IOError, message};
   }
 
   archive_path_ = "";  // Empty for memory mounts
