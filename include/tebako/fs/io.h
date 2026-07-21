@@ -36,6 +36,12 @@
 
 #include <tebako/fs/platform.h>
 
+#ifdef _WIN32
+/* WCHAR for is_tebako_path_w() below -- <windef.h> is the minimal provider
+   (<windows.h> would pollute the namespace with near/far/min/max macros) */
+#include <windef.h>
+#endif
+
 #if defined(RB_W32)
 #define STAT_TYPE stati128
 #include "tebako-io-rb-w32.h"
