@@ -986,6 +986,26 @@ if (WITH_TESTS)
   )
   gtest_add_tests(TARGET test_lru_cache)
 
+  # tpkg.h tebako package manifest mini-lib tests (header-only, no tfs link)
+  add_executable(test_tpkg
+    "tests/test_tpkg.cpp"
+    "tests/test_tpkg_c99.c"
+  )
+  # The .c TU is built as strict C99 to prove the single-header library is C99-clean
+  set_target_properties(test_tpkg PROPERTIES
+    C_STANDARD 99
+    C_STANDARD_REQUIRED ON
+    C_EXTENSIONS OFF
+  )
+  target_include_directories(test_tpkg PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+  )
+  target_link_libraries(test_tpkg PRIVATE
+    GTest::gtest
+    GTest::gtest_main
+  )
+  gtest_add_tests(TARGET test_tpkg)
+
   # Unified interface tests
   add_executable(test_unified_interface
     "tests/test_unified_interface.cpp"
