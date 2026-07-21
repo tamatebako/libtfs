@@ -152,6 +152,12 @@ See [Architecture](docs/ARCHITECTURE.md) for complete details.
 
 This project is licensed under the same terms as DwarFS.
 
+#### Third-party licenses
+
+- **libsquashfs** (LGPL-3.0-or-later): linked statically by the SquashFS backend (optional; off on Windows). Static linking carries LGPL obligations (relinkability / source offer).
+- **dwarfs-t**: GPL-3.0-or-later.
+- **jemalloc** (BSD-2-Clause): stays an unprefixed-symbols static link — tebako links it into every packaged binary, and unprefixed symbols are required so ruby/tebako-main resolve malloc symbols. The vcpkg overlay (port-version 0) vendors tamatebako/jemalloc 5.5.0.
+
 ### Contributing
 
 Contributions are welcome! Please see our contribution guidelines and code of conduct.
