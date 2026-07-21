@@ -41,6 +41,7 @@
 #include <fstream>
 #include <filesystem>
 #include <chrono>
+#include <limits>
 
 #include <fcntl.h>
 #include <sys/stat.h>
@@ -69,6 +70,11 @@ std::unique_ptr<tebako::fs::FileSystem> g_filesystem;
 std::mutex g_init_mutex;
 bool g_initialized = false;
 std::string g_mount_point;
+
+// Owned image region for tebako_fs_init_from_file_at() mounts.
+// Kept alive until tebako_fs_unmount() because mount_from_memory()
+// requires the buffer to outlive the mounted filesystem.
+std::unique_ptr<char[]> g_image_region;
 
 // FD table: internal FD -> FileHandle
 std::unordered_map<int, std::unique_ptr<tebako::fs::FileHandle>> g_fd_table;
@@ -332,6 +338,14 @@ void handle_exception()
 
 extern "C" int tebako_fs_init_from_file(const char* archive_path, const char* mount_point)
 {
+  return tebako_fs_init_from_file_at(archive_path, 0, 0, mount_point);
+}
+
+extern "C" int tebako_fs_init_from_file_at(const char* archive_path,
+                                           uint64_t offset,
+                                           uint64_t length,
+                                           const char* mount_point)
+{
   if (archive_path == nullptr || mount_point == nullptr) {
     set_errno(EINVAL);
     return -1;
@@ -345,19 +359,85 @@ extern "C" int tebako_fs_init_from_file(const char* archive_path, const char* mo
   }
 
   try {
-    // Auto-detect format and create backend
-    g_filesystem = tebako::fs::BackendFactory::create_from_file(archive_path);
+    if (offset == 0 && length == 0) {
+      // Whole-file mount: zero-copy path (backend reads/mmaps the file itself)
+      g_filesystem = tebako::fs::BackendFactory::create_from_file(archive_path);
 
-    if (!g_filesystem) {
-      set_errno(EINVAL);
-      return -1;
+      if (!g_filesystem) {
+        set_errno(EINVAL);
+        return -1;
+      }
+
+      if (!g_filesystem->mount(archive_path, mount_point)) {
+        g_filesystem.reset();
+        set_errno(EIO);
+        return -1;
+      }
     }
+    else {
+      // Region mount: read [offset, offset+length) into an owned buffer and
+      // mount it from memory
+      std::error_code ec;
+      const uint64_t file_size = std::filesystem::file_size(archive_path, ec);
+      if (ec) {
+        g_filesystem.reset();
+        set_errno(ENOENT);
+        return -1;
+      }
 
-    // Mount filesystem
-    if (!g_filesystem->mount(archive_path, mount_point)) {
-      g_filesystem.reset();
-      set_errno(EIO);
-      return -1;
+      if (offset > file_size) {
+        set_errno(EINVAL);  // offset past end of file
+        return -1;
+      }
+
+      uint64_t region = length;
+      if (region == 0) {
+        region = file_size - offset;  // 0 length = to end of file
+      }
+      else if (region > file_size - offset) {
+        set_errno(EINVAL);  // offset+length extends past end of file
+        return -1;
+      }
+
+      if (region == 0 || region > static_cast<uint64_t>(std::numeric_limits<std::streamsize>::max())) {
+        set_errno(EINVAL);
+        return -1;
+      }
+
+      auto buffer = std::make_unique<char[]>(static_cast<size_t>(region));
+
+      std::ifstream ifs(archive_path, std::ios::binary);
+      if (!ifs.is_open()) {
+        set_errno(ENOENT);
+        return -1;
+      }
+      ifs.seekg(static_cast<std::streamoff>(offset), std::ios::beg);
+      if (!ifs.good()) {
+        set_errno(EIO);
+        return -1;
+      }
+      ifs.read(buffer.get(), static_cast<std::streamsize>(region));
+      if (ifs.gcount() != static_cast<std::streamsize>(region)) {
+        set_errno(EIO);
+        return -1;
+      }
+      ifs.close();
+
+      g_filesystem = tebako::fs::BackendFactory::create_from_memory(buffer.get(), static_cast<size_t>(region));
+
+      if (!g_filesystem) {
+        set_errno(EINVAL);
+        return -1;
+      }
+
+      if (!g_filesystem->mount_from_memory(buffer.get(), static_cast<size_t>(region), mount_point)) {
+        g_filesystem.reset();
+        set_errno(EIO);
+        return -1;
+      }
+
+      // Backend mounted from memory: buffer must stay alive until unmount
+      g_image_region = std::move(buffer);
     }
 
     g_mount_point = mount_point;
@@ -367,6 +447,7 @@ extern "C" int tebako_fs_init_from_file(const char* archive_path, const char* mo
   }
   catch (...) {
     g_filesystem.reset();
+    g_image_region.reset();
     handle_exception();
     return -1;
   }
@@ -441,6 +522,9 @@ extern "C" void tebako_fs_unmount(void)
     g_filesystem->unmount();
     g_filesystem.reset();
   }
+
+  // Release any owned image region (tebako_fs_init_from_file_at)
+  g_image_region.reset();
 
   g_mount_point.clear();
   g_initialized = false;
@@ -949,8 +1033,11 @@ extern "C" const char* tebako_get_archive_path(void)
     return nullptr;
   }
 
-  const std::string& path = g_filesystem->archive_path();
-  return path.empty() ? nullptr : path.c_str();
+  // Store in static to ensure lifetime (thread-safe with lock);
+  // archive_path() returns std::string by value
+  static std::string cached_path;
+  cached_path = g_filesystem->archive_path();
+  return cached_path.empty() ? nullptr : cached_path.c_str();
 }
 
 extern "C" const char* tebako_get_backend_name(void)

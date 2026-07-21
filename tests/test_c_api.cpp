@@ -878,3 +878,196 @@ TEST_F(CApiTest, Integration_FullWorkflow)
   tebako_fs_unmount();
   EXPECT_EQ(0, tebako_is_initialized());
 }
+
+// ============================================================
+// Offset Mount Tests (tebako_fs_init_from_file_at)
+// ============================================================
+
+/**
+ * @brief Test fixture for tebako_fs_init_from_file_at()
+ *
+ * Builds a combined file: N bytes of junk followed by the bytes of the
+ * tests/fixtures/dwarfs/simple.dwarfs image, i.e. a DwarFS image embedded
+ * at offset N inside a larger file.
+ *
+ * NOTE: Shares the global C API state; serialized via RESOURCE_LOCK like the
+ * other test_c_api tests.
+ */
+class CApiOffsetTest : public ::testing::Test {
+ protected:
+  std::string test_dir;
+  std::string mount_point;
+  std::string plain_image_path;  // tests/fixtures/dwarfs/simple.dwarfs
+  std::string combined_path;     // junk + image
+  std::vector<char> image;       // bytes of simple.dwarfs
+  static constexpr uint64_t kJunkSize = 1000;
+
+  void SetUp() override
+  {
+    test_dir = (fs::temp_directory_path() / "tebako_c_api_offset_test").generic_string();
+    fs::create_directories(test_dir);
+    mount_point = "/__tebako_offset_test__";
+
+    // Fixture images are copied next to the test binaries at configure time
+    plain_image_path = "tests/fixtures/dwarfs/simple.dwarfs";
+
+    std::ifstream ifs(plain_image_path, std::ios::binary | std::ios::ate);
+    ASSERT_TRUE(ifs.is_open()) << "Failed to open fixture: " << plain_image_path;
+    auto size = ifs.tellg();
+    ASSERT_GT(size, 0);
+    image.resize(static_cast<size_t>(size));
+    ifs.seekg(0);
+    ifs.read(image.data(), size);
+    ifs.close();
+
+    // Prepend kJunkSize bytes of junk (deliberately not a valid archive magic)
+    combined_path = test_dir + "/combined.bin";
+    std::ofstream ofs(combined_path, std::ios::binary | std::ios::trunc);
+    ASSERT_TRUE(ofs.is_open());
+    for (uint64_t i = 0; i < kJunkSize; ++i) {
+      char c = static_cast<char>('A' + (i * 7) % 26);
+      ofs.write(&c, 1);
+    }
+    ofs.write(image.data(), static_cast<std::streamsize>(image.size()));
+    ofs.close();
+    ASSERT_TRUE(fs::exists(combined_path));
+  }
+
+  void TearDown() override
+  {
+    tebako_fs_unmount();
+    if (fs::exists(test_dir)) {
+      fs::remove_all(test_dir);
+    }
+  }
+
+  std::string read_file_via_api(const std::string& path)
+  {
+    int fd = tebako_fs_open(path.c_str(), O_RDONLY);
+    if (fd < 0)
+      return "";
+
+    std::vector<char> buffer(4096);
+    ssize_t n = tebako_fs_read(fd, buffer.data(), buffer.size());
+    tebako_fs_close(fd);
+
+    if (n <= 0)
+      return "";
+    return std::string(buffer.data(), n);
+  }
+};
+
+TEST_F(CApiOffsetTest, OffsetMount_ExplicitLength_ReadsMatchPlainImage)
+{
+  // Reference content: mount the plain fixture image
+  ASSERT_EQ(0, tebako_fs_init_from_file(plain_image_path.c_str(), mount_point.c_str()));
+  std::string expected_hello = read_file_via_api(mount_point + "/hello.txt");
+  std::string expected_test = read_file_via_api(mount_point + "/test.txt");
+  ASSERT_FALSE(expected_hello.empty()) << "Fixture hello.txt unexpectedly empty";
+  ASSERT_FALSE(expected_test.empty()) << "Fixture test.txt unexpectedly empty";
+  struct stat expected_st;
+  ASSERT_EQ(0, tebako_fs_stat((mount_point + "/hello.txt").c_str(), &expected_st));
+  tebako_fs_unmount();
+
+  // Mount the same image embedded at offset kJunkSize with explicit length
+  ASSERT_EQ(0, tebako_fs_init_from_file_at(combined_path.c_str(), kJunkSize, static_cast<uint64_t>(image.size()),
+                                           mount_point.c_str()));
+  EXPECT_EQ(1, tebako_is_initialized());
+
+  const char* bn = tebako_get_backend_name();
+  ASSERT_NE(nullptr, bn);
+  EXPECT_EQ("DwarFS", std::string(bn));
+
+  // Reads from the offset mount must match the plain mount
+  EXPECT_EQ(expected_hello, read_file_via_api(mount_point + "/hello.txt"));
+  EXPECT_EQ(expected_test, read_file_via_api(mount_point + "/test.txt"));
+
+  struct stat st;
+  ASSERT_EQ(0, tebako_fs_stat((mount_point + "/hello.txt").c_str(), &st));
+  EXPECT_EQ(expected_st.st_size, st.st_size);
+}
+
+TEST_F(CApiOffsetTest, OffsetMount_LengthZeroMeansToEndOfFile)
+{
+  ASSERT_EQ(0, tebako_fs_init_from_file_at(combined_path.c_str(), kJunkSize, 0, mount_point.c_str()));
+  EXPECT_EQ(1, tebako_is_initialized());
+  EXPECT_FALSE(read_file_via_api(mount_point + "/hello.txt").empty());
+}
+
+TEST_F(CApiOffsetTest, OffsetMount_ZeroOffsetExplicitLength)
+{
+  // Region path with offset == 0 but explicit length (no trailing data)
+  ASSERT_EQ(0, tebako_fs_init_from_file_at(plain_image_path.c_str(), 0, static_cast<uint64_t>(image.size()),
+                                           mount_point.c_str()));
+  EXPECT_EQ(1, tebako_is_initialized());
+  EXPECT_FALSE(read_file_via_api(mount_point + "/hello.txt").empty());
+}
+
+TEST_F(CApiOffsetTest, OffsetMount_WholeFileDelegationStillWorks)
+{
+  // tebako_fs_init_from_file delegates to _at(0, 0): zero-copy whole-file mount
+  ASSERT_EQ(0, tebako_fs_init_from_file(plain_image_path.c_str(), mount_point.c_str()));
+  EXPECT_EQ(1, tebako_is_initialized());
+
+  const char* bn = tebako_get_backend_name();
+  ASSERT_NE(nullptr, bn);
+  EXPECT_EQ("DwarFS", std::string(bn));
+
+  // Whole-file mount keeps the archive path (unlike region mounts)
+  const char* ap = tebako_get_archive_path();
+  ASSERT_NE(nullptr, ap);
+  EXPECT_EQ(plain_image_path, std::string(ap));
+
+  EXPECT_FALSE(read_file_via_api(mount_point + "/hello.txt").empty());
+}
+
+TEST_F(CApiOffsetTest, OffsetPastEnd_Fails)
+{
+  uint64_t file_size = fs::file_size(combined_path);
+  EXPECT_EQ(-1, tebako_fs_init_from_file_at(combined_path.c_str(), file_size + 1, 0, mount_point.c_str()));
+  EXPECT_EQ(EINVAL, tebako_get_errno());
+  EXPECT_EQ(0, tebako_is_initialized());
+}
+
+TEST_F(CApiOffsetTest, OffsetAtEndEmptyRegion_Fails)
+{
+  uint64_t file_size = fs::file_size(combined_path);
+  EXPECT_EQ(-1, tebako_fs_init_from_file_at(combined_path.c_str(), file_size, 0, mount_point.c_str()));
+  EXPECT_EQ(EINVAL, tebako_get_errno());
+  EXPECT_EQ(0, tebako_is_initialized());
+}
+
+TEST_F(CApiOffsetTest, LengthOverflow_Fails)
+{
+  // offset + length extends past end of file by one byte
+  EXPECT_EQ(-1, tebako_fs_init_from_file_at(combined_path.c_str(), kJunkSize, static_cast<uint64_t>(image.size()) + 1,
+                                            mount_point.c_str()));
+  EXPECT_EQ(EINVAL, tebako_get_errno());
+  EXPECT_EQ(0, tebako_is_initialized());
+}
+
+TEST_F(CApiOffsetTest, NullPath_Fails)
+{
+  EXPECT_EQ(-1, tebako_fs_init_from_file_at(nullptr, kJunkSize, 0, mount_point.c_str()));
+  EXPECT_EQ(EINVAL, tebako_get_errno());
+}
+
+TEST_F(CApiOffsetTest, NullMountPoint_Fails)
+{
+  EXPECT_EQ(-1, tebako_fs_init_from_file_at(combined_path.c_str(), kJunkSize, 0, nullptr));
+  EXPECT_EQ(EINVAL, tebako_get_errno());
+}
+
+TEST_F(CApiOffsetTest, NonexistentFile_Fails)
+{
+  EXPECT_EQ(-1, tebako_fs_init_from_file_at((test_dir + "/no_such_file.bin").c_str(), 0, 1, mount_point.c_str()));
+  EXPECT_EQ(ENOENT, tebako_get_errno());
+  EXPECT_EQ(0, tebako_is_initialized());
+}
+
+TEST_F(CApiOffsetTest, DoubleInitStillFailsWithEEXIST)
+{
+  ASSERT_EQ(0, tebako_fs_init_from_file_at(combined_path.c_str(), kJunkSize, 0, mount_point.c_str()));
+  EXPECT_EQ(-1, tebako_fs_init_from_file_at(combined_path.c_str(), kJunkSize, 0, mount_point.c_str()));
+  EXPECT_EQ(EEXIST, tebako_get_errno());
+}
