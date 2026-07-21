@@ -51,9 +51,9 @@ Ruby's mechanism for calling C functions from native libraries.
 │      (tebako/fs/c_api.h)                    │
 │                                             │
 │  • tebako_fs_init()                         │
-│  • tebako_open() / tebako_read()            │
-│  • tebako_opendir() / tebako_readdir()      │
-│  • tebako_stat()                            │
+│  • tebako_fs_open() / tebako_fs_read()            │
+│  • tebako_fs_opendir() / tebako_fs_readdir()      │
+│  • tebako_fs_stat()                            │
 │  • tebako_fs_extract_all()                  │
 └─────────────────┬───────────────────────────┘
                   │
@@ -177,26 +177,26 @@ module Tebako
     # @param path [String] File path
     # @param flags [Integer] Open flags (O_RDONLY, etc.)
     # @return [Integer] File descriptor or -1 on error
-    attach_function :tebako_open, [:string, :int], :fd_t
+    attach_function :tebako_fs_open, [:string, :int], :fd_t
 
     # Read from file
     # @param fd [Integer] File descriptor
     # @param buf [FFI::Pointer] Buffer to read into
     # @param count [Integer] Number of bytes to read
     # @return [Integer] Number of bytes read or -1 on error
-    attach_function :tebako_read, [:fd_t, :pointer, :size_t], :ssize_t
+    attach_function :tebako_fs_read, [:fd_t, :pointer, :size_t], :ssize_t
 
     # Seek within file
     # @param fd [Integer] File descriptor
     # @param offset [Integer] Offset to seek to
     # @param whence [Integer] SEEK_SET, SEEK_CUR, or SEEK_END
     # @return [Integer] New file position or -1 on error
-    attach_function :tebako_lseek, [:fd_t, :off_t, :int], :off_t
+    attach_function :tebako_fs_lseek, [:fd_t, :off_t, :int], :off_t
 
     # Close file
     # @param fd [Integer] File descriptor
     # @return [Integer] 0 on success, -1 on error
-    attach_function :tebako_close, [:fd_t], :int
+    attach_function :tebako_fs_close, [:fd_t], :int
 
     # ===============================================
     # Directory Operations
@@ -205,17 +205,17 @@ module Tebako
     # Open directory for reading
     # @param path [String] Directory path
     # @return [FFI::Pointer] Directory handle or NULL on error
-    attach_function :tebako_opendir, [:string], :dir_t
+    attach_function :tebako_fs_opendir, [:string], :dir_t
 
     # Read directory entry
     # @param dir [FFI::Pointer] Directory handle
     # @return [FFI::Pointer] Pointer to dirent structure or NULL
-    attach_function :tebako_readdir, [:dir_t], :pointer
+    attach_function :tebako_fs_readdir, [:dir_t], :pointer
 
     # Close directory
     # @param dir [FFI::Pointer] Directory handle
     # @return [Integer] 0 on success, -1 on error
-    attach_function :tebako_closedir, [:dir_t], :int
+    attach_function :tebako_fs_closedir, [:dir_t], :int
 
     # ===============================================
     # Metadata Operations
@@ -225,13 +225,13 @@ module Tebako
     # @param path [String] File path
     # @param statbuf [FFI::Pointer] Pointer to stat structure
     # @return [Integer] 0 on success, -1 on error
-    attach_function :tebako_stat, [:string, :pointer], :int
+    attach_function :tebako_fs_stat, [:string, :pointer], :int
 
     # Get file metadata by file descriptor
     # @param fd [Integer] File descriptor
     # @param statbuf [FFI::Pointer] Pointer to stat structure
     # @return [Integer] 0 on success, -1 on error
-    attach_function :tebako_fstat, [:fd_t, :pointer], :int
+    attach_function :tebako_fs_fstat, [:fd_t, :pointer], :int
 
     # ===============================================
     # Extraction Operations
@@ -304,17 +304,17 @@ module Tebako
         def read(path)
           return nil unless embedded?(path)
 
-          fd = Bindings.tebako_open(path, Bindings::O_RDONLY)
+          fd = Bindings.tebako_fs_open(path, Bindings::O_RDONLY)
           return nil if fd < 0
 
           begin
             # Allocate buffer (max 10MB for safety)
             buffer = FFI::MemoryPointer.new(:char, 10 * 1024 * 1024)
-            bytes_read = Bindings.tebako_read(fd, buffer, buffer.size)
+            bytes_read = Bindings.tebako_fs_read(fd, buffer, buffer.size)
 
             bytes_read > 0 ? buffer.read_string(bytes_read) : ""
           ensure
-            Bindings.tebako_close(fd)
+            Bindings.tebako_fs_close(fd)
           end
         end
 
@@ -323,7 +323,7 @@ module Tebako
           return false unless embedded?(path)
 
           stat_buf = FFI::MemoryPointer.new(:char, 144) # sizeof(struct stat)
-          result = Bindings.tebako_stat(path, stat_buf)
+          result = Bindings.tebako_fs_stat(path, stat_buf)
           result == 0
         end
 
@@ -332,7 +332,7 @@ module Tebako
           return nil unless embedded?(path)
 
           stat_buf = FFI::MemoryPointer.new(:char, 144)
-          return nil if Bindings.tebako_stat(path, stat_buf) != 0
+          return nil if Bindings.tebako_fs_stat(path, stat_buf) != 0
 
           # Extract st_size from stat structure (offset varies by platform)
           stat_buf.read_long_long
@@ -361,13 +361,13 @@ module Tebako
         def entries(path)
           return [] unless FileOps.embedded?(path)
 
-          dir = Bindings.tebako_opendir(path)
+          dir = Bindings.tebako_fs_opendir(path)
           return [] if dir.null?
 
           entries = []
           begin
             loop do
-              entry_ptr = Bindings.tebako_readdir(dir)
+              entry_ptr = Bindings.tebako_fs_readdir(dir)
               break if entry_ptr.null?
 
               # Read d_name from dirent structure
@@ -375,7 +375,7 @@ module Tebako
               entries << name unless name == "." || name == ".."
             end
           ensure
-            Bindings.tebako_closedir(dir)
+            Bindings.tebako_fs_closedir(dir)
           end
 
           entries

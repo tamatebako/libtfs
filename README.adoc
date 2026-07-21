@@ -88,10 +88,10 @@ Use the C API for Ruby integration:
 tebako_fs_init_from_file("app.dwarfs", "/__tebako__");
 
 // Use files
-int fd = tebako_open("/__tebako__/app.rb", O_RDONLY);
+int fd = tebako_fs_open("/__tebako__/app.rb", O_RDONLY);
 char buffer[4096];
-ssize_t n = tebako_read(fd, buffer, sizeof(buffer));
-tebako_close(fd);
+ssize_t n = tebako_fs_read(fd, buffer, sizeof(buffer));
+tebako_fs_close(fd);
 
 // Extract all files
 tebako_fs_extract_all("/output/directory");
@@ -373,19 +373,19 @@ module Tebako
     attach_function :tebako_is_initialized, [], :int
 
     # File operations
-    attach_function :tebako_open, [:string, :int], :int
-    attach_function :tebako_read, [:int, :pointer, :size_t], :ssize_t
-    attach_function :tebako_lseek, [:int, :off_t, :int], :off_t
-    attach_function :tebako_close, [:int], :int
+    attach_function :tebako_fs_open, [:string, :int], :int
+    attach_function :tebako_fs_read, [:int, :pointer, :size_t], :ssize_t
+    attach_function :tebako_fs_lseek, [:int, :off_t, :int], :off_t
+    attach_function :tebako_fs_close, [:int], :int
 
     # Directory operations
-    attach_function :tebako_opendir, [:string], :pointer
-    attach_function :tebako_readdir, [:pointer], :pointer
-    attach_function :tebako_closedir, [:pointer], :int
+    attach_function :tebako_fs_opendir, [:string], :pointer
+    attach_function :tebako_fs_readdir, [:pointer], :pointer
+    attach_function :tebako_fs_closedir, [:pointer], :int
 
     # Metadata
-    attach_function :tebako_stat, [:string, :pointer], :int
-    attach_function :tebako_fstat, [:int, :pointer], :int
+    attach_function :tebako_fs_stat, [:string, :pointer], :int
+    attach_function :tebako_fs_fstat, [:int, :pointer], :int
 
     # Extraction
     attach_function :tebako_fs_extract_all, [:string], :int
@@ -414,12 +414,12 @@ class File
     def read(path, *args)
       if Tebako::FileSystem.tebako_path_is_embedded(path) == 1
         # Read from libtfs
-        fd = Tebako::FileSystem.tebako_open(path, File::RDONLY)
+        fd = Tebako::FileSystem.tebako_fs_open(path, File::RDONLY)
         return nil if fd < 0
 
         buffer = FFI::MemoryPointer.new(:char, 1024 * 1024)
-        bytes_read = Tebako::FileSystem.tebako_read(fd, buffer, buffer.size)
-        Tebako::FileSystem.tebako_close(fd)
+        bytes_read = Tebako::FileSystem.tebako_fs_read(fd, buffer, buffer.size)
+        Tebako::FileSystem.tebako_fs_close(fd)
 
         bytes_read > 0 ? buffer.read_string(bytes_read) : nil
       else
@@ -700,10 +700,10 @@ int result = tebako_fs_init(
 
 if (result == 0) {
     // Files are now accessible
-    int fd = tebako_open("/__tebako__/app.rb", O_RDONLY);
+    int fd = tebako_fs_open("/__tebako__/app.rb", O_RDONLY);
     char buffer[1024];
-    ssize_t bytes = tebako_read(fd, buffer, sizeof(buffer));
-    tebako_close(fd);
+    ssize_t bytes = tebako_fs_read(fd, buffer, sizeof(buffer));
+    tebako_fs_close(fd);
 
     // Cleanup
     tebako_fs_unmount();

@@ -146,10 +146,10 @@ namespace dwarfs {
 ```cpp
 // libdwarfs-wr API (C)
 extern "C" {
-  int tebako_open(const char* pathname, int flags);
-  ssize_t tebako_read(int fd, void* buf, size_t count);
-  int tebako_fstat(int fd, struct stat* statbuf);
-  int tebako_close(int fd);
+  int tebako_fs_open(const char* pathname, int flags);
+  ssize_t tebako_fs_read(int fd, void* buf, size_t count);
+  int tebako_fs_fstat(int fd, struct stat* statbuf);
+  int tebako_fs_close(int fd);
 }
 ```
 
@@ -181,7 +181,7 @@ extern "C" {
 │  • Memory Filesystem        [tebako-memfs.h]           │
 │                                                        │
 │  Path → FD → Inode Mapping:                           │
-│  • tebako_open() → FD allocation                      │
+│  • tebako_fs_open() → FD allocation                      │
 │  • FD → inode lookup                                  │
 │  • Mount point resolution                             │
 │  • Symbolic link traversal                            │
@@ -1059,8 +1059,8 @@ Any code depending on legacy API (unlikely, as it was internal) should use:
 
 | Legacy Function | Modern Equivalent |
 |----------------|-------------------|
-| Old file-ctl methods | `tebako_open()`, `tebako_read()`, `tebako_close()` |
-| Old dir-ctl methods | `tebako_opendir()`, `tebako_readdir()`, `tebako_closedir()` |
+| Old file-ctl methods | `tebako_fs_open()`, `tebako_fs_read()`, `tebako_fs_close()` |
+| Old dir-ctl methods | `tebako_fs_opendir()`, `tebako_fs_readdir()`, `tebako_fs_closedir()` |
 | Old file-io methods | Modern FileHandle class (internal) |
 | Old dir-io methods | Modern DirectoryIterator class (internal) |
 

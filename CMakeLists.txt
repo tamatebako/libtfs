@@ -513,11 +513,11 @@ add_library(tfs STATIC
     "src/core/path.cpp"
     "src/core/config.cpp"
     # Modern C API implementation (successor to the legacy file-ctl/dir-ctl/file-io/dir-io
-    # quartet; the quartet is restored below under WITH_LEGACY_TEBAKO_API. The two layers
-    # export same-named extern "C" symbols -- tebako_open/tebako_read/tebako_lseek/
-    # tebako_close/tebako_stat/tebako_fstat/tebako_opendir/tebako_readdir/tebako_closedir --
-    # kept in separate objects so archive order (c_api first) keeps modern callers bound to
-    # this implementation; the modern API rename resolves the collision permanently)
+    # quartet; the quartet is restored below under WITH_LEGACY_TEBAKO_API. The modern
+    # functions are namespaced tebako_fs_* -- tebako_fs_open/tebako_fs_read/tebako_fs_lseek/
+    # tebako_fs_close/tebako_fs_stat/tebako_fs_fstat/tebako_fs_opendir/tebako_fs_readdir/
+    # tebako_fs_closedir -- so they no longer collide with the legacy quartet's
+    # tebako_open/tebako_read/... exports, and mixed legacy+modern binaries link cleanly)
     "src/c_api.cpp"
     "src/c_api/fs_context.cpp"
     "src/backend_registry.cpp"

@@ -78,7 +78,7 @@ int g_next_fd = 1;  // Internal FD counter (starts at 1)
 // DIR handle table: opaque pointer -> DirectoryIterator + cached entry
 struct DirectoryState {
   std::unique_ptr<tebako::fs::DirectoryIterator> iterator;
-  tebako_c_dirent current_entry;  // Cached for tebako_readdir return
+  tebako_c_dirent current_entry;  // Cached for tebako_fs_readdir return
   bool has_current;
 };
 std::unordered_map<void*, std::unique_ptr<DirectoryState>> g_dir_table;
@@ -456,7 +456,7 @@ extern "C" int tebako_is_initialized(void)
 // File Operations
 // ===================================================================
 
-extern "C" int tebako_open(const char* path, int flags)
+extern "C" int tebako_fs_open(const char* path, int flags)
 {
   if (path == nullptr) {
     set_errno(EINVAL);
@@ -490,7 +490,7 @@ extern "C" int tebako_open(const char* path, int flags)
   }
 }
 
-extern "C" ssize_t tebako_read(int fd, void* buf, size_t count)
+extern "C" ssize_t tebako_fs_read(int fd, void* buf, size_t count)
 {
   if (buf == nullptr) {
     set_errno(EINVAL);
@@ -519,7 +519,7 @@ extern "C" ssize_t tebako_read(int fd, void* buf, size_t count)
   }
 }
 
-extern "C" off_t tebako_lseek(int fd, off_t offset, int whence)
+extern "C" off_t tebako_fs_lseek(int fd, off_t offset, int whence)
 {
   auto* handle = get_handle(fd);
   if (handle == nullptr) {
@@ -543,7 +543,7 @@ extern "C" off_t tebako_lseek(int fd, off_t offset, int whence)
   }
 }
 
-extern "C" int tebako_close(int fd)
+extern "C" int tebako_fs_close(int fd)
 {
   auto* handle = get_handle(fd);
   if (handle == nullptr) {
@@ -569,7 +569,7 @@ extern "C" int tebako_close(int fd)
 // Directory Operations
 // ===================================================================
 
-extern "C" tebako_dir_t tebako_opendir(const char* path)
+extern "C" tebako_dir_t tebako_fs_opendir(const char* path)
 {
   if (path == nullptr) {
     set_errno(EINVAL);
@@ -597,7 +597,7 @@ extern "C" tebako_dir_t tebako_opendir(const char* path)
   }
 }
 
-extern "C" struct tebako_c_dirent* tebako_readdir(tebako_dir_t dir)
+extern "C" struct tebako_c_dirent* tebako_fs_readdir(tebako_dir_t dir)
 {
   auto* state = get_dir_state(dir);
   if (state == nullptr || state->iterator == nullptr) {
@@ -629,7 +629,7 @@ extern "C" struct tebako_c_dirent* tebako_readdir(tebako_dir_t dir)
   }
 }
 
-extern "C" int tebako_closedir(tebako_dir_t dir)
+extern "C" int tebako_fs_closedir(tebako_dir_t dir)
 {
   if (!remove_dir_handle(dir)) {
     set_errno(EBADF);
@@ -644,7 +644,7 @@ extern "C" int tebako_closedir(tebako_dir_t dir)
 // Metadata Operations
 // ===================================================================
 
-extern "C" int tebako_stat(const char* path, struct stat* st)
+extern "C" int tebako_fs_stat(const char* path, struct stat* st)
 {
   if (path == nullptr || st == nullptr) {
     set_errno(EINVAL);
@@ -712,7 +712,7 @@ extern "C" int tebako_stat(const char* path, struct stat* st)
   }
 }
 
-extern "C" int tebako_fstat(int fd, struct stat* st)
+extern "C" int tebako_fs_fstat(int fd, struct stat* st)
 {
   if (st == nullptr) {
     set_errno(EINVAL);
@@ -727,7 +727,7 @@ extern "C" int tebako_fstat(int fd, struct stat* st)
 
   try {
     // Use path from handle to call stat
-    return tebako_stat(handle->path().c_str(), st);
+    return tebako_fs_stat(handle->path().c_str(), st);
   }
   catch (...) {
     handle_exception();

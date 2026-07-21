@@ -112,13 +112,13 @@ class CApiTest : public ::testing::Test {
 
   std::string read_file_via_api(const std::string& path)
   {
-    int fd = tebako_open(path.c_str(), O_RDONLY);
+    int fd = tebako_fs_open(path.c_str(), O_RDONLY);
     if (fd < 0)
       return "";
 
     std::vector<char> buffer(4096);
-    ssize_t n = tebako_read(fd, buffer.data(), buffer.size());
-    tebako_close(fd);
+    ssize_t n = tebako_fs_read(fd, buffer.data(), buffer.size());
+    tebako_fs_close(fd);
 
     if (n <= 0)
       return "";
@@ -186,7 +186,7 @@ TEST_F(CApiTest, OperationsFailAfterUnmount)
   ASSERT_EQ(0, tebako_fs_init_from_file(archive_path.c_str(), mount_point.c_str()));
   tebako_fs_unmount();
 
-  EXPECT_EQ(-1, tebako_open((mount_point + "/content/hello.txt").c_str(), O_RDONLY));
+  EXPECT_EQ(-1, tebako_fs_open((mount_point + "/content/hello.txt").c_str(), O_RDONLY));
   EXPECT_EQ(ENODEV, tebako_get_errno());
 }
 
@@ -290,19 +290,19 @@ TEST_F(CApiTest, Open_ValidFile)
 {
   ASSERT_EQ(0, tebako_fs_init_from_file(archive_path.c_str(), mount_point.c_str()));
 
-  int fd = tebako_open((mount_point + "/content/hello.txt").c_str(), O_RDONLY);
+  int fd = tebako_fs_open((mount_point + "/content/hello.txt").c_str(), O_RDONLY);
   EXPECT_GT(fd, 0);
   EXPECT_TRUE(tebako_fd_is_embedded(fd));
   EXPECT_EQ(0, tebako_get_errno());
 
-  EXPECT_EQ(0, tebako_close(fd));
+  EXPECT_EQ(0, tebako_fs_close(fd));
 }
 
 TEST_F(CApiTest, Open_NonexistentFile)
 {
   ASSERT_EQ(0, tebako_fs_init_from_file(archive_path.c_str(), mount_point.c_str()));
 
-  int fd = tebako_open((mount_point + "/content/nonexistent.txt").c_str(), O_RDONLY);
+  int fd = tebako_fs_open((mount_point + "/content/nonexistent.txt").c_str(), O_RDONLY);
   EXPECT_EQ(-1, fd);
   EXPECT_EQ(ENOENT, tebako_get_errno());
 }
@@ -311,7 +311,7 @@ TEST_F(CApiTest, Open_NullPath)
 {
   ASSERT_EQ(0, tebako_fs_init_from_file(archive_path.c_str(), mount_point.c_str()));
 
-  int fd = tebako_open(nullptr, O_RDONLY);
+  int fd = tebako_fs_open(nullptr, O_RDONLY);
   EXPECT_EQ(-1, fd);
   EXPECT_EQ(EINVAL, tebako_get_errno());
 }
@@ -320,7 +320,7 @@ TEST_F(CApiTest, Open_WriteMode_Fails)
 {
   ASSERT_EQ(0, tebako_fs_init_from_file(archive_path.c_str(), mount_point.c_str()));
 
-  int fd = tebako_open((mount_point + "/content/hello.txt").c_str(), O_WRONLY);
+  int fd = tebako_fs_open((mount_point + "/content/hello.txt").c_str(), O_WRONLY);
   EXPECT_EQ(-1, fd);
   EXPECT_EQ(EROFS, tebako_get_errno());
 }
@@ -329,35 +329,35 @@ TEST_F(CApiTest, Read_Success)
 {
   ASSERT_EQ(0, tebako_fs_init_from_file(archive_path.c_str(), mount_point.c_str()));
 
-  int fd = tebako_open((mount_point + "/content/hello.txt").c_str(), O_RDONLY);
+  int fd = tebako_fs_open((mount_point + "/content/hello.txt").c_str(), O_RDONLY);
   ASSERT_GT(fd, 0);
 
   char buffer[100] = {0};
-  ssize_t n = tebako_read(fd, buffer, sizeof(buffer));
+  ssize_t n = tebako_fs_read(fd, buffer, sizeof(buffer));
   EXPECT_GT(n, 0);
   EXPECT_STREQ("Hello, World!", buffer);
 
-  tebako_close(fd);
+  tebako_fs_close(fd);
 }
 
 TEST_F(CApiTest, Read_EmptyFile)
 {
   ASSERT_EQ(0, tebako_fs_init_from_file(archive_path.c_str(), mount_point.c_str()));
 
-  int fd = tebako_open((mount_point + "/content/empty.txt").c_str(), O_RDONLY);
+  int fd = tebako_fs_open((mount_point + "/content/empty.txt").c_str(), O_RDONLY);
   ASSERT_GT(fd, 0);
 
   char buffer[10];
-  ssize_t n = tebako_read(fd, buffer, sizeof(buffer));
+  ssize_t n = tebako_fs_read(fd, buffer, sizeof(buffer));
   EXPECT_EQ(0, n);  // EOF immediately
 
-  tebako_close(fd);
+  tebako_fs_close(fd);
 }
 
 TEST_F(CApiTest, Read_InvalidFd)
 {
   char buffer[10];
-  ssize_t n = tebako_read(999, buffer, sizeof(buffer));
+  ssize_t n = tebako_fs_read(999, buffer, sizeof(buffer));
   EXPECT_EQ(-1, n);
   EXPECT_EQ(EBADF, tebako_get_errno());
 }
@@ -366,76 +366,76 @@ TEST_F(CApiTest, Read_NullBuffer)
 {
   ASSERT_EQ(0, tebako_fs_init_from_file(archive_path.c_str(), mount_point.c_str()));
 
-  int fd = tebako_open((mount_point + "/content/hello.txt").c_str(), O_RDONLY);
+  int fd = tebako_fs_open((mount_point + "/content/hello.txt").c_str(), O_RDONLY);
   ASSERT_GT(fd, 0);
 
-  ssize_t n = tebako_read(fd, nullptr, 10);
+  ssize_t n = tebako_fs_read(fd, nullptr, 10);
   EXPECT_EQ(-1, n);
   EXPECT_EQ(EINVAL, tebako_get_errno());
 
-  tebako_close(fd);
+  tebako_fs_close(fd);
 }
 
 TEST_F(CApiTest, Lseek_SeekSet)
 {
   ASSERT_EQ(0, tebako_fs_init_from_file(archive_path.c_str(), mount_point.c_str()));
 
-  int fd = tebako_open((mount_point + "/content/hello.txt").c_str(), O_RDONLY);
+  int fd = tebako_fs_open((mount_point + "/content/hello.txt").c_str(), O_RDONLY);
   ASSERT_GT(fd, 0);
 
   // Seek to position 7
-  off_t pos = tebako_lseek(fd, 7, SEEK_SET);
+  off_t pos = tebako_fs_lseek(fd, 7, SEEK_SET);
   EXPECT_EQ(7, pos);
 
   // Read from new position
   char buffer[10] = {0};
-  ssize_t n = tebako_read(fd, buffer, 5);
+  ssize_t n = tebako_fs_read(fd, buffer, 5);
   EXPECT_EQ(5, n);
   EXPECT_STREQ("World", buffer);
 
-  tebako_close(fd);
+  tebako_fs_close(fd);
 }
 
 TEST_F(CApiTest, Lseek_SeekCur)
 {
   ASSERT_EQ(0, tebako_fs_init_from_file(archive_path.c_str(), mount_point.c_str()));
 
-  int fd = tebako_open((mount_point + "/content/hello.txt").c_str(), O_RDONLY);
+  int fd = tebako_fs_open((mount_point + "/content/hello.txt").c_str(), O_RDONLY);
   ASSERT_GT(fd, 0);
 
   // Read 5 bytes
   char buffer[5];
-  tebako_read(fd, buffer, 5);
+  tebako_fs_read(fd, buffer, 5);
 
   // Seek forward 2 bytes from current
-  off_t pos = tebako_lseek(fd, 2, SEEK_CUR);
+  off_t pos = tebako_fs_lseek(fd, 2, SEEK_CUR);
   EXPECT_EQ(7, pos);
 
-  tebako_close(fd);
+  tebako_fs_close(fd);
 }
 
 TEST_F(CApiTest, Lseek_SeekEnd)
 {
   ASSERT_EQ(0, tebako_fs_init_from_file(archive_path.c_str(), mount_point.c_str()));
 
-  int fd = tebako_open((mount_point + "/content/hello.txt").c_str(), O_RDONLY);
+  int fd = tebako_fs_open((mount_point + "/content/hello.txt").c_str(), O_RDONLY);
   ASSERT_GT(fd, 0);
 
   // Seek to end
-  off_t size = tebako_lseek(fd, 0, SEEK_END);
+  off_t size = tebako_fs_lseek(fd, 0, SEEK_END);
   EXPECT_EQ(13, size);  // strlen("Hello, World!")
 
   // Try to read (should get EOF)
   char buffer[10];
-  ssize_t n = tebako_read(fd, buffer, sizeof(buffer));
+  ssize_t n = tebako_fs_read(fd, buffer, sizeof(buffer));
   EXPECT_EQ(0, n);
 
-  tebako_close(fd);
+  tebako_fs_close(fd);
 }
 
 TEST_F(CApiTest, Lseek_InvalidFd)
 {
-  off_t pos = tebako_lseek(999, 0, SEEK_SET);
+  off_t pos = tebako_fs_lseek(999, 0, SEEK_SET);
   EXPECT_EQ(-1, pos);
   EXPECT_EQ(EBADF, tebako_get_errno());
 }
@@ -444,20 +444,20 @@ TEST_F(CApiTest, Close_Success)
 {
   ASSERT_EQ(0, tebako_fs_init_from_file(archive_path.c_str(), mount_point.c_str()));
 
-  int fd = tebako_open((mount_point + "/content/hello.txt").c_str(), O_RDONLY);
+  int fd = tebako_fs_open((mount_point + "/content/hello.txt").c_str(), O_RDONLY);
   ASSERT_GT(fd, 0);
 
-  EXPECT_EQ(0, tebako_close(fd));
+  EXPECT_EQ(0, tebako_fs_close(fd));
 
   // Further operations should fail
   char buffer[10];
-  EXPECT_EQ(-1, tebako_read(fd, buffer, sizeof(buffer)));
+  EXPECT_EQ(-1, tebako_fs_read(fd, buffer, sizeof(buffer)));
   EXPECT_EQ(EBADF, tebako_get_errno());
 }
 
 TEST_F(CApiTest, Close_InvalidFd)
 {
-  EXPECT_EQ(-1, tebako_close(999));
+  EXPECT_EQ(-1, tebako_fs_close(999));
   EXPECT_EQ(EBADF, tebako_get_errno());
 }
 
@@ -465,8 +465,8 @@ TEST_F(CApiTest, MultipleFds_Independent)
 {
   ASSERT_EQ(0, tebako_fs_init_from_file(archive_path.c_str(), mount_point.c_str()));
 
-  int fd1 = tebako_open((mount_point + "/content/hello.txt").c_str(), O_RDONLY);
-  int fd2 = tebako_open((mount_point + "/content/data.bin").c_str(), O_RDONLY);
+  int fd1 = tebako_fs_open((mount_point + "/content/hello.txt").c_str(), O_RDONLY);
+  int fd2 = tebako_fs_open((mount_point + "/content/data.bin").c_str(), O_RDONLY);
 
   ASSERT_GT(fd1, 0);
   ASSERT_GT(fd2, 0);
@@ -474,11 +474,11 @@ TEST_F(CApiTest, MultipleFds_Independent)
 
   // Both should work independently
   char buf1[10], buf2[10];
-  EXPECT_GT(tebako_read(fd1, buf1, sizeof(buf1)), 0);
-  EXPECT_GT(tebako_read(fd2, buf2, sizeof(buf2)), 0);
+  EXPECT_GT(tebako_fs_read(fd1, buf1, sizeof(buf1)), 0);
+  EXPECT_GT(tebako_fs_read(fd2, buf2, sizeof(buf2)), 0);
 
-  tebako_close(fd1);
-  tebako_close(fd2);
+  tebako_fs_close(fd1);
+  tebako_fs_close(fd2);
 }
 
 // ============================================================
@@ -489,18 +489,18 @@ TEST_F(CApiTest, Opendir_Success)
 {
   ASSERT_EQ(0, tebako_fs_init_from_file(archive_path.c_str(), mount_point.c_str()));
 
-  tebako_dir_t dir = tebako_opendir((mount_point + "/content").c_str());
+  tebako_dir_t dir = tebako_fs_opendir((mount_point + "/content").c_str());
   ASSERT_NE(nullptr, dir);
   EXPECT_EQ(0, tebako_get_errno());
 
-  EXPECT_EQ(0, tebako_closedir(dir));
+  EXPECT_EQ(0, tebako_fs_closedir(dir));
 }
 
 TEST_F(CApiTest, Opendir_Nonexistent)
 {
   ASSERT_EQ(0, tebako_fs_init_from_file(archive_path.c_str(), mount_point.c_str()));
 
-  tebako_dir_t dir = tebako_opendir((mount_point + "/nonexistent").c_str());
+  tebako_dir_t dir = tebako_fs_opendir((mount_point + "/nonexistent").c_str());
   EXPECT_EQ(nullptr, dir);
   EXPECT_EQ(ENOENT, tebako_get_errno());
 }
@@ -509,7 +509,7 @@ TEST_F(CApiTest, Opendir_NullPath)
 {
   ASSERT_EQ(0, tebako_fs_init_from_file(archive_path.c_str(), mount_point.c_str()));
 
-  tebako_dir_t dir = tebako_opendir(nullptr);
+  tebako_dir_t dir = tebako_fs_opendir(nullptr);
   EXPECT_EQ(nullptr, dir);
   EXPECT_EQ(EINVAL, tebako_get_errno());
 }
@@ -518,12 +518,12 @@ TEST_F(CApiTest, Readdir_ListFiles)
 {
   ASSERT_EQ(0, tebako_fs_init_from_file(archive_path.c_str(), mount_point.c_str()));
 
-  tebako_dir_t dir = tebako_opendir((mount_point + "/content").c_str());
+  tebako_dir_t dir = tebako_fs_opendir((mount_point + "/content").c_str());
   ASSERT_NE(nullptr, dir);
 
   std::vector<std::string> entries;
   struct tebako_c_dirent* entry;
-  while ((entry = tebako_readdir(dir)) != nullptr) {
+  while ((entry = tebako_fs_readdir(dir)) != nullptr) {
     entries.push_back(entry->d_name);
   }
 
@@ -537,21 +537,21 @@ TEST_F(CApiTest, Readdir_ListFiles)
 
   EXPECT_TRUE(has_hello || has_data || has_subdir) << "Expected test files not found";
 
-  tebako_closedir(dir);
+  tebako_fs_closedir(dir);
 }
 
 TEST_F(CApiTest, Readdir_CheckTypes)
 {
   ASSERT_EQ(0, tebako_fs_init_from_file(archive_path.c_str(), mount_point.c_str()));
 
-  tebako_dir_t dir = tebako_opendir((mount_point + "/content").c_str());
+  tebako_dir_t dir = tebako_fs_opendir((mount_point + "/content").c_str());
   ASSERT_NE(nullptr, dir);
 
   bool found_file = false;
   bool found_dir = false;
 
   struct tebako_c_dirent* entry;
-  while ((entry = tebako_readdir(dir)) != nullptr) {
+  while ((entry = tebako_fs_readdir(dir)) != nullptr) {
     if (entry->d_type == DT_REG)
       found_file = true;
     if (entry->d_type == DT_DIR)
@@ -560,29 +560,29 @@ TEST_F(CApiTest, Readdir_CheckTypes)
 
   EXPECT_TRUE(found_file) << "Should find at least one regular file";
 
-  tebako_closedir(dir);
+  tebako_fs_closedir(dir);
 }
 
 TEST_F(CApiTest, Readdir_EmptyAtEnd)
 {
   ASSERT_EQ(0, tebako_fs_init_from_file(archive_path.c_str(), mount_point.c_str()));
 
-  tebako_dir_t dir = tebako_opendir((mount_point + "/content").c_str());
+  tebako_dir_t dir = tebako_fs_opendir((mount_point + "/content").c_str());
   ASSERT_NE(nullptr, dir);
 
   // Read all entries
-  while (tebako_readdir(dir) != nullptr) {
+  while (tebako_fs_readdir(dir) != nullptr) {
   }
 
   // Next call should return nullptr
-  EXPECT_EQ(nullptr, tebako_readdir(dir));
+  EXPECT_EQ(nullptr, tebako_fs_readdir(dir));
 
-  tebako_closedir(dir);
+  tebako_fs_closedir(dir);
 }
 
 TEST_F(CApiTest, Readdir_InvalidHandle)
 {
-  struct tebako_c_dirent* entry = tebako_readdir(nullptr);
+  struct tebako_c_dirent* entry = tebako_fs_readdir(nullptr);
   EXPECT_EQ(nullptr, entry);
   EXPECT_EQ(EBADF, tebako_get_errno());
 }
@@ -591,16 +591,16 @@ TEST_F(CApiTest, Closedir_Success)
 {
   ASSERT_EQ(0, tebako_fs_init_from_file(archive_path.c_str(), mount_point.c_str()));
 
-  tebako_dir_t dir = tebako_opendir((mount_point + "/content").c_str());
+  tebako_dir_t dir = tebako_fs_opendir((mount_point + "/content").c_str());
   ASSERT_NE(nullptr, dir);
 
-  EXPECT_EQ(0, tebako_closedir(dir));
+  EXPECT_EQ(0, tebako_fs_closedir(dir));
   EXPECT_EQ(0, tebako_get_errno());
 }
 
 TEST_F(CApiTest, Closedir_InvalidHandle)
 {
-  EXPECT_EQ(-1, tebako_closedir(nullptr));
+  EXPECT_EQ(-1, tebako_fs_closedir(nullptr));
   EXPECT_EQ(EBADF, tebako_get_errno());
 }
 
@@ -608,18 +608,18 @@ TEST_F(CApiTest, MultipleDirs_Independent)
 {
   ASSERT_EQ(0, tebako_fs_init_from_file(archive_path.c_str(), mount_point.c_str()));
 
-  tebako_dir_t dir1 = tebako_opendir((mount_point + "/content").c_str());
-  tebako_dir_t dir2 = tebako_opendir((mount_point + "/content/subdir").c_str());
+  tebako_dir_t dir1 = tebako_fs_opendir((mount_point + "/content").c_str());
+  tebako_dir_t dir2 = tebako_fs_opendir((mount_point + "/content/subdir").c_str());
 
   ASSERT_NE(nullptr, dir1);
   ASSERT_NE(nullptr, dir2);
   EXPECT_NE(dir1, dir2);
 
   // Both should work
-  EXPECT_NE(nullptr, tebako_readdir(dir1));
+  EXPECT_NE(nullptr, tebako_fs_readdir(dir1));
 
-  tebako_closedir(dir1);
-  tebako_closedir(dir2);
+  tebako_fs_closedir(dir1);
+  tebako_fs_closedir(dir2);
 }
 
 // ============================================================
@@ -631,7 +631,7 @@ TEST_F(CApiTest, Stat_RegularFile)
   ASSERT_EQ(0, tebako_fs_init_from_file(archive_path.c_str(), mount_point.c_str()));
 
   struct stat st;
-  int result = tebako_stat((mount_point + "/content/hello.txt").c_str(), &st);
+  int result = tebako_fs_stat((mount_point + "/content/hello.txt").c_str(), &st);
 
   EXPECT_EQ(0, result);
   EXPECT_TRUE(S_ISREG(st.st_mode));
@@ -643,7 +643,7 @@ TEST_F(CApiTest, Stat_Directory)
   ASSERT_EQ(0, tebako_fs_init_from_file(archive_path.c_str(), mount_point.c_str()));
 
   struct stat st;
-  int result = tebako_stat((mount_point + "/content/subdir").c_str(), &st);
+  int result = tebako_fs_stat((mount_point + "/content/subdir").c_str(), &st);
 
   EXPECT_EQ(0, result);
   EXPECT_TRUE(S_ISDIR(st.st_mode));
@@ -654,7 +654,7 @@ TEST_F(CApiTest, Stat_Nonexistent)
   ASSERT_EQ(0, tebako_fs_init_from_file(archive_path.c_str(), mount_point.c_str()));
 
   struct stat st;
-  int result = tebako_stat((mount_point + "/nonexistent").c_str(), &st);
+  int result = tebako_fs_stat((mount_point + "/nonexistent").c_str(), &st);
 
   EXPECT_EQ(-1, result);
   EXPECT_EQ(ENOENT, tebako_get_errno());
@@ -665,10 +665,10 @@ TEST_F(CApiTest, Stat_NullArguments)
   ASSERT_EQ(0, tebako_fs_init_from_file(archive_path.c_str(), mount_point.c_str()));
 
   struct stat st;
-  EXPECT_EQ(-1, tebako_stat(nullptr, &st));
+  EXPECT_EQ(-1, tebako_fs_stat(nullptr, &st));
   EXPECT_EQ(EINVAL, tebako_get_errno());
 
-  EXPECT_EQ(-1, tebako_stat((mount_point + "/content/hello.txt").c_str(), nullptr));
+  EXPECT_EQ(-1, tebako_fs_stat((mount_point + "/content/hello.txt").c_str(), nullptr));
   EXPECT_EQ(EINVAL, tebako_get_errno());
 }
 
@@ -676,21 +676,21 @@ TEST_F(CApiTest, Fstat_Success)
 {
   ASSERT_EQ(0, tebako_fs_init_from_file(archive_path.c_str(), mount_point.c_str()));
 
-  int fd = tebako_open((mount_point + "/content/hello.txt").c_str(), O_RDONLY);
+  int fd = tebako_fs_open((mount_point + "/content/hello.txt").c_str(), O_RDONLY);
   ASSERT_GT(fd, 0);
 
   struct stat st;
-  EXPECT_EQ(0, tebako_fstat(fd, &st));
+  EXPECT_EQ(0, tebako_fs_fstat(fd, &st));
   EXPECT_TRUE(S_ISREG(st.st_mode));
   EXPECT_EQ(13, st.st_size);
 
-  tebako_close(fd);
+  tebako_fs_close(fd);
 }
 
 TEST_F(CApiTest, Fstat_InvalidFd)
 {
   struct stat st;
-  EXPECT_EQ(-1, tebako_fstat(999, &st));
+  EXPECT_EQ(-1, tebako_fs_fstat(999, &st));
   EXPECT_EQ(EBADF, tebako_get_errno());
 }
 
@@ -698,13 +698,13 @@ TEST_F(CApiTest, Fstat_NullStat)
 {
   ASSERT_EQ(0, tebako_fs_init_from_file(archive_path.c_str(), mount_point.c_str()));
 
-  int fd = tebako_open((mount_point + "/content/hello.txt").c_str(), O_RDONLY);
+  int fd = tebako_fs_open((mount_point + "/content/hello.txt").c_str(), O_RDONLY);
   ASSERT_GT(fd, 0);
 
-  EXPECT_EQ(-1, tebako_fstat(fd, nullptr));
+  EXPECT_EQ(-1, tebako_fs_fstat(fd, nullptr));
   EXPECT_EQ(EINVAL, tebako_get_errno());
 
-  tebako_close(fd);
+  tebako_fs_close(fd);
 }
 
 // ============================================================
@@ -743,14 +743,14 @@ TEST_F(CApiTest, FdIsEmbedded_ValidFd)
 {
   ASSERT_EQ(0, tebako_fs_init_from_file(archive_path.c_str(), mount_point.c_str()));
 
-  int fd = tebako_open((mount_point + "/content/hello.txt").c_str(), O_RDONLY);
+  int fd = tebako_fs_open((mount_point + "/content/hello.txt").c_str(), O_RDONLY);
   ASSERT_GT(fd, 0);
 
   EXPECT_EQ(1, tebako_fd_is_embedded(fd));
   EXPECT_EQ(0, tebako_fd_is_embedded(STDOUT_FILENO));
   EXPECT_EQ(0, tebako_fd_is_embedded(STDIN_FILENO));
 
-  tebako_close(fd);
+  tebako_fs_close(fd);
 }
 
 TEST_F(CApiTest, FdIsEmbedded_FlagCheck)
@@ -770,12 +770,12 @@ TEST_F(CApiTest, FdIsEmbedded_FlagCheck)
 TEST_F(CApiTest, GetErrno_ThreadLocal)
 {
   // Set an error
-  tebako_open(nullptr, O_RDONLY);  // Will set EINVAL
+  tebako_fs_open(nullptr, O_RDONLY);  // Will set EINVAL
   EXPECT_EQ(EINVAL, tebako_get_errno());
 
   // Different operation sets different error
   ASSERT_EQ(0, tebako_fs_init_from_file(archive_path.c_str(), mount_point.c_str()));
-  tebako_open((mount_point + "/nonexistent").c_str(), O_RDONLY);
+  tebako_fs_open((mount_point + "/nonexistent").c_str(), O_RDONLY);
   EXPECT_EQ(ENOENT, tebako_get_errno());
 }
 
@@ -848,31 +848,31 @@ TEST_F(CApiTest, Integration_FullWorkflow)
   EXPECT_EQ(1, tebako_path_is_embedded((mount_point + "/content").c_str()));
 
   // List directory
-  tebako_dir_t dir = tebako_opendir((mount_point + "/content").c_str());
+  tebako_dir_t dir = tebako_fs_opendir((mount_point + "/content").c_str());
   ASSERT_NE(nullptr, dir);
 
   int file_count = 0;
   struct tebako_c_dirent* entry;
-  while ((entry = tebako_readdir(dir)) != nullptr) {
+  while ((entry = tebako_fs_readdir(dir)) != nullptr) {
     file_count++;
 
     // Stat each entry
     std::string full_path = mount_point + "/content/" + entry->d_name;
     struct stat st;
-    EXPECT_EQ(0, tebako_stat(full_path.c_str(), &st));
+    EXPECT_EQ(0, tebako_fs_stat(full_path.c_str(), &st));
 
     // If regular file, try opening
     if (entry->d_type == DT_REG) {
-      int fd = tebako_open(full_path.c_str(), O_RDONLY);
+      int fd = tebako_fs_open(full_path.c_str(), O_RDONLY);
       EXPECT_GT(fd, 0);
       if (fd > 0) {
-        tebako_close(fd);
+        tebako_fs_close(fd);
       }
     }
   }
 
   EXPECT_GT(file_count, 0);
-  tebako_closedir(dir);
+  tebako_fs_closedir(dir);
 
   // Unmount
   tebako_fs_unmount();

@@ -55,7 +55,7 @@ extern "C" {
 /**
  * @brief Flag bit to distinguish libtfs FDs from host OS FDs
  *
- * This bit is set on all file descriptors returned by tebako_open()
+ * This bit is set on all file descriptors returned by tebako_fs_open()
  * to ensure they never collide with host OS file descriptors.
  */
 #define TEBAKO_FD_FLAG 0x40000000
@@ -152,19 +152,19 @@ int tebako_is_initialized(void);
  * @return File descriptor on success (>0 with TEBAKO_FD_FLAG set), -1 on error
  *
  * @note Only read-only access is supported
- * @note The returned FD must be closed with tebako_close()
- * @note Do not use with standard close() - use tebako_close() instead
+ * @note The returned FD must be closed with tebako_fs_close()
+ * @note Do not use with standard close() - use tebako_fs_close() instead
  *
  * @example
  * @code
- * int fd = tebako_open("/__tebako__/config.txt", O_RDONLY);
+ * int fd = tebako_fs_open("/__tebako__/config.txt", O_RDONLY);
  * if (fd > 0) {
  *     // Read file...
- *     tebako_close(fd);
+ *     tebako_fs_close(fd);
  * }
  * @endcode
  */
-int tebako_open(const char* path, int flags);
+int tebako_fs_open(const char* path, int flags);
 
 /**
  * @brief Read from embedded file
@@ -172,14 +172,14 @@ int tebako_open(const char* path, int flags);
  * Reads up to count bytes from the file into buffer.
  * Behaves like POSIX read(2).
  *
- * @param fd File descriptor from tebako_open()
+ * @param fd File descriptor from tebako_fs_open()
  * @param buf Buffer to read into
  * @param count Maximum number of bytes to read
  * @return Number of bytes read (may be less than count), 0 on EOF, -1 on error
  *
  * @note Returns -1 with errno=EBADF if fd is not a valid libtfs FD
  */
-ssize_t tebako_read(int fd, void* buf, size_t count);
+ssize_t tebako_fs_read(int fd, void* buf, size_t count);
 
 /**
  * @brief Seek within embedded file
@@ -197,27 +197,27 @@ ssize_t tebako_read(int fd, void* buf, size_t count);
  * @example
  * @code
  * // Seek to byte 100
- * off_t pos = tebako_lseek(fd, 100, SEEK_SET);
+ * off_t pos = tebako_fs_lseek(fd, 100, SEEK_SET);
  *
  * // Get file size
- * off_t size = tebako_lseek(fd, 0, SEEK_END);
- * tebako_lseek(fd, 0, SEEK_SET);  // Reset to start
+ * off_t size = tebako_fs_lseek(fd, 0, SEEK_END);
+ * tebako_fs_lseek(fd, 0, SEEK_SET);  // Reset to start
  * @endcode
  */
-off_t tebako_lseek(int fd, off_t offset, int whence);
+off_t tebako_fs_lseek(int fd, off_t offset, int whence);
 
 /**
  * @brief Close embedded file
  *
  * Releases resources associated with the file descriptor.
  *
- * @param fd File descriptor from tebako_open()
+ * @param fd File descriptor from tebako_fs_open()
  * @return 0 on success, -1 on error
  *
  * @note After close, the FD becomes invalid
  * @note Safe to call multiple times with the same FD
  */
-int tebako_close(int fd);
+int tebako_fs_close(int fd);
 
 /* ============================================================
  * Directory Operations
@@ -247,21 +247,21 @@ struct tebako_c_dirent {
  * @param path Directory path
  * @return Directory handle on success, NULL on error
  *
- * @note The returned handle must be closed with tebako_closedir()
+ * @note The returned handle must be closed with tebako_fs_closedir()
  *
  * @example
  * @code
- * tebako_dir_t dir = tebako_opendir("/__tebako__/config");
+ * tebako_dir_t dir = tebako_fs_opendir("/__tebako__/config");
  * if (dir != NULL) {
  *     struct tebako_c_dirent* entry;
- *     while ((entry = tebako_readdir(dir)) != NULL) {
+ *     while ((entry = tebako_fs_readdir(dir)) != NULL) {
  *         printf("%s\n", entry->d_name);
  *     }
- *     tebako_closedir(dir);
+ *     tebako_fs_closedir(dir);
  * }
  * @endcode
  */
-tebako_dir_t tebako_opendir(const char* path);
+tebako_dir_t tebako_fs_opendir(const char* path);
 
 /**
  * @brief Read next directory entry
@@ -269,24 +269,24 @@ tebako_dir_t tebako_opendir(const char* path);
  * Returns the next entry in the directory. Returns NULL when
  * no more entries or on error.
  *
- * @param dir Directory handle from tebako_opendir()
+ * @param dir Directory handle from tebako_fs_opendir()
  * @return Pointer to entry structure, or NULL at end/error
  *
- * @note The returned pointer is valid until next call to tebako_readdir()
- *       or tebako_closedir()
+ * @note The returned pointer is valid until next call to tebako_fs_readdir()
+ *       or tebako_fs_closedir()
  * @note Entries "." and ".." are excluded
  */
-struct tebako_c_dirent* tebako_readdir(tebako_dir_t dir);
+struct tebako_c_dirent* tebako_fs_readdir(tebako_dir_t dir);
 
 /**
  * @brief Close directory handle
  *
  * Releases resources associated with the directory handle.
  *
- * @param dir Directory handle from tebako_opendir()
+ * @param dir Directory handle from tebako_fs_opendir()
  * @return 0 on success, -1 on error
  */
-int tebako_closedir(tebako_dir_t dir);
+int tebako_fs_closedir(tebako_dir_t dir);
 
 /* ============================================================
  * Metadata Operations
@@ -307,7 +307,7 @@ int tebako_closedir(tebako_dir_t dir);
  * @example
  * @code
  * struct stat st;
- * if (tebako_stat("/__tebako__/file.txt", &st) == 0) {
+ * if (tebako_fs_stat("/__tebako__/file.txt", &st) == 0) {
  *     printf("Size: %lld bytes\n", (long long)st.st_size);
  *     if (S_ISREG(st.st_mode)) {
  *         printf("Regular file\n");
@@ -315,18 +315,18 @@ int tebako_closedir(tebako_dir_t dir);
  * }
  * @endcode
  */
-int tebako_stat(const char* path, struct stat* st);
+int tebako_fs_stat(const char* path, struct stat* st);
 
 /**
  * @brief Get file status via file descriptor
  *
- * Like tebako_stat() but takes a file descriptor.
+ * Like tebako_fs_stat() but takes a file descriptor.
  *
- * @param fd File descriptor from tebako_open()
+ * @param fd File descriptor from tebako_fs_open()
  * @param st Pointer to stat structure to fill
  * @return 0 on success, -1 on error
  */
-int tebako_fstat(int fd, struct stat* st);
+int tebako_fs_fstat(int fd, struct stat* st);
 
 /* ============================================================
  * Path Detection
@@ -344,7 +344,7 @@ int tebako_fstat(int fd, struct stat* st);
  * @example
  * @code
  * if (tebako_path_is_embedded("/__tebako__/file.txt")) {
- *     // Use tebako_open()
+ *     // Use tebako_fs_open()
  * } else {
  *     // Use regular open()
  * }
@@ -355,7 +355,7 @@ int tebako_path_is_embedded(const char* path);
 /**
  * @brief Check if file descriptor is from libtfs
  *
- * Tests if a file descriptor was returned by tebako_open().
+ * Tests if a file descriptor was returned by tebako_fs_open().
  *
  * @param fd File descriptor to check
  * @return 1 if FD is from libtfs, 0 otherwise
