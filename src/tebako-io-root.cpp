@@ -37,6 +37,7 @@
 #include <tebako-io-inner.h>
 #include <tebako-io-root.h>
 #include <tebako/fs/internal/fd_table.h>
+#include <tebako/fs/internal/kfd.h>
 
 using namespace dwarfs;
 
@@ -101,6 +102,22 @@ int mount_root_memfs(const void* data,
     std::cerr << "Unhandled exception" << std::endl;
     std::abort();
   });
+
+  // Construct the memfs/mount/fd/kfd/dir tables now, at mount time. These
+  // are Meyers singletons whose destructors are registered on first use;
+  // the caller (e.g. tebako-main) registers its cleanup via atexit() only
+  // *after* mount returns, and atexit handlers and static destructors run
+  // in LIFO order. Constructing the tables here guarantees their destructors
+  // are registered *before* the caller's atexit handler, so at process exit
+  // the caller's unmount_root_memfs()/close_all()/clear() runs while the
+  // tables are still alive — and not the other way around, which made
+  // Synchronized's shared_mutex throw std::system_error and terminated the
+  // process with "Unhandled exception" on exit.
+  (void)sync_tebako_memfs_table::get_tebako_memfs_table();
+  (void)sync_tebako_mount_table::get_tebako_mount_table();
+  (void)sync_tebako_fdtable::get_tebako_fdtable();
+  (void)sync_tebako_kfdtable::get_tebako_kfdtable();
+  (void)sync_tebako_dstable::get_tebako_dstable();
 
   try {
     memfs::set_debuglevel(debuglevel);
