@@ -1,6 +1,6 @@
 # libtfs Roadmap
 
-## Current Release: v0.11.1 (2025-02-18)
+## Current Release: v0.12.0 (2026-07-21)
 
 **Status**: ✅ Production Ready
 
@@ -11,7 +11,7 @@
 - Comprehensive documentation
 - Performance baseline established
 
-## v0.12.0 (Next Release - Q1 2026)
+## v0.12.0 (Current Release - Q1 2026)
 
 ### Priority 1: Core Features
 - [x] **DwarFS Backend Implementation** ✅ DONE
@@ -150,5 +150,5 @@ Interested in contributing to the roadmap?
 
 ---
 
-**Last Updated**: 2025-12-24
-**Next Review**: v0.12.0 release
+**Last Updated**: 2026-07-21
+**Next Review**: v0.13.0 release

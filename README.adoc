@@ -958,7 +958,7 @@ NOTE: The examples are not currently wired into the build; they return in Stage 
 
 For detailed information, see link:examples/README.md[Examples Documentation].
 
-== v2.0.0 Status
+== v0.12.0 Status
 
 === Stage 1: FlatBuffers Migration - Complete ✅
 
@@ -1104,9 +1104,9 @@ Week 1 achievements: ZIP and SquashFS backends are production-ready with compreh
 * 📊 link:docs/STAGE_2_DAY6_COMPLETION_STATUS.md[Day 6 Completion Status] - SquashFS & CLI
 * 📋 link:docs/CONTINUATION_PLAN.md[Continuation Plan] - Overall roadmap
 
-=== v2.0.0 Breaking Changes
+=== v0.12.0 Breaking Changes
 
-**libtfs v2.0.0** represents a complete rename and modernization from the previous libdwarfs-wr project.
+**libtfs v0.12.0** represents a complete rename and modernization from the previous libdwarfs-wr project.
 
 .What Changed
 * **Project renamed**: `libdwarfs-wr` → `libtfs` (Tebako File System)

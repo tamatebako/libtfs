@@ -20,7 +20,7 @@
 * **File descriptor addressing**: POSIX-like fd interface above filesystem implementation
 * **Zero problematic dependencies**: Pure C++17, no libfolly in our code
 
-### v2.0.0 Status
+### v0.12.0 Status
 
 **Stage 1: FlatBuffers Migration** - Complete ✅ (2025-12-21)
 

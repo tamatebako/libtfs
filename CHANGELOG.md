@@ -7,42 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.11.0] - 2025-12-24
+## [0.12.0] - 2026-07-21
 
-### Added
-- 100% test pass rate (140/140 tests)
-- Production-ready C API with thread-local errno
-- Integration test automation script
-- Performance baseline documentation
-- Comprehensive release notes
-- Performance regression test infrastructure
-- Tebako integration guide with Ruby FFI examples
-- Documentation index for easy navigation
-
-### Fixed
-- File existence check in backend factory
-- Version string formatting in ZIP backend
-- String lifetime in tebako_get_backend_name()
-- Test fixture corrupted.zip recreation
-- Function signature for tebako_init_cwd()
-
-### Changed
-- Removed legacy C API implementation (~22 KB)
-- Validated SOLID architecture principles
-- Memory safety audit completed (RAII enforced)
-- Archived Phase 3 and Phase 4 documentation
-
-### Documentation
-- Phase 4 completion documented in README.adoc
-- RELEASE_NOTES.md for v0.11.0
-- PERFORMANCE_BASELINE.md established
-- ARCHITECTURE.md updated with design decisions
-- TEBAKO_INTEGRATION.md with Ruby FFI bindings
-- Performance regression testing guide
-
-See [RELEASE_NOTES.md](RELEASE_NOTES.md) for complete details.
-
-## [2.0.0] - 2025-01-17
+First release as **libtfs** (Tebako File System), formerly `libdwarfs-wr`.
+The changes below were originally drafted as a "v2.0.0" release; they are
+released as v0.12.0 (no v2.0.0 tag was ever cut).
 
 ### Changed - BREAKING CHANGES
 
@@ -59,44 +28,32 @@ See [RELEASE_NOTES.md](RELEASE_NOTES.md) for complete details.
   - Utility headers in `include/tebako/fs/util/`
   - Old header paths no longer supported
 
-- **Serialization format migration**
-  - FlatBuffers is now the primary serialization format (header-only)
-  - Upstream dwarfs updated to use FlatBuffers internally
-  - Legacy cereal and bitsery support deprecated
+- **Thrift-free dwarfs-t backend**
+  - Backend is the `tamatebako/dwarfs-t` fork, pinned at `tebako-v0.14.1-5`
+  - FlatBuffers multi-format metadata is now the only serialization format (header-only)
+  - Legacy cereal and bitsery support removed
   - Thrift support removed (not static-link friendly)
 
-- **Build system updates**
-  - CMake option `DWARFS_WITH_FLATBUFFERS` now recommended (replaces cereal/bitsery)
-  - CMake option `DWARFS_WITH_THRIFT=OFF` now strongly recommended
+- **Legacy tebako API reduced in scope**
+  - Limited to the POSIX API and ruby-build-context support (`WITH_LEGACY_TEBAKO_API`)
+  - All other consumers use the modern C/C++ API
+
+- **Build system replaced with a self-contained vcpkg build**
+  - Manifest-mode vcpkg with overlay ports in `vcpkg-overlay/`:
+    `dwarfs` (dwarfs-t fork), `jemalloc`, `squashfs-tools-ng`
   - Build configuration simplified for static linking
-  - Tebako build mode (`TEBAKO_BUILD=ON`) optimized for new structure
-
-### Removed
-
-- **Folly dependency completely removed**
-  - All folly types replaced with pure C++17 standard library
-  - `folly::Synchronized` → `std::shared_mutex` + custom wrapper
-  - `folly::Conv` → standard C library conversion functions
-  - Zero folly symbols in final binary
-
-- **Thrift dependency removed**
-  - Not compatible with static linking requirements
-  - Replaced by FlatBuffers in upstream dwarfs
-  - Significantly reduces dependency complexity
-
-- **Legacy serialization options**
-  - Cereal support deprecated (FlatBuffers preferred)
-  - Bitsery support deprecated (FlatBuffers preferred)
 
 ### Added
 
-- **Comprehensive documentation**
-  - Implementation plan for three-stage transformation
-  - Stage 1: Rename & Solidify (this release)
-  - Stage 2: ZIP backend addition (planned)
-  - Stage 3: Multi-language support (planned)
-  - FlatBuffers migration guide
-  - Testing strategy documentation
+- **Multi-backend VFS**
+  - Unified VFS interface with backend auto-detection (magic bytes + extensions)
+  - DwarFS backend (dwarfs-t, FlatBuffers metadata)
+  - ZIP backend (libzip) with directory traversal and seek support
+  - SquashFS backend (squashfs-tools-ng) - POSIX platforms only (not built on Windows)
+
+- **`tebakofs` CLI tool**
+  - Docker-style commands: `ls`, `cat`, `tree`, `extract`, `find`, `info`, `stat`
+  - Automatic archive format detection
 
 - **Improved static linking support**
   - Zero problematic dependencies for static builds
@@ -104,27 +61,31 @@ See [RELEASE_NOTES.md](RELEASE_NOTES.md) for complete details.
   - Header-only dependencies (FlatBuffers)
   - No ABI compatibility issues
 
+- **All-platform CI green**
+  - Ubuntu (glibc) x64 and ARM64
+  - Alpine (musl)
+  - macOS arm64 and x86_64
+  - Windows MSYS2 UCRT64
+
+### Removed
+
+- **Folly dependency completely removed**
+  - All folly types replaced with pure C++17 standard library
+  - Zero folly symbols in final binary
+
+- **Thrift dependency removed**
+  - Not compatible with static linking requirements
+  - Replaced by FlatBuffers multi-format metadata in dwarfs-t
+
+- **Legacy serialization options**
+  - Cereal and bitsery support removed (FlatBuffers preferred)
+
 ### Fixed
 
 - **Static linking compatibility**
   - Resolved all shared library symbol conflicts
   - Eliminated problematic dependencies (folly, thrift)
   - Improved build system for static-only builds
-
-- **Header organization**
-  - Clear separation between public API and internal implementation
-  - Proper include guard consistency
-  - Better namespace organization
-
-### Documentation
-
-- Updated README.md with libtfs branding and v2.0.0 migration guide
-- Added CHANGELOG.md (this file) for version tracking
-- Reorganized documentation structure:
-  - Current implementation plans in `docs/`
-  - Historical documentation archived in `docs/archive/`
-- Updated all examples to use new header paths
-- Added comprehensive API examples
 
 ### Migration Guide from v1.x (libdwarfs-wr)
 
@@ -160,25 +121,56 @@ If you are upgrading from libdwarfs-wr v1.x:
    ```
 
 4. **Update build configuration**
-   ```bash
-   # Old
-   cmake -DTEBAKO_BUILD=ON \
-         -DDWARFS_WITH_THRIFT=OFF \
-         -DDWARFS_WITH_CEREAL=ON \
-         -DDWARFS_WITH_BITSERY=ON \
-         ..
 
-   # New (recommended)
-   cmake -DTEBAKO_BUILD=ON \
-         -DDWARFS_WITH_THRIFT=OFF \
-         -DDWARFS_WITH_FLATBUFFERS=ON \
-         ..
+   Dependencies are provided by vcpkg (manifest mode, using the overlay
+   ports in `vcpkg-overlay/`):
+
+   ```bash
+   cmake -S . -B build \
+         -DCMAKE_TOOLCHAIN_FILE=$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake \
+         -DCMAKE_BUILD_TYPE=Release
+   cmake --build build
    ```
 
 5. **Review API changes**
-   - All public APIs remain functionally compatible
-   - Only header paths and project names changed
+   - Header paths and project/artifact names changed
+   - Legacy tebako API limited to POSIX + ruby-build-context (`WITH_LEGACY_TEBAKO_API`)
    - Binary compatibility not maintained (recompile required)
+
+## [0.11.0] - 2025-12-24
+
+### Added
+- 100% test pass rate (140/140 tests)
+- Production-ready C API with thread-local errno
+- Integration test automation script
+- Performance baseline documentation
+- Comprehensive release notes
+- Performance regression test infrastructure
+- Tebako integration guide with Ruby FFI examples
+- Documentation index for easy navigation
+
+### Fixed
+- File existence check in backend factory
+- Version string formatting in ZIP backend
+- String lifetime in tebako_get_backend_name()
+- Test fixture corrupted.zip recreation
+- Function signature for tebako_init_cwd()
+
+### Changed
+- Removed legacy C API implementation (~22 KB)
+- Validated SOLID architecture principles
+- Memory safety audit completed (RAII enforced)
+- Archived Phase 3 and Phase 4 documentation
+
+### Documentation
+- Phase 4 completion documented in README.adoc
+- RELEASE_NOTES.md for v0.11.0
+- PERFORMANCE_BASELINE.md established
+- ARCHITECTURE.md updated with design decisions
+- TEBAKO_INTEGRATION.md with Ruby FFI bindings
+- Performance regression testing guide
+
+See [RELEASE_NOTES.md](RELEASE_NOTES.md) for complete details.
 
 ## [1.x.x] - Historical
 
@@ -187,25 +179,25 @@ Previous versions released as `libdwarfs-wr`. See git history for details:
 - Folly-dependent versions
 - Thrift-dependent versions
 
-For historical changes, see git commit history prior to v2.0.0.
+For historical changes, see git commit history prior to v0.12.0.
 
 ---
 
 ## Release Notes
 
-### v2.0.0 Release Highlights
+### v0.12.0 Release Highlights
 
-This is a major release that modernizes the project with a clean break from the past:
+This release modernizes the project with a clean break from the past:
 
 ✅ **Pure C++17** - No more folly/thrift dependencies
 ✅ **Static linking ready** - Perfect for Tebako packaging
-✅ **Modern organization** - Clean header hierarchy
-✅ **FlatBuffers** - Header-only serialization
-✅ **Better documentation** - Comprehensive guides and examples
+✅ **Multi-backend VFS** - DwarFS, ZIP, and SquashFS behind one interface
+✅ **FlatBuffers** - Header-only, multi-format metadata
+✅ **Self-contained vcpkg build** - Overlay ports for dwarfs-t, jemalloc, squashfs-tools-ng
 
 ### Known Issues
 
-None reported for v2.0.0 at time of release.
+None reported for v0.12.0 at time of release.
 
 ### Acknowledgments
 
@@ -215,5 +207,6 @@ None reported for v2.0.0 at time of release.
 
 ---
 
-[Unreleased]: https://github.com/tamatebako/libtfs/compare/v2.0.0...HEAD
-[2.0.0]: https://github.com/tamatebako/libtfs/releases/tag/v2.0.0
+[Unreleased]: https://github.com/tamatebako/libtfs/compare/v0.12.0...HEAD
+[0.12.0]: https://github.com/tamatebako/libtfs/releases/tag/v0.12.0
+[0.11.0]: https://github.com/tamatebako/libtfs/releases/tag/v0.11.0
