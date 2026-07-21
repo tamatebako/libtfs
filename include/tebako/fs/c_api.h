@@ -93,6 +93,41 @@ extern "C" {
 int tebako_fs_init_from_file(const char* archive_path, const char* mount_point);
 
 /**
+ * @brief Initialize libtfs from a region of a file
+ *
+ * Mounts `length` bytes starting at byte `offset` of the archive file at the
+ * specified mount point. The archive format is auto-detected from the region
+ * content (DwarFS, ZIP, SquashFS).
+ *
+ * This allows mounting an image embedded inside a larger file (e.g., appended
+ * to an executable or stored alongside a manifest trailer) without copying
+ * the surrounding data.
+ *
+ * @param archive_path Path to the file containing the archive
+ * @param offset Byte offset of the archive start within the file
+ * @param length Length of the archive in bytes; 0 means "to end of file"
+ * @param mount_point Virtual mount point (e.g., "/__tebako__")
+ * @return 0 on success, -1 on error (check errno via tebako_get_errno())
+ *
+ * @note Only one filesystem can be mounted at a time
+ * @note Calling this while already mounted returns -1 with errno=EEXIST
+ * @note offset == 0 && length == 0 mounts the whole file directly (zero-copy);
+ *       any other region is read into memory owned by libtfs until
+ *       tebako_fs_unmount()
+ * @note Returns -1 with errno=ENOENT if the file does not exist, errno=EINVAL
+ *       if offset is past end of file or offset+length exceeds the file size
+ *
+ * @example
+ * @code
+ * // Mount a DwarFS image stored at offset 4096 of a package file
+ * if (tebako_fs_init_from_file_at("/app/pkg.bin", 4096, 0, "/__tebako__") == 0) {
+ *     // Filesystem ready for use
+ * }
+ * @endcode
+ */
+int tebako_fs_init_from_file_at(const char* archive_path, uint64_t offset, uint64_t length, const char* mount_point);
+
+/**
  * @brief Initialize libtfs from memory-embedded image
  *
  * Mounts an archive from memory (typically embedded in executable).
