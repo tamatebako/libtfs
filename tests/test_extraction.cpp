@@ -41,6 +41,8 @@
 #include <unistd.h>
 #include <sys/stat.h>
 
+#include "zip_test_helper.h"
+
 namespace fs = std::filesystem;
 
 /**
@@ -102,11 +104,11 @@ class ExtractionTest : public ::testing::Test {
         content_dir / "root.txt",
         fs::perms::owner_read | fs::perms::owner_write | fs::perms::group_read | fs::perms::others_read);  // 0644
 
-    // Create ZIP archive
+    // Create ZIP archive in-process (the system `zip` command and /dev/null
+    // are not available to native Windows binaries)
     archive_path = test_dir + "/test.zip";
-    std::string cmd = "cd " + test_dir + " && zip -r test.zip content/ >/dev/null 2>&1";
-    int result = std::system(cmd.c_str());
-    ASSERT_EQ(0, result) << "Failed to create test ZIP archive";
+    ASSERT_TRUE(tebako_test::create_zip_from_dir(archive_path, content_dir, "content"))
+        << "Failed to create test ZIP archive";
     ASSERT_TRUE(fs::exists(archive_path)) << "Archive not created: " << archive_path;
   }
 

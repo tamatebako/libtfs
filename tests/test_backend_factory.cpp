@@ -29,6 +29,7 @@
 
 #include <gtest/gtest.h>
 #include <tebako/fs/backend_factory.h>
+#include <filesystem>
 #include <fstream>
 #include <cstdlib>
 #include <string>
@@ -43,19 +44,18 @@ class BackendFactoryTest : public ::testing::Test {
  protected:
   void SetUp() override
   {
-    // Create test directory in /tmp
-    test_dir_ = std::string("/tmp/tebako_test_") + std::to_string(getpid());
-
-    // Create directory
-    std::string cmd = std::string("mkdir -p ") + test_dir_;
-    system(cmd.c_str());
+    // Create test directory under the OS temp dir (portable; /tmp + system()
+    // are not available to native Windows binaries)
+    test_dir_ = (std::filesystem::temp_directory_path() / (std::string("tebako_test_") + std::to_string(getpid())))
+                    .generic_string();
+    std::filesystem::create_directories(test_dir_);
   }
 
   void TearDown() override
   {
     // Clean up test directory
-    std::string cmd = std::string("rm -rf ") + test_dir_;
-    system(cmd.c_str());
+    std::error_code ec;
+    std::filesystem::remove_all(test_dir_, ec);
   }
 
   /**
