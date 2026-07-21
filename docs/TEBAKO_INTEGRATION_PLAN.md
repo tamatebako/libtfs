@@ -109,19 +109,19 @@ tebako_fs_init(data, size, mount_point)  # For embedded archives
 tebako_fs_unmount()
 
 # File Operations
-tebako_open(path, flags)
-tebako_read(fd, buffer, count)
-tebako_lseek(fd, offset, whence)
-tebako_close(fd)
+tebako_fs_open(path, flags)
+tebako_fs_read(fd, buffer, count)
+tebako_fs_lseek(fd, offset, whence)
+tebako_fs_close(fd)
 
 # Directory Operations
-tebako_opendir(path)
-tebako_readdir(dir)
-tebako_closedir(dir)
+tebako_fs_opendir(path)
+tebako_fs_readdir(dir)
+tebako_fs_closedir(dir)
 
 # Metadata
-tebako_stat(path, statbuf)
-tebako_fstat(fd, statbuf)
+tebako_fs_stat(path, statbuf)
+tebako_fs_fstat(fd, statbuf)
 
 # Utilities
 tebako_path_is_embedded(path)
@@ -207,7 +207,7 @@ module Tebako
     class EmbeddedFile
       def initialize(path, mode = 'r')
         @path = path
-        @fd = Bindings.tebako_open(path, Bindings::O_RDONLY)
+        @fd = Bindings.tebako_fs_open(path, Bindings::O_RDONLY)
         raise Errno::ENOENT, path if @fd < 0
       end
 
@@ -220,7 +220,7 @@ module Tebako
       end
 
       def close
-        Bindings.tebako_close(@fd) if @fd >= 0
+        Bindings.tebako_fs_close(@fd) if @fd >= 0
         @fd = -1
       end
     end
@@ -228,7 +228,7 @@ module Tebako
     class EmbeddedDir
       def initialize(path)
         @path = path
-        @handle = Bindings.tebako_opendir(path)
+        @handle = Bindings.tebako_fs_opendir(path)
         raise Errno::ENOENT, path if @handle.null?
       end
 
@@ -237,7 +237,7 @@ module Tebako
       end
 
       def close
-        Bindings.tebako_closedir(@handle) unless @handle.null?
+        Bindings.tebako_fs_closedir(@handle) unless @handle.null?
       end
     end
   end
@@ -329,7 +329,7 @@ module Tebako
 
       def embedded_exist?(path)
         stat_buf = FFI::MemoryPointer.new(:char, 144)
-        Bindings.tebako_stat(path, stat_buf) == 0
+        Bindings.tebako_fs_stat(path, stat_buf) == 0
       end
     end
 
@@ -376,16 +376,16 @@ module Tebako
       private
 
       def embedded_entries(path)
-        dir = Bindings.tebako_opendir(path)
+        dir = Bindings.tebako_fs_opendir(path)
         return [] if dir.null?
 
         entries = []
         loop do
-          entry = Bindings.tebako_readdir(dir)
+          entry = Bindings.tebako_fs_readdir(dir)
           break if entry.null?
           entries << entry.read_string
         end
-        Bindings.tebako_closedir(dir)
+        Bindings.tebako_fs_closedir(dir)
         entries
       end
     end

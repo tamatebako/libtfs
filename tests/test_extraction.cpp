@@ -353,7 +353,7 @@ TEST_F(ExtractionTest, Metadata_ModificationTimePreserved)
 
   // Get original mtime from archive
   struct stat st;
-  ASSERT_EQ(0, tebako_stat((mount_point + "/content/root.txt").c_str(), &st));
+  ASSERT_EQ(0, tebako_fs_stat((mount_point + "/content/root.txt").c_str(), &st));
   time_t original_mtime = st.st_mtime;
 
   ASSERT_EQ(0, tebako_fs_extract_all(extract_dir.c_str()));
@@ -454,13 +454,13 @@ TEST_F(ExtractionTest, Integration_ExtractAndCompare)
 
   for (const auto& rel_path : test_files) {
     // Read from VFS
-    int fd = tebako_open((mount_point + rel_path).c_str(), O_RDONLY);
+    int fd = tebako_fs_open((mount_point + rel_path).c_str(), O_RDONLY);
     ASSERT_GT(fd, 0) << "Failed to open: " << rel_path;
 
     std::vector<char> vfs_content(20000);
-    ssize_t vfs_size = tebako_read(fd, vfs_content.data(), vfs_content.size());
+    ssize_t vfs_size = tebako_fs_read(fd, vfs_content.data(), vfs_content.size());
     ASSERT_GE(vfs_size, 0);
-    tebako_close(fd);
+    tebako_fs_close(fd);
 
     // Read from disk
     std::string disk_path = extract_dir + rel_path;
