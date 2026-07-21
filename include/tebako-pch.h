@@ -69,6 +69,12 @@ typedef SSIZE_T ssize_t;
 #endif
 #else
 #include <dirent.h>
+// With the legacy API enabled, include/tebako/fs is on the include path, so the
+// <dirent.h> above resolves to the shadow include/tebako/fs/dirent.h (the
+// tebako_dirent buffer abstraction) rather than the system header. Pull in the
+// real system dirent.h as well (DIR, struct dirent, fdopendir, scandir, ...) —
+// the legacy POSIX shims (dir-io.cpp) call it directly.
+#include_next <dirent.h>
 #include <unistd.h>
 #include <sys/param.h>
 #include <sys/uio.h>

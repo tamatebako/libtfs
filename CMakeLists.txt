@@ -512,7 +512,12 @@ add_library(tfs STATIC
     "src/internal/memory_file_segment.cpp"
     "src/core/path.cpp"
     "src/core/config.cpp"
-    # Modern C API implementation (replaces old file-ctl/dir-ctl/file-io/dir-io)
+    # Modern C API implementation (successor to the legacy file-ctl/dir-ctl/file-io/dir-io
+    # quartet; the quartet is restored below under WITH_LEGACY_TEBAKO_API. The two layers
+    # export same-named extern "C" symbols -- tebako_open/tebako_read/tebako_lseek/
+    # tebako_close/tebako_stat/tebako_fstat/tebako_opendir/tebako_readdir/tebako_closedir --
+    # kept in separate objects so archive order (c_api first) keeps modern callers bound to
+    # this implementation; the modern API rename resolves the collision permanently)
     "src/c_api.cpp"
     "src/c_api/fs_context.cpp"
     "src/backend_registry.cpp"
@@ -531,11 +536,17 @@ add_library(tfs STATIC
   )
 
 # Legacy tebako C++ API (libdwarfs-wr lineage: tebako-io/memfs/fd/kfd, mount/fd
-# tables, cmdline, package descriptor). The modern API (c_api, backends,
-# fs_context, cli) has no dependency on this layer; it is skipped where
-# WITH_LEGACY_TEBAKO_API is OFF (standalone MinGW — see above).
+# tables, cmdline, package descriptor, and the restored POSIX-shim quartet
+# file-ctl/file-io/dir-ctl/dir-io implementing the legacy tebako_* libc surface).
+# The modern API (c_api, backends, fs_context, cli) has no dependency on this
+# layer; it is skipped where WITH_LEGACY_TEBAKO_API is OFF (standalone MinGW —
+# see above).
 if(WITH_LEGACY_TEBAKO_API)
   target_sources(tfs PRIVATE
+    "src/file-ctl.cpp"
+    "src/file-io.cpp"
+    "src/dir-ctl.cpp"
+    "src/dir-io.cpp"
     "src/dl-ctl.cpp"
     "src/tebako-cmdline.cpp"
     "src/tebako-io-helpers.cpp"
