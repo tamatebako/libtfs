@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.3] - 2026-07-22
+
+### Fixed
+- Exit-time static destruction order: singleton tables (memfs/mount/fd/kfd/dir) are now constructed at mount time so packaged binaries no longer abort with "Unhandled exception" (SIGABRT) on process exit.
+
 ## [0.12.2] - 2026-07-21
 
 ### Fixed
