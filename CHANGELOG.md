@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.2] - 2026-07-21
+
+### Fixed
+
+- **dwarfs-t backend bumped to `tebako-v0.14.1-11`**: fixes corrupt reads for
+  duplicate-content files (flatbuffers reader resolved deduplicated chunks to
+  the wrong inode). No libtfs API changes.
+
 ## [0.12.1] - 2026-07-21
 
 ### Added
