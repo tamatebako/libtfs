@@ -1,0 +1,431 @@
+# Copyright (c) 2021-2025 [Ribose Inc](https://www.ribose.com).
+# All rights reserved.
+# This file is a part of the Tebako project.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions
+# are met:
+# 1. Redistributions of source code must retain the above copyright
+#    notice, this list of conditions and the following disclaimer.
+# 2. Redistributions in binary form must reproduce the above copyright
+#    notice, this list of conditions and the following disclaimer in the
+#    documentation and/or other materials provided with the distribution.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+# ``AS IS'' AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED
+# TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+# PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDERS OR CONTRIBUTORS
+# BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+# CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+# SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+# INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+# CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+# ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+# POSSIBILITY OF SUCH DAMAGE.
+#
+# Release pipeline: fires on version tags (push: v*) and on manual dispatch
+# with a tag input (to re-cut a release on an existing tag). Per-platform
+# jobs reuse the CI job shape from {ubuntu,alpine,macos,windows}.yml verbatim
+# (pinned run-vcpkg, archive+installed caches, fixture regen, ctest), then
+# `cmake --install` and package:
+#   libtfs-<ver>-<platform>.tar.gz (or .zip on Windows): libtfs.a, public
+#     headers (include/tebako/**), CMake package config (lib/cmake/libtfs/)
+#   mkdwarfs-<platform>, tebakofs-<platform> (.exe on Windows)
+# The publish job attaches all of them plus SHA256SUMS to the GitHub release.
+
+name: Release
+
+on:
+  push:
+    tags: [ 'v*' ]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing tag to (re)cut the release for (e.g. v0.12.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  # Never cancel a release mid-publish
+  group: 'release-${{ inputs.tag || github.ref_name }}'
+  cancel-in-progress: false
+
+env:
+  # Pin from vcpkg-configuration.json default-registry baseline
+  VCPKG_COMMIT: 11bbc873e00e9e58d4e9dffb30b7a5493a030e0b
+  VCPKG_BINARY_SOURCES: clear;files,${{ github.workspace }}/.vcpkg-cache,readwrite
+
+jobs:
+  build:
+    name: ${{ matrix.platform }}
+    runs-on: ${{ matrix.os }}
+    container: ${{ matrix.container }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux-gnu-x86_64
+            os: ubuntu-latest
+          - platform: linux-gnu-arm64
+            os: ubuntu-24.04-arm
+          - platform: linux-musl-x86_64
+            os: ubuntu-latest
+            container: alpine:3.21
+          - platform: macos-arm64
+            os: macos-14
+          - platform: macos-x86_64
+            os: macos-15-intel
+          - platform: windows-ucrt64
+            os: windows-latest
+
+    steps:
+      - name: Bootstrap container (musl)
+        # Same bootstrap as alpine.yml: nodejs + gcompat/libc6-compat run the
+        # runner's Node actions on musl; GNU tar for the cache action; zip +
+        # squashfs-tools for tests/fixtures/regenerate_all.sh; mistletoe for
+        # the dwarfs tools man pages.
+        if: matrix.platform == 'linux-musl-x86_64'
+        run: |
+          apk --no-cache --upgrade add \
+            bash git curl ca-certificates zip unzip tar gzip \
+            nodejs gcompat libc6-compat \
+            build-base cmake ninja linux-headers perl python3 py3-pip \
+            autoconf automake libtool pkgconf squashfs-tools
+          pip3 install --break-system-packages --root-user-action ignore mistletoe
+
+      - name: Declare directory safe (musl)
+        if: matrix.platform == 'linux-musl-x86_64'
+        run: git config --global --add safe.directory "$(pwd)"
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+          ref: ${{ inputs.tag || github.ref_name }}
+
+      - name: Resolve release tag and version
+        shell: bash
+        run: |
+          TAG="${{ inputs.tag || github.ref_name }}"
+          echo "tag=$TAG" >> "$GITHUB_ENV"
+          echo "version=${TAG#v}" >> "$GITHUB_ENV"
+
+      - name: Install fixture tools (Linux)
+        # zip and mksquashfs are needed by tests/fixtures/regenerate_all.sh
+        if: runner.os == 'Linux' && matrix.platform != 'linux-musl-x86_64'
+        run: |
+          sudo apt-get -y update
+          sudo apt-get -y install zip squashfs-tools
+
+      - name: Install fixture tools (macOS)
+        if: runner.os == 'macOS'
+        run: brew install squashfs
+
+      - name: Install mistletoe (macOS)
+        # The vcpkg dwarfs build generates tools man pages with the mistletoe
+        # Python module; Homebrew python3 is PEP 668 externally-managed.
+        if: runner.os == 'macOS'
+        run: python3 -m pip install --break-system-packages mistletoe
+
+      - name: Setup vcpkg
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgGitCommitId: ${{ env.VCPKG_COMMIT }}
+          runVcpkgInstall: false
+
+      # Cache keys match the per-platform CI workflows so release jobs reuse
+      # the warm caches from main.
+      - name: Cache vcpkg package archives (Linux/macOS)
+        if: runner.os != 'Windows' && matrix.platform != 'linux-musl-x86_64'
+        uses: actions/cache@v4
+        with:
+          path: .vcpkg-cache
+          key: vcpkg-archives-${{ runner.os }}-${{ matrix.os }}-${{ hashFiles('vcpkg-configuration.json') }}
+          restore-keys: vcpkg-archives-${{ runner.os }}-${{ matrix.os }}-
+
+      - name: Cache vcpkg package archives (musl)
+        if: matrix.platform == 'linux-musl-x86_64'
+        uses: actions/cache@v4
+        with:
+          path: .vcpkg-cache
+          key: vcpkg-archives-alpine-musl-${{ runner.arch }}-${{ hashFiles('vcpkg-configuration.json') }}
+          restore-keys: vcpkg-archives-alpine-musl-${{ runner.arch }}-
+
+      - name: Cache vcpkg package archives (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/cache@v4
+        with:
+          path: .vcpkg-cache
+          key: vcpkg-archives-${{ runner.os }}-${{ runner.arch }}-mingw-${{ hashFiles('vcpkg-configuration.json') }}
+          restore-keys: vcpkg-archives-${{ runner.os }}-${{ runner.arch }}-mingw-
+
+      - name: Cache vcpkg installed tree (Linux/macOS)
+        if: runner.os != 'Windows' && matrix.platform != 'linux-musl-x86_64'
+        uses: actions/cache@v4
+        with:
+          path: build/vcpkg_installed
+          key: vcpkg-installed-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json', 'vcpkg-overlay/**') }}
+          restore-keys: vcpkg-installed-${{ runner.os }}-${{ runner.arch }}-
+
+      - name: Cache vcpkg installed tree (musl)
+        if: matrix.platform == 'linux-musl-x86_64'
+        uses: actions/cache@v4
+        with:
+          path: build/vcpkg_installed
+          key: vcpkg-installed-alpine-musl-${{ runner.arch }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json', 'vcpkg-overlay/**') }}
+          restore-keys: vcpkg-installed-alpine-musl-${{ runner.arch }}-
+
+      - name: Cache vcpkg installed tree (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/cache@v4
+        with:
+          path: build/vcpkg_installed
+          key: vcpkg-installed-${{ runner.os }}-${{ runner.arch }}-mingw-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json', 'vcpkg-overlay/**') }}
+          restore-keys: vcpkg-installed-${{ runner.os }}-${{ runner.arch }}-mingw-
+
+      - name: Setup MSYS2 (UCRT64 toolchain)
+        # Same setup as windows.yml: UCRT64 gcc/cmake/ninja plus zip and
+        # mksquashfs for fixture regen; dlfcn for include/tebako-pch.h;
+        # python-pip for mistletoe.
+        if: runner.os == 'Windows'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          path-type: minimal
+          update: true
+          install: >-
+            base-devel
+            git
+            tar
+            zip
+            squashfs-tools
+          pacboy: >-
+            toolchain:p
+            ninja:p
+            cmake:p
+            dlfcn:p
+            python-pip:p
+
+      - name: Install mistletoe (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: python3 -m pip install --break-system-packages mistletoe
+
+      - name: Configure (Linux/macOS/musl)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: cmake -S . -B build -G Ninja -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" -DCMAKE_BUILD_TYPE=Release
+
+      - name: Configure (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_TOOLCHAIN_FILE="$(cygpath -m "$VCPKG_ROOT")/scripts/buildsystems/vcpkg.cmake" \
+            -DVCPKG_TARGET_TRIPLET=x64-mingw-static \
+            -DVCPKG_INSTALLED_DIR="$(cygpath -m "$GITHUB_WORKSPACE")/build/vcpkg_installed" \
+            -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        if: runner.os != 'Windows'
+        shell: bash
+        run: cmake --build build --parallel
+
+      - name: Build (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: cmake --build build --parallel
+
+      - name: Regenerate test fixtures (Linux/macOS/musl)
+        # Same as CI: fixtures are gitignored; mkdwarfs comes from the vcpkg
+        # build; re-run configure to copy the fresh fixtures into the build tree.
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          bash tests/fixtures/regenerate_all.sh
+          MKDWARFS_DIR=$(dirname "$(ls build/vcpkg_installed/*/bin/mkdwarfs | head -1)")
+          PATH="$PWD/$MKDWARFS_DIR:$PATH" bash tests/fixtures/dwarfs/create_fixtures.sh
+          cmake -S . -B build -G Ninja -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" -DCMAKE_BUILD_TYPE=Release
+
+      - name: Regenerate test fixtures (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: |
+          bash tests/fixtures/regenerate_all.sh
+          MKDWARFS_DIR=$(dirname "$(ls build/vcpkg_installed/*/bin/mkdwarfs.exe | head -1)")
+          PATH="$PWD/$MKDWARFS_DIR:$PATH" bash tests/fixtures/dwarfs/create_fixtures.sh
+
+      - name: Refresh fixtures in build tree (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_TOOLCHAIN_FILE="$(cygpath -m "$VCPKG_ROOT")/scripts/buildsystems/vcpkg.cmake" \
+            -DVCPKG_TARGET_TRIPLET=x64-mingw-static \
+            -DVCPKG_INSTALLED_DIR="$(cygpath -m "$GITHUB_WORKSPACE")/build/vcpkg_installed" \
+            -DCMAKE_BUILD_TYPE=Release
+
+      - name: Run unit tests
+        if: runner.os != 'Windows'
+        shell: bash
+        run: ctest --test-dir build --output-on-failure --parallel
+
+      - name: Run unit tests (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: ctest --test-dir build --output-on-failure --parallel
+
+      - name: Install (Linux/macOS/musl)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: cmake --install build --prefix "$PWD/stage"
+
+      - name: Install (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: cmake --install build --prefix "$(cygpath -m "$GITHUB_WORKSPACE")/stage"
+
+      - name: Package (Linux/macOS/musl)
+        # The tarball mirrors the install prefix: lib/ (libtfs.a,
+        # libtebako_dirent_helper_c.a, CMake package config) + include/tebako.
+        # mkdwarfs/tebakofs ship as standalone binaries alongside.
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p artifacts
+          tar -C stage -czf "artifacts/libtfs-${{ env.version }}-${{ matrix.platform }}.tar.gz" lib include
+          cp stage/bin/mkdwarfs "artifacts/mkdwarfs-${{ matrix.platform }}"
+          cp stage/bin/tebakofs "artifacts/tebakofs-${{ matrix.platform }}"
+          chmod +x artifacts/mkdwarfs-* artifacts/tebakofs-*
+          echo "== binary linkage =="
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            otool -L stage/bin/mkdwarfs stage/bin/tebakofs || true
+          else
+            ldd stage/bin/mkdwarfs || true
+            ldd stage/bin/tebakofs || true
+          fi
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: |
+          set -euxo pipefail
+          mkdir -p artifacts
+          cp stage/bin/mkdwarfs.exe "artifacts/mkdwarfs-${{ matrix.platform }}.exe"
+          cp stage/bin/tebakofs.exe "artifacts/tebakofs-${{ matrix.platform }}.exe"
+          (cd stage && zip -qr "../artifacts/libtfs-${{ env.version }}-${{ matrix.platform }}.zip" lib include)
+          echo "== binary DLL dependencies =="
+          objdump -p stage/bin/mkdwarfs.exe | grep "DLL Name" || true
+          objdump -p stage/bin/tebakofs.exe | grep "DLL Name" || true
+
+      - name: Upload release assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-assets-${{ matrix.platform }}
+          path: artifacts/
+          if-no-files-found: error
+
+  publish:
+    name: Publish GitHub release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref_name }}
+
+      - name: Resolve release tag and version
+        run: |
+          TAG="${{ inputs.tag || github.ref_name }}"
+          echo "tag=$TAG" >> "$GITHUB_ENV"
+          echo "version=${TAG#v}" >> "$GITHUB_ENV"
+
+      - name: Download release assets
+        uses: actions/download-artifact@v4
+        with:
+          pattern: release-assets-*
+          path: dist
+          merge-multiple: true
+
+      - name: Verify asset set
+        # 6 platforms x 3 assets (libtfs package + mkdwarfs + tebakofs)
+        run: |
+          ls -l dist
+          count=$(find dist -maxdepth 1 -type f | wc -l)
+          if [ "$count" -ne 18 ]; then
+            echo "ERROR: expected 18 release assets, found $count"
+            exit 1
+          fi
+
+      - name: SHA256 checksums
+        run: |
+          chmod +x dist/mkdwarfs-* dist/tebakofs-*
+          (cd dist && sha256sum -- * | tee SHA256SUMS)
+
+      - name: Compose release notes
+        run: |
+          set -euo pipefail
+          VERSION="${{ env.version }}"
+          # Lift the version's section from CHANGELOG.md (literal header match)
+          awk -v hdr="## [$VERSION]" '
+            index($0, hdr) == 1 { found=1; next }
+            found && /^## \[/ { exit }
+            found { print }
+          ' CHANGELOG.md > notes.md
+          cat >> notes.md <<'EOF'
+
+          ---
+
+          ## Release artifacts
+
+          Per-platform packages (platform ids: `linux-gnu-x86_64`, `linux-gnu-arm64`,
+          `linux-musl-x86_64`, `macos-arm64`, `macos-x86_64`, `windows-ucrt64`):
+
+          - `libtfs-<version>-<platform>.tar.gz` (`.zip` on Windows):
+            - `lib/libtfs.a` — the libtfs static library
+            - `lib/libtebako_dirent_helper_c.a` — C helper archive (link dependency
+              of libtfs where the legacy tebako API is built; not shipped on Windows)
+            - `include/tebako/**` — public headers
+            - `lib/cmake/libtfs/` — CMake package config (`find_package(libtfs)`)
+          - `mkdwarfs-<platform>` and `tebakofs-<platform>` — standalone tools
+            (`.exe` suffix on `windows-ucrt64`)
+
+          Linkage notes:
+
+          - `windows-ucrt64` (MSYS2 UCRT64, `x64-mingw-static`) and
+            `linux-musl-x86_64` (Alpine): statically linked.
+          - `linux-gnu-*`: static C/C++ dependencies, dynamic glibc/libstdc++
+            (built on `ubuntu-latest` / `ubuntu-24.04-arm`).
+          - `macos-*`: static C/C++ dependencies, dynamic system libraries
+            (built on `macos-14` / `macos-15-intel`).
+
+          The Windows package ships the modern C/C++ API only (the legacy tebako
+          API needs the ruby build context); the SquashFS backend is POSIX-only
+          and is not built on Windows.
+
+          SHA-256 checksums for all artifacts: see the `SHA256SUMS` asset.
+          EOF
+          cat notes.md
+
+      - name: Create or update GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="${{ env.tag }}"
+          PRERELEASE_FLAG=""
+          case "$TAG" in
+            *-*) PRERELEASE_FLAG="--prerelease" ;;
+          esac
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release edit "$TAG" --title "$TAG" --notes-file notes.md
+          else
+            gh release create "$TAG" --title "$TAG" --notes-file notes.md $PRERELEASE_FLAG
+          fi
+          gh release upload "$TAG" dist/* --clobber
+          gh release view "$TAG"
