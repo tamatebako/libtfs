@@ -823,21 +823,25 @@ extern "C" int tebako_fs_extract_all(const char* dest_path)
             }
           }
 
-          // Set directory permissions
+          // Set directory permissions (best effort: platform support for
+          // POSIX metadata on extracted files varies, e.g. Windows cannot
+          // set mtimes on directories via utime())
           auto perms_result = g_filesystem->permissions(entry_vfs_path);
           if (perms_result.is_ok()) {
             mode_t perms = perms_result.unwrap();
+            std::error_code ec;
             std::filesystem::permissions(entry_disk_path, static_cast<std::filesystem::perms>(perms),
-                                         std::filesystem::perm_options::replace);
+                                         std::filesystem::perm_options::replace, ec);
           }
 
-          // Set directory modification time
+          // Set directory modification time (best effort, see above)
           auto mtime_result = g_filesystem->modification_time(entry_vfs_path);
           if (mtime_result.is_ok()) {
             time_t mtime = mtime_result.unwrap();
             auto sys_time = std::chrono::system_clock::from_time_t(mtime);
             auto file_time = std::chrono::file_clock::from_sys(sys_time);
-            std::filesystem::last_write_time(entry_disk_path, file_time);
+            std::error_code ec;
+            std::filesystem::last_write_time(entry_disk_path, file_time, ec);
           }
 
           // Recursively extract subdirectory
@@ -878,21 +882,23 @@ extern "C" int tebako_fs_extract_all(const char* dest_path)
           }
           out.close();
 
-          // Set file permissions
+          // Set file permissions (best effort, see directory branch above)
           auto perms_result = g_filesystem->permissions(entry_vfs_path);
           if (perms_result.is_ok()) {
             mode_t perms = perms_result.unwrap();
+            std::error_code ec;
             std::filesystem::permissions(entry_disk_path, static_cast<std::filesystem::perms>(perms),
-                                         std::filesystem::perm_options::replace);
+                                         std::filesystem::perm_options::replace, ec);
           }
 
-          // Set file modification time
+          // Set file modification time (best effort, see directory branch above)
           auto mtime_result = g_filesystem->modification_time(entry_vfs_path);
           if (mtime_result.is_ok()) {
             time_t mtime = mtime_result.unwrap();
             auto sys_time = std::chrono::system_clock::from_time_t(mtime);
             auto file_time = std::chrono::file_clock::from_sys(sys_time);
-            std::filesystem::last_write_time(entry_disk_path, file_time);
+            std::error_code ec;
+            std::filesystem::last_write_time(entry_disk_path, file_time, ec);
           }
         }
       }
