@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.1] - 2026-07-21
+
+### Added
+
+- **Legacy tebako shim quartet restored** (`src/file-io.cpp`, `src/file-ctl.cpp`,
+  `src/dir-io.cpp`, `src/dir-ctl.cpp`): the tebako-facing POSIX surface
+  (`tebako_open`, `tebako_mkdir`, `tebako_pread`, `tebako_unlink`, …) is built
+  again where `WITH_LEGACY_TEBAKO_API` is ON. (`tebako_eaccess` remains
+  glibc-only and is not provided on macOS.)
+
+### Changed
+
+- **Modern C API namespaced `tebako_fs_*`**: the 9 modern C API functions that
+  collided with the restored legacy shims were renamed, so the legacy and
+  modern APIs can now be linked into one binary.
+- **Release artifacts are SquashFS-free**: packages are built with
+  `WITH_SQUASHFS=OFF` (dwarfs + zip backends only) so consumers are not forced
+  to link LGPL squashfs-tools-ng. POSIX source builds may still opt into the
+  SquashFS backend with `-DWITH_SQUASHFS=ON`.
+
 ## [0.12.0] - 2026-07-21
 
 First release as **libtfs** (Tebako File System), formerly `libdwarfs-wr`.
@@ -207,6 +227,7 @@ None reported for v0.12.0 at time of release.
 
 ---
 
-[Unreleased]: https://github.com/tamatebako/libtfs/compare/v0.12.0...HEAD
+[Unreleased]: https://github.com/tamatebako/libtfs/compare/v0.12.1...HEAD
+[0.12.1]: https://github.com/tamatebako/libtfs/compare/v0.12.0...v0.12.1
 [0.12.0]: https://github.com/tamatebako/libtfs/releases/tag/v0.12.0
 [0.11.0]: https://github.com/tamatebako/libtfs/releases/tag/v0.11.0

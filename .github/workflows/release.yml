@@ -217,17 +217,22 @@ jobs:
       - name: Configure (Linux/macOS/musl)
         if: runner.os != 'Windows'
         shell: bash
-        run: cmake -S . -B build -G Ninja -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" -DCMAKE_BUILD_TYPE=Release
+        # WITH_SQUASHFS=OFF: tebako-facing packages must not force LGPL
+        # libsquashfs onto consumers; SquashFS remains opt-in via source builds.
+        run: cmake -S . -B build -G Ninja -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" -DCMAKE_BUILD_TYPE=Release -DWITH_SQUASHFS=OFF
 
       - name: Configure (Windows)
         if: runner.os == 'Windows'
         shell: msys2 {0}
+        # WITH_SQUASHFS=OFF for the same reason as above (already forced OFF on
+        # WIN32; spelled out so the artifact contract is explicit).
         run: |
           cmake -S . -B build -G Ninja \
             -DCMAKE_TOOLCHAIN_FILE="$(cygpath -m "$VCPKG_ROOT")/scripts/buildsystems/vcpkg.cmake" \
             -DVCPKG_TARGET_TRIPLET=x64-mingw-static \
             -DVCPKG_INSTALLED_DIR="$(cygpath -m "$GITHUB_WORKSPACE")/build/vcpkg_installed" \
-            -DCMAKE_BUILD_TYPE=Release
+            -DCMAKE_BUILD_TYPE=Release \
+            -DWITH_SQUASHFS=OFF
 
       - name: Build
         if: runner.os != 'Windows'
@@ -248,7 +253,7 @@ jobs:
           bash tests/fixtures/regenerate_all.sh
           MKDWARFS_DIR=$(dirname "$(ls build/vcpkg_installed/*/bin/mkdwarfs | head -1)")
           PATH="$PWD/$MKDWARFS_DIR:$PATH" bash tests/fixtures/dwarfs/create_fixtures.sh
-          cmake -S . -B build -G Ninja -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" -DCMAKE_BUILD_TYPE=Release
+          cmake -S . -B build -G Ninja -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" -DCMAKE_BUILD_TYPE=Release -DWITH_SQUASHFS=OFF
 
       - name: Regenerate test fixtures (Windows)
         if: runner.os == 'Windows'
@@ -266,7 +271,8 @@ jobs:
             -DCMAKE_TOOLCHAIN_FILE="$(cygpath -m "$VCPKG_ROOT")/scripts/buildsystems/vcpkg.cmake" \
             -DVCPKG_TARGET_TRIPLET=x64-mingw-static \
             -DVCPKG_INSTALLED_DIR="$(cygpath -m "$GITHUB_WORKSPACE")/build/vcpkg_installed" \
-            -DCMAKE_BUILD_TYPE=Release
+            -DCMAKE_BUILD_TYPE=Release \
+            -DWITH_SQUASHFS=OFF
 
       - name: Run unit tests
         if: runner.os != 'Windows'
@@ -397,9 +403,9 @@ jobs:
 
           Linkage notes (from the shipped binaries' `ldd`/`objdump` output):
 
-          - All C/C++ third-party dependencies (dwarfs-t, libzip,
-            squashfs-tools-ng, fmt, jemalloc, Boost, …) are statically linked
-            into the binaries on every platform.
+          - All C/C++ third-party dependencies (dwarfs-t, libzip, fmt,
+            jemalloc, Boost, …) are statically linked into the binaries on
+            every platform.
           - `linux-gnu-*`: dynamic glibc/libstdc++ (built on ubuntu-24.04;
             requires glibc ≥ 2.38 at runtime, e.g. Ubuntu 24.04 or newer).
           - `linux-musl-x86_64`: dynamic musl libc + libstdc++/libgcc_s (built
@@ -411,8 +417,12 @@ jobs:
             for mkdwarfs); run inside MSYS2 UCRT64 or ship those DLLs alongside.
 
           The Windows package ships the modern C/C++ API only (the legacy tebako
-          API needs the ruby build context); the SquashFS backend is POSIX-only
-          and is not built on Windows.
+          API needs the ruby build context).
+
+          SquashFS: shipped artifacts are built `WITH_SQUASHFS=OFF` — the
+          backends are dwarfs + zip only, so consumers are not forced to link
+          LGPL squashfs-tools-ng. POSIX source builds may opt into the SquashFS
+          backend (LGPL) with `-DWITH_SQUASHFS=ON`.
 
           SHA-256 checksums for all artifacts: see the `SHA256SUMS` asset.
           EOF
