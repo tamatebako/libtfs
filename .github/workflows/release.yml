@@ -392,17 +392,23 @@ jobs:
               of libtfs where the legacy tebako API is built; not shipped on Windows)
             - `include/tebako/**` — public headers
             - `lib/cmake/libtfs/` — CMake package config (`find_package(libtfs)`)
-          - `mkdwarfs-<platform>` and `tebakofs-<platform>` — standalone tools
+          - `mkdwarfs-<platform>` and `tebakofs-<platform>` — command-line tools
             (`.exe` suffix on `windows-ucrt64`)
 
-          Linkage notes:
+          Linkage notes (from the shipped binaries' `ldd`/`objdump` output):
 
-          - `windows-ucrt64` (MSYS2 UCRT64, `x64-mingw-static`) and
-            `linux-musl-x86_64` (Alpine): statically linked.
-          - `linux-gnu-*`: static C/C++ dependencies, dynamic glibc/libstdc++
-            (built on `ubuntu-latest` / `ubuntu-24.04-arm`).
-          - `macos-*`: static C/C++ dependencies, dynamic system libraries
-            (built on `macos-14` / `macos-15-intel`).
+          - All C/C++ third-party dependencies (dwarfs-t, libzip,
+            squashfs-tools-ng, fmt, jemalloc, Boost, …) are statically linked
+            into the binaries on every platform.
+          - `linux-gnu-*`: dynamic glibc/libstdc++ (built on ubuntu-24.04;
+            requires glibc ≥ 2.38 at runtime, e.g. Ubuntu 24.04 or newer).
+          - `linux-musl-x86_64`: dynamic musl libc + libstdc++/libgcc_s (built
+            on Alpine 3.21; on a minimal Alpine install: `apk add libstdc++ libgcc`).
+          - `macos-*`: dynamic macOS system libraries only (libSystem, libc++;
+            built on `macos-14` / `macos-15-intel`).
+          - `windows-ucrt64`: dynamic UCRT + MSYS2 runtime DLLs
+            (`libgcc_s_seh-1.dll`, plus `libwinpthread-1.dll`/`libstdc++-6.dll`
+            for mkdwarfs); run inside MSYS2 UCRT64 or ship those DLLs alongside.
 
           The Windows package ships the modern C/C++ API only (the legacy tebako
           API needs the ruby build context); the SquashFS backend is POSIX-only
