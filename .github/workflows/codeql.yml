@@ -29,9 +29,10 @@ on:
   schedule:
     - cron: "0 3 * * 0"
   push:
-    branches: [ main, stage-1-modernize-libtfs ]
+    branches: [ main ]
   pull_request:
     branches: [ main ]
+  workflow_dispatch:
 
 concurrency:
   group: '${{ github.workflow }}-${{ github.job }}-${{ github.event_name }}-${{ github.head_ref || github.ref_name }}'
@@ -40,6 +41,7 @@ concurrency:
 env:
   # Pin from vcpkg-configuration.json default-registry baseline
   VCPKG_COMMIT: 11bbc873e00e9e58d4e9dffb30b7a5493a030e0b
+  VCPKG_BINARY_SOURCES: clear;files,${{ github.workspace }}/.vcpkg-cache,readwrite
 
 jobs:
   analyze:
@@ -73,6 +75,14 @@ jobs:
       with:
         vcpkgGitCommitId: ${{ env.VCPKG_COMMIT }}
         runVcpkgInstall: false
+
+    # Per-package ABI cache: port bumps rebuild only the changed port, not the world.
+    - name: Cache vcpkg package archives
+      uses: actions/cache@v4
+      with:
+        path: .vcpkg-cache
+        key: vcpkg-archives-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('vcpkg-configuration.json') }}
+        restore-keys: vcpkg-archives-${{ runner.os }}-${{ runner.arch }}-
 
     - name: Cache vcpkg installed tree
       uses: actions/cache@v4
