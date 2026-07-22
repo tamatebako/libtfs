@@ -109,13 +109,16 @@ jobs:
           # shipped archives never reference glibc symbols newer than the
           # tebako baseline (host runners are glibc 2.38+; packages built
           # there fail to link on ubuntu-20.04, e.g. __isoc23_strtol).
-          # The tag tracks the ci-containers publish with the C++20 toolchain.
+          # Pinned to the ci-containers v0.15.0-rc.1 publish (C++20 toolchain);
+          # per-arch sha tags because the rc manifest job did not produce a
+          # multi-arch semver index (follow-up: fix manifest plumbing for the
+          # 0.15.0 proper publish).
           - platform: linux-gnu-x86_64
             os: ubuntu-latest
-            container: ghcr.io/tamatebako/tebako-ubuntu-20.04:0.15.0-rc.1
+            container: ghcr.io/tamatebako/tebako-ubuntu-20.04:sha-59b1b86-amd64
           - platform: linux-gnu-arm64
             os: ubuntu-24.04-arm
-            container: ghcr.io/tamatebako/tebako-ubuntu-20.04:0.15.0-rc.1
+            container: ghcr.io/tamatebako/tebako-ubuntu-20.04:sha-59b1b86-arm64
           - platform: linux-musl-x86_64
             os: ubuntu-latest
             container: alpine:3.21
