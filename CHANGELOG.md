@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- tebakofs package tooling for tebako three-part packages (bootstrap + image slots + `tpkg` manifest trailer): `bundle`, `unbundle`, `reassemble`, `insert-image`, `remove-image`, `set-runtime`, `mkimage` (mkdwarfs wrapper; dwarfs only — the zip backend is read-only), and `tebakofs info` now detects and dumps a `tpkg` trailer while keeping archive-info behavior for plain image files.
 - Release pipeline: per-platform `libtfs-deps-<version>-<platform>.tar.gz` package carrying the exact transitive static libraries consumers link against (dwarfs reader set, flatbuffers, libzip, fmt, xxhash, zstd/lz4/lzma/brotli/z/bzip2, boost filesystem+chrono; plus OpenSSL on Linux/Windows — macOS consumers link brew/system OpenSSL) together with those ports' CMake package configs. A `libtfs` package plus the matching `libtfs-deps` package are fully self-contained: no vcpkg needed downstream.
 
 ## [0.12.6] - 2026-07-22

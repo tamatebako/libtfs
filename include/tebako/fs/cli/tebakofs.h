@@ -35,6 +35,9 @@ struct CLIOptions {
   bool recursive = false;    // For ls -r
   bool long_format = false;  // For ls -l
   std::string dest_dir;      // For extract --dest
+  std::string runtime_ref;   // For bundle --runtime-ref
+  bool lean = false;         // For bundle --lean (TPKG_FLAG_LEAN)
+  int launcher_abi = 0;      // For bundle --launcher-abi
 };
 
 /**
@@ -108,6 +111,53 @@ class TebakofsCLI {
    * @brief Search for files matching pattern
    */
   int cmd_find(const std::string& archive, const std::string& pattern, const CLIOptions& opts);
+
+  /**
+   * @brief Assemble a three-part package (bootstrap + images + tpkg trailer)
+   *
+   * @param bootstrap Path to the bootstrap/runtime executable
+   * @param images Image specs "<img[:mountpoint]>" (at least one)
+   * @param output Output binary path
+   * @param opts Command options (runtime_ref, package_flags, launcher_abi)
+   * @return Exit code
+   */
+  int cmd_bundle(const std::string& bootstrap,
+                 const std::vector<std::string>& images,
+                 const std::string& output,
+                 const CLIOptions& opts);
+
+  /**
+   * @brief Decompose a three-part package into a directory
+   */
+  int cmd_unbundle(const std::string& binary, const std::string& output_dir, const CLIOptions& opts);
+
+  /**
+   * @brief Rebuild a binary from an unbundled directory
+   */
+  int cmd_reassemble(const std::string& input_dir, const std::string& output, const CLIOptions& opts);
+
+  /**
+   * @brief Append an image slot to a package (in place)
+   */
+  int cmd_insert_image(const std::string& binary, const std::string& image_spec, const CLIOptions& opts);
+
+  /**
+   * @brief Remove an image slot from a package (in place)
+   */
+  int cmd_remove_image(const std::string& binary, uint32_t slot_index, const CLIOptions& opts);
+
+  /**
+   * @brief Replace the bootstrap (executable) portion of a package (in place)
+   */
+  int cmd_set_runtime(const std::string& binary, const std::string& runtime_file, const CLIOptions& opts);
+
+  /**
+   * @brief Create a filesystem image from a directory (wraps mkdwarfs)
+   */
+  int cmd_mkimage(const std::string& format,
+                  const std::string& source_dir,
+                  const std::string& output,
+                  const CLIOptions& opts);
 
   /**
    * @brief Show help information

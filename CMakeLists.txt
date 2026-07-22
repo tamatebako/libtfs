@@ -1006,6 +1006,27 @@ if (WITH_TESTS)
   )
   gtest_add_tests(TARGET test_tpkg)
 
+  # tebakofs package tooling tests (bundle/unbundle/reassemble, granular ops,
+  # mkimage). Compiles the package module directly (no tfs link) and also
+  # exercises the built tebakofs binary end-to-end via subprocess.
+  add_executable(test_package
+    "tests/test_package.cpp"
+    "src/cli/package.cpp"
+  )
+  target_include_directories(test_package PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+  )
+  target_link_libraries(test_package PRIVATE
+    GTest::gtest
+    GTest::gtest_main
+  )
+  target_compile_definitions(test_package PRIVATE
+    TEBAKOFS_BINARY="$<TARGET_FILE:tebakofs>"
+    TEBAKO_TEST_MKDWARFS="${MKDWARFS}"
+  )
+  add_dependencies(test_package tebakofs)
+  gtest_add_tests(TARGET test_package)
+
   # Unified interface tests
   add_executable(test_unified_interface
     "tests/test_unified_interface.cpp"
@@ -1033,12 +1054,16 @@ endif(WITH_TESTS)
 add_executable(tebakofs
   "src/tebakofs_main.cpp"
   "src/cli/tebakofs.cpp"
+  "src/cli/package.cpp"
   "include/tebako/fs/cli/tebakofs.h"
+  "include/tebako/fs/cli/package.h"
 )
 
 target_include_directories(tebakofs PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/include
-  ${CMAKE_CURRENT_SOURCE_DIR}/include/tebako/fs
+  # NOTE: do not add include/tebako/fs here — with that dir on the include
+  # path, `#include <io.h>` resolves to libtfs's own include/tebako/fs/io.h
+  # and shadows the system header MinGW needs for _read/_write (tpkg.h).
 )
 
 target_link_libraries(tebakofs PRIVATE
