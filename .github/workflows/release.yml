@@ -33,9 +33,11 @@
 #   libtfs-deps-<ver>-<platform>.tar.gz: the transitive static libs a consumer
 #     links against (dwarfs reader set, flatbuffers, zip, fmt, xxhash, zstd,
 #     lz4, lzma, brotli, z, bzip2, boost filesystem+chrono; plus OpenSSL on
-#     Linux/Windows) with their CMake package configs — the libtfs package
-#     plus the matching libtfs-deps package are fully self-contained, so
-#     consumers need no vcpkg downstream
+#     Linux/Windows) with their CMake package configs — and a curated include/
+#     tree (DEPS_HEADER_DIRS/DEPS_HEADER_FILES + the boost subset) so consumers
+#     can also compile against the shipped archives (e.g. native gem
+#     extensions). The libtfs package plus the matching libtfs-deps package
+#     are fully self-contained, so consumers need no vcpkg downstream
 #   mkdwarfs-<platform>, tebakofs-<platform> (.exe on Windows)
 # The publish job attaches all of them plus SHA256SUMS to the GitHub release.
 
@@ -81,6 +83,18 @@ env:
     dwarfs flatbuffers libzip fmt xxhash zstd lz4 liblzma unofficial-brotli
     brotli zlib bzip2 boost-filesystem boost-chrono boost_filesystem
     boost_chrono
+  # Curated headers shipped under include/ so consumers can compile against
+  # the shipped archives (native gem extensions need e.g. <brotli/encode.h>;
+  # in the prebuilt world nothing else exposes these headers). Dirs are
+  # copied wholesale; a missing entry fails the step like a missing lib.
+  # Boost is NOT listed here: it is scoped separately to the transitive
+  # include closure of boost_filesystem + boost_chrono (the whole boost/
+  # tree is ~100 MB of headers consumers never include).
+  DEPS_HEADER_DIRS: >-
+    brotli fmt flatbuffers lzma
+  DEPS_HEADER_FILES: >-
+    zstd.h zstd_errors.h zdict.h lz4.h lz4hc.h lz4frame.h
+    lzma.h zlib.h zconf.h bzlib.h zip.h zipconf.h xxhash.h xxh3.h
 
 jobs:
   build:
@@ -354,10 +368,12 @@ jobs:
 
       - name: Package deps (Linux/macOS/musl)
         # libtfs-deps-<ver>-<platform>.tar.gz: the transitive static libs a
-        # consumer links against (see DEPS_LIBS), so libtfs + libtfs-deps is
-        # self-contained — no vcpkg downstream. Fails loudly when an expected
-        # lib is missing. macOS ships no libcrypto/libssl (brew/system OpenSSL
-        # at link time); Linux and musl include them.
+        # consumer links against (see DEPS_LIBS) plus a curated include/ tree
+        # to compile against them (see DEPS_HEADER_DIRS/DEPS_HEADER_FILES and
+        # the boost subset below), so libtfs + libtfs-deps is self-contained —
+        # no vcpkg downstream. Fails loudly when an expected lib or header is
+        # missing. macOS ships no libcrypto/libssl (brew/system OpenSSL at
+        # link time); Linux and musl include them.
         if: runner.os != 'Windows'
         shell: bash
         run: |
@@ -399,13 +415,75 @@ jobs:
               cp -R "$VILIB/cmake/$s" deps-stage/lib/cmake/
             fi
           done
-          tar -C deps-stage -czf "artifacts/libtfs-deps-${{ env.version }}-${{ matrix.platform }}.tar.gz" lib share
+          # Curated headers (DEPS_HEADER_DIRS / DEPS_HEADER_FILES) staged
+          # under include/ so consumers can also compile against the shipped
+          # archives (gem native extensions need e.g. <brotli/encode.h>).
+          VIINC="$VIROOT/include"
+          mkdir -p deps-stage/include
+          for d in $DEPS_HEADER_DIRS; do
+            if [ ! -d "$VIINC/$d" ]; then
+              echo "ERROR: expected dep header dir missing: $VIINC/$d" >&2; exit 1
+            fi
+            cp -R "$VIINC/$d" deps-stage/include/
+          done
+          for h in $DEPS_HEADER_FILES; do
+            if [ ! -f "$VIINC/$h" ]; then
+              echo "ERROR: expected dep header missing: $VIINC/$h" >&2; exit 1
+            fi
+            cp "$VIINC/$h" deps-stage/include/
+          done
+          # boost: stage only the transitive #include closure of
+          # boost_filesystem + boost_chrono — the whole boost/ tree is
+          # ~100 MB of headers consumers never include. MPL's preprocessed
+          # headers are seeded explicitly: they are pulled in via
+          # macro-computed includes (BOOST_PP_STRINGIZE(...)) that textual
+          # scanning cannot follow.
+          normalize_boost() {
+            local p="$1"
+            while [[ "$p" == *"/./"* || "$p" == *"/../"* || "$p" == ../* || "$p" == ./* ]]; do
+              p=$(printf '%s' "$p" | sed -E -e 's|(^|/)\./|\1|g' -e 's|[^/]+/\.\./||' -e 's|^\.\./||')
+            done
+            printf '%s' "$p"
+          }
+          stage_boost() {
+            local rel="$1" src dst inc sub
+            src="$VIINC/$rel"
+            dst="deps-stage/include/$rel"
+            if [ -d "$src" ]; then
+              for sub in "$src"/*; do
+                [ -e "$sub" ] || continue
+                stage_boost "$rel/$(basename "$sub")"
+              done
+            elif [ -f "$src" ] && [ ! -f "$dst" ]; then
+              mkdir -p "$(dirname "$dst")"
+              cp "$src" "$dst"
+              sed -n -E 's|^[[:space:]]*#[[:space:]]*include[[:space:]]*[<"](boost/[^">]+)[">].*|\1|p' "$dst" |
+                while read -r inc; do stage_boost "$inc"; done
+              sed -n -E 's|^[[:space:]]*#[[:space:]]*include[[:space:]]*"([^">]+)".*|\1|p' "$dst" |
+                while read -r inc; do
+                  case "$inc" in
+                    boost/*) : ;;
+                    *) inc=$(normalize_boost "$(dirname "$rel")/$inc") ;;
+                  esac
+                  [ -f "$VIINC/$inc" ] && stage_boost "$inc"
+                done
+            fi
+          }
+          for seed in boost/filesystem.hpp boost/filesystem boost/chrono.hpp boost/chrono boost/mpl/aux_/preprocessed; do
+            if [ ! -e "$VIINC/$seed" ]; then
+              echo "ERROR: expected boost seed missing: $VIINC/$seed" >&2; exit 1
+            fi
+            stage_boost "$seed"
+          done
+          du -sh deps-stage/include deps-stage/include/boost
+          tar -C deps-stage -czf "artifacts/libtfs-deps-${{ env.version }}-${{ matrix.platform }}.tar.gz" lib share include
           tar -tzf "artifacts/libtfs-deps-${{ env.version }}-${{ matrix.platform }}.tar.gz"
 
       - name: Package deps (Windows)
-        # Same deps contract as POSIX (shipped as .tar.gz, not .zip: MSYS2 tar
-        # handles it and the asset name stays uniform across platforms);
-        # OpenSSL (libcrypto/libssl) is included on Windows.
+        # Same deps contract as POSIX — libs and the curated include/ tree
+        # (shipped as .tar.gz, not .zip: MSYS2 tar handles it and the asset
+        # name stays uniform across platforms); OpenSSL (libcrypto/libssl)
+        # is included on Windows.
         if: runner.os == 'Windows'
         shell: msys2 {0}
         run: |
@@ -443,7 +521,68 @@ jobs:
               cp -R "$VILIB/cmake/$s" deps-stage/lib/cmake/
             fi
           done
-          tar -C deps-stage -czf "artifacts/libtfs-deps-${{ env.version }}-${{ matrix.platform }}.tar.gz" lib share
+          # Curated headers (DEPS_HEADER_DIRS / DEPS_HEADER_FILES) staged
+          # under include/ so consumers can also compile against the shipped
+          # archives (gem native extensions need e.g. <brotli/encode.h>).
+          VIINC="$VIROOT/include"
+          mkdir -p deps-stage/include
+          for d in $DEPS_HEADER_DIRS; do
+            if [ ! -d "$VIINC/$d" ]; then
+              echo "ERROR: expected dep header dir missing: $VIINC/$d" >&2; exit 1
+            fi
+            cp -R "$VIINC/$d" deps-stage/include/
+          done
+          for h in $DEPS_HEADER_FILES; do
+            if [ ! -f "$VIINC/$h" ]; then
+              echo "ERROR: expected dep header missing: $VIINC/$h" >&2; exit 1
+            fi
+            cp "$VIINC/$h" deps-stage/include/
+          done
+          # boost: stage only the transitive #include closure of
+          # boost_filesystem + boost_chrono — the whole boost/ tree is
+          # ~100 MB of headers consumers never include. MPL's preprocessed
+          # headers are seeded explicitly: they are pulled in via
+          # macro-computed includes (BOOST_PP_STRINGIZE(...)) that textual
+          # scanning cannot follow.
+          normalize_boost() {
+            local p="$1"
+            while [[ "$p" == *"/./"* || "$p" == *"/../"* || "$p" == ../* || "$p" == ./* ]]; do
+              p=$(printf '%s' "$p" | sed -E -e 's|(^|/)\./|\1|g' -e 's|[^/]+/\.\./||' -e 's|^\.\./||')
+            done
+            printf '%s' "$p"
+          }
+          stage_boost() {
+            local rel="$1" src dst inc sub
+            src="$VIINC/$rel"
+            dst="deps-stage/include/$rel"
+            if [ -d "$src" ]; then
+              for sub in "$src"/*; do
+                [ -e "$sub" ] || continue
+                stage_boost "$rel/$(basename "$sub")"
+              done
+            elif [ -f "$src" ] && [ ! -f "$dst" ]; then
+              mkdir -p "$(dirname "$dst")"
+              cp "$src" "$dst"
+              sed -n -E 's|^[[:space:]]*#[[:space:]]*include[[:space:]]*[<"](boost/[^">]+)[">].*|\1|p' "$dst" |
+                while read -r inc; do stage_boost "$inc"; done
+              sed -n -E 's|^[[:space:]]*#[[:space:]]*include[[:space:]]*"([^">]+)".*|\1|p' "$dst" |
+                while read -r inc; do
+                  case "$inc" in
+                    boost/*) : ;;
+                    *) inc=$(normalize_boost "$(dirname "$rel")/$inc") ;;
+                  esac
+                  [ -f "$VIINC/$inc" ] && stage_boost "$inc"
+                done
+            fi
+          }
+          for seed in boost/filesystem.hpp boost/filesystem boost/chrono.hpp boost/chrono boost/mpl/aux_/preprocessed; do
+            if [ ! -e "$VIINC/$seed" ]; then
+              echo "ERROR: expected boost seed missing: $VIINC/$seed" >&2; exit 1
+            fi
+            stage_boost "$seed"
+          done
+          du -sh deps-stage/include deps-stage/include/boost
+          tar -C deps-stage -czf "artifacts/libtfs-deps-${{ env.version }}-${{ matrix.platform }}.tar.gz" lib share include
           tar -tzf "artifacts/libtfs-deps-${{ env.version }}-${{ matrix.platform }}.tar.gz"
 
       - name: Upload release assets
@@ -526,15 +665,23 @@ jobs:
             `libcrypto`/`libssl` on Linux and Windows (macOS consumers link
             brew/system OpenSSL at link time) — with the CMake package configs
             of those ports under `share/` (or `lib/cmake/` where a port installs
-            there), so `find_dependency` can still resolve.
+            there), so `find_dependency` can still resolve, and a curated
+            header set under `include/` (`brotli/`, `zstd.h`/`zstd_errors.h`/
+            `zdict.h`, `lz4*.h`, `lzma.h` + `lzma/`, `zlib.h`/`zconf.h`,
+            `bzlib.h`, `fmt/`, `flatbuffers/`, `zip.h`/`zipconf.h`,
+            `xxhash.h`/`xxh3.h`, plus the `boost_filesystem`/`boost_chrono`
+            subset of `boost/`), so consumers can also compile against the
+            shipped archives (e.g. native gem extensions that include
+            `<brotli/encode.h>`).
           - `mkdwarfs-<platform>` and `tebakofs-<platform>` — command-line tools
             (`.exe` suffix on `windows-ucrt64`)
 
           **Self-contained consumption:** a `libtfs-<version>-<platform>`
           package plus the matching `libtfs-deps-<version>-<platform>` package
-          are fully self-contained — linking `libtfs.a` needs no vcpkg (and no
-          C++20 dependency build) on the consumer machine, only a linker and
-          the platform system libraries (plus brew/system OpenSSL on macOS).
+          are fully self-contained — compiling and linking against `libtfs.a`
+          needs no vcpkg (and no C++20 dependency build) on the consumer
+          machine, only a compiler, a linker and the platform system libraries
+          (plus brew/system OpenSSL on macOS).
           Consumers that prefer to resolve dependencies themselves (e.g. their
           own vcpkg) can keep using the `libtfs` package alone.
 
