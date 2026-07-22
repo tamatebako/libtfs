@@ -7,22 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-- tebakofs package tooling for tebako three-part packages (bootstrap + image slots + `tpkg` manifest trailer): `bundle`, `unbundle`, `reassemble`, `insert-image`, `remove-image`, `set-runtime`, `mkimage` (mkdwarfs wrapper; dwarfs only — the zip backend is read-only), and `tebakofs info` now detects and dumps a `tpkg` trailer while keeping archive-info behavior for plain image files.
-- Release pipeline: per-platform `libtfs-deps-<version>-<platform>.tar.gz` package carrying the exact transitive static libraries consumers link against (dwarfs reader set, flatbuffers, libzip, fmt, xxhash, zstd/lz4/lzma/brotli/z/bzip2, boost filesystem+chrono; plus OpenSSL on Linux/Windows — macOS consumers link brew/system OpenSSL) together with those ports' CMake package configs. A `libtfs` package plus the matching `libtfs-deps` package are fully self-contained: no vcpkg needed downstream.
-
 ## [0.12.7] - 2026-07-22
 
 ### Fixed
 - Legacy fd read path clamps `read`/`pread`/`readv` to the open-time file size, so zero-length deduplicated files yield honest EOF instead of another file's bytes (defense-in-depth; root cause fixed in dwarfs-t tebako-v0.14.1-13, which ships in this release).
+- dwarfs-t tebako-v0.14.1-14: `std::atomic<bool>` replaces `std::atomic_flag`, so dwarfs-t and its consumers build against ubuntu-20.04's stock libstdc++ (gcc-9/10, also under clang-18) with no libstdc++ >= 11 requirement.
 - Linux tool binaries (`mkdwarfs`, `tebakofs`) link the C++ runtime statically (`-static-libstdc++ -static-libgcc`): the released musl/gnu binaries now start on hosts whose libstdc++ is older than the build container's.
 - gnu release packages build inside the tebako ubuntu-20.04 ci container — shipped archives no longer reference glibc 2.38+ symbols (e.g. `__isoc23_strtol` via libcrypto), which broke consumers' `ext/openssl` configure checks on ubuntu-20.04.
 
 ### Added
+- tebakofs package tooling for tebako three-part packages (bootstrap + image slots + `tpkg` manifest trailer): `bundle`, `unbundle`, `reassemble`, `insert-image`, `remove-image`, `set-runtime`, `mkimage` (mkdwarfs wrapper; dwarfs only — the zip backend is read-only), and `tebakofs info` now detects and dumps a `tpkg` trailer while keeping archive-info behavior for plain image files.
+- Release pipeline: per-platform `libtfs-deps-<version>-<platform>.tar.gz` package carrying the exact transitive static libraries consumers link against (dwarfs reader set, flatbuffers, libzip, fmt, xxhash, zstd/lz4/lzma/brotli/z/bzip2, boost filesystem+chrono; plus OpenSSL on Linux/Windows — macOS consumers link brew/system OpenSSL) together with those ports' CMake package configs. A `libtfs` package plus the matching `libtfs-deps` package are fully self-contained: no vcpkg needed downstream.
 - libtfs-deps packages on Linux/musl now ship the matching `include/openssl` tree alongside `libssl.a`/`libcrypto.a`, so tebako's ruby build configures against a consistent OpenSSL 3.x.
 
 ### Changed
-- dwarfs overlay port: tebako-v0.14.1-13; man-page generation disabled (binaries-only artifacts).
+- dwarfs overlay port: tebako-v0.14.1-14; man-page generation disabled (binaries-only artifacts).
 
 ## [0.12.6] - 2026-07-22
 
