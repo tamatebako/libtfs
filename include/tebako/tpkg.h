@@ -97,8 +97,8 @@ extern "C" {
 #define TPKG_MOUNT_POINT_LEN 256u
 #define TPKG_RUNTIME_REF_LEN 128u
 #define TPKG_MAGIC "TEBAKOTFS"
-#define TPKG_MAGIC_LEN 10u        /* including the terminating NUL */
-#define TPKG_MAGIC_PREFIX_LEN 4u  /* "TEBA": absent-vs-corrupt discriminator */
+#define TPKG_MAGIC_LEN 10u       /* including the terminating NUL */
+#define TPKG_MAGIC_PREFIX_LEN 4u /* "TEBA": absent-vs-corrupt discriminator */
 
 /* package_flags */
 #define TPKG_FLAG_LEAN 0x1u
@@ -220,19 +220,12 @@ enum {
 };
 
 /* slot record field offsets */
-enum {
-  TPKG__REC_OFFSET = 0,
-  TPKG__REC_SIZE = 8,
-  TPKG__REC_FORMAT = 16,
-  TPKG__REC_FLAGS = 20,
-  TPKG__REC_MOUNT = 24
-};
+enum { TPKG__REC_OFFSET = 0, TPKG__REC_SIZE = 8, TPKG__REC_FORMAT = 16, TPKG__REC_FLAGS = 20, TPKG__REC_MOUNT = 24 };
 
 /* wire sizes are fixed by the format; catch exotic padding at compile time */
 typedef char tpkg__assert_slot_size[(sizeof(tpkg_slot) == TPKG_SLOT_SIZE) ? 1 : -1];
-typedef char tpkg__assert_manifest_size[(sizeof(tpkg_manifest) ==
-                                         4 * sizeof(uint32_t) + TPKG_RUNTIME_REF_LEN +
-                                             TPKG_MAX_SLOTS * sizeof(tpkg_slot))
+typedef char tpkg__assert_manifest_size[(sizeof(tpkg_manifest) == 4 * sizeof(uint32_t) + TPKG_RUNTIME_REF_LEN +
+                                                                      TPKG_MAX_SLOTS * sizeof(tpkg_slot))
                                             ? 1
                                             : -1];
 

@@ -173,8 +173,12 @@ void CreateStitchedFile(const std::filesystem::path& p, const std::vector<uint8_
 
 // Builds a 166-byte trailer header by hand (independent LE encoder), using
 // the public tpkg_crc32 (itself pinned by the known-vector test) for the crc.
-std::vector<uint8_t> CraftHeader(uint32_t version, uint32_t flags, uint32_t slot_count, uint64_t table_off,
-                                 const std::string& runtime_ref, uint32_t abi)
+std::vector<uint8_t> CraftHeader(uint32_t version,
+                                 uint32_t flags,
+                                 uint32_t slot_count,
+                                 uint64_t table_off,
+                                 const std::string& runtime_ref,
+                                 uint32_t abi)
 {
   std::vector<uint8_t> h(kHeaderSize, 0);
   std::memcpy(h.data() + kMagicOff, kMagic, sizeof kMagic);
