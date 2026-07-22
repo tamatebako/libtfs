@@ -372,12 +372,19 @@ jobs:
           fi
           rm -rf deps-stage
           mkdir -p deps-stage/lib deps-stage/share
+          resolve() {
+            local base="$1" cand
+            case "$base" in
+              libz.a)   cand="$VILIB/libz.a $VILIB/libzlib.a" ;;
+              libbz2.a) cand="$VILIB/libbz2.a $VILIB/libbzip2.a" ;;
+              *)        cand="$VILIB/$base" ;;
+            esac
+            for f in $cand; do [ -f "$f" ] && { echo "$f"; return 0; }; done
+            return 1
+          }
           for l in $LIBS; do
-            if [ ! -f "$VILIB/$l" ]; then
-              echo "ERROR: expected dep lib missing: $VILIB/$l" >&2
-              exit 1
-            fi
-            cp "$VILIB/$l" deps-stage/lib/
+            src=$(resolve "$l") || { echo "ERROR: expected dep lib missing: $VILIB/$l (incl. variants)" >&2; exit 1; }
+            cp "$src" deps-stage/lib/
           done
           for s in $SHARES; do
             if [ -d "$VIROOT/share/$s" ]; then
@@ -405,12 +412,19 @@ jobs:
           SHARES="$DEPS_SHARES openssl"
           rm -rf deps-stage
           mkdir -p deps-stage/lib deps-stage/share
+          resolve() {
+            local base="$1" cand
+            case "$base" in
+              libz.a)   cand="$VILIB/libz.a $VILIB/libzlib.a" ;;
+              libbz2.a) cand="$VILIB/libbz2.a $VILIB/libbzip2.a" ;;
+              *)        cand="$VILIB/$base" ;;
+            esac
+            for f in $cand; do [ -f "$f" ] && { echo "$f"; return 0; }; done
+            return 1
+          }
           for l in $LIBS; do
-            if [ ! -f "$VILIB/$l" ]; then
-              echo "ERROR: expected dep lib missing: $VILIB/$l" >&2
-              exit 1
-            fi
-            cp "$VILIB/$l" deps-stage/lib/
+            src=$(resolve "$l") || { echo "ERROR: expected dep lib missing: $VILIB/$l (incl. variants)" >&2; exit 1; }
+            cp "$src" deps-stage/lib/
           done
           for s in $SHARES; do
             if [ -d "$VIROOT/share/$s" ]; then
