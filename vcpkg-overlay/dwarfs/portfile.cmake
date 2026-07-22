@@ -29,6 +29,10 @@ vcpkg_cmake_configure(
         -DWITH_LIBDWARFS=ON
         -DWITH_TOOLS=ON
         -DWITH_FUSE_DRIVER=OFF
+        # no allocator linkage in the shipped libs: consumers (tebako) must not
+        # inherit a shared jemalloc reference (brew dylib leak in packaged
+        # binaries); tebako links its own static jemalloc where it wants one
+        -DUSE_JEMALLOC=OFF
         # shipped artifacts are libs + binaries only; man pages need the
         # mistletoe Python module that minimal build containers do not have.
         # WITH_MAN_PAGES covers the standalone .1 files, WITH_MAN_OPTION the
