@@ -331,9 +331,8 @@ ssize_t sync_tebako_fdtable::readv(int vfd, const struct ::iovec* iov, int iovcn
     if (p_fd != p_fdtable->end()) {
       ret = 0;
       // Same EOF clamp as read(): memfs regular files are immutable.
-      off_t remaining = S_ISREG(p_fd->second->st.st_mode)
-                            ? p_fd->second->st.st_size - p_fd->second->pos
-                            : std::numeric_limits<off_t>::max();
+      off_t remaining = S_ISREG(p_fd->second->st.st_mode) ? p_fd->second->st.st_size - p_fd->second->pos
+                                                          : std::numeric_limits<off_t>::max();
       for (int i = 0; i < iovcnt && remaining > 0; ++i) {
         size_t to_read = iov[i].iov_len;
         if (to_read > static_cast<size_t>(remaining)) {
