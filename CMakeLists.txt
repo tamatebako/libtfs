@@ -1061,7 +1061,9 @@ add_executable(tebakofs
 
 target_include_directories(tebakofs PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/include
-  ${CMAKE_CURRENT_SOURCE_DIR}/include/tebako/fs
+  # NOTE: do not add include/tebako/fs here — with that dir on the include
+  # path, `#include <io.h>` resolves to libtfs's own include/tebako/fs/io.h
+  # and shadows the system header MinGW needs for _read/_write (tpkg.h).
 )
 
 target_link_libraries(tebakofs PRIVATE
