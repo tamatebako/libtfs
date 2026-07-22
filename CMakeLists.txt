@@ -1046,4 +1046,11 @@ target_link_libraries(tebakofs PRIVATE
   argtable3::argtable3
 )
 
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  # Static C++ runtime: the released binary must run on hosts with an older
+  # libstdc++/libgcc than the build container's (mirrors the dwarfs overlay
+  # port's tool linkage; see vcpkg-overlay/dwarfs/portfile.cmake).
+  target_link_options(tebakofs PRIVATE -static-libstdc++ -static-libgcc)
+endif()
+
 install(TARGETS tebakofs DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT tebakofs)

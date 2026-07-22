@@ -253,6 +253,20 @@ ssize_t sync_tebako_fdtable::read(int vfd, void* buf, size_t nbyte) noexcept
   auto p_fdtable = s_tebako_fdtable.rlock();
   auto p_fd = p_fdtable->find(vfd);
   if (p_fd != p_fdtable->end()) {
+    // Clamp regular-file reads to the size recorded at open: memfs files are
+    // immutable, so a read at or past EOF must return 0 (POSIX) and never
+    // surface whatever the backend resolves for the inode. Defense-in-depth
+    // for zero-length deduplicated files (dwarfs-t shared-files chunk
+    // resolution returned another file's bytes for them).
+    if (S_ISREG(p_fd->second->st.st_mode)) {
+      off_t remaining = p_fd->second->st.st_size - p_fd->second->pos;
+      if (remaining <= 0) {
+        return 0;
+      }
+      if (nbyte > static_cast<size_t>(remaining)) {
+        nbyte = static_cast<size_t>(remaining);
+      }
+    }
     ret = dwarfs_inode_read(p_fd->second->st.st_ino, buf, nbyte, p_fd->second->pos);
     if (ret > 0) {
       p_fd->second->pos += ret;
@@ -265,8 +279,20 @@ ssize_t sync_tebako_fdtable::pread(int vfd, void* buf, size_t nbyte, off_t offse
 {
   auto p_fdtable = s_tebako_fdtable.rlock();
   auto p_fd = p_fdtable->find(vfd);
-  return (p_fd != p_fdtable->end()) ? dwarfs_inode_read(p_fd->second->st.st_ino, buf, nbyte, offset)
-                                    : DWARFS_INVALID_FD;
+  if (p_fd == p_fdtable->end()) {
+    return DWARFS_INVALID_FD;
+  }
+  if (S_ISREG(p_fd->second->st.st_mode)) {
+    // Same EOF clamp as read(); pread does not advance the fd position.
+    off_t remaining = p_fd->second->st.st_size - offset;
+    if (remaining <= 0) {
+      return 0;
+    }
+    if (nbyte > static_cast<size_t>(remaining)) {
+      nbyte = static_cast<size_t>(remaining);
+    }
+  }
+  return dwarfs_inode_read(p_fd->second->st.st_ino, buf, nbyte, offset);
 }
 
 int sync_tebako_fdtable::readdir(int vfd,
@@ -304,8 +330,19 @@ ssize_t sync_tebako_fdtable::readv(int vfd, const struct ::iovec* iov, int iovcn
     auto p_fd = p_fdtable->find(vfd);
     if (p_fd != p_fdtable->end()) {
       ret = 0;
-      for (int i = 0; i < iovcnt; ++i) {
-        ssize_t ssize = dwarfs_inode_read(p_fd->second->st.st_ino, iov[i].iov_base, iov[i].iov_len, p_fd->second->pos);
+      // Same EOF clamp as read(): memfs regular files are immutable.
+      off_t remaining = S_ISREG(p_fd->second->st.st_mode)
+                            ? p_fd->second->st.st_size - p_fd->second->pos
+                            : std::numeric_limits<off_t>::max();
+      for (int i = 0; i < iovcnt && remaining > 0; ++i) {
+        size_t to_read = iov[i].iov_len;
+        if (to_read > static_cast<size_t>(remaining)) {
+          to_read = static_cast<size_t>(remaining);
+        }
+        if (to_read == 0) {
+          break;
+        }
+        ssize_t ssize = dwarfs_inode_read(p_fd->second->st.st_ino, iov[i].iov_base, to_read, p_fd->second->pos);
         if (ssize > 0) {
           if (p_fd->second->pos > std::numeric_limits<off_t>::max() - ssize) {
             TEBAKO_SET_LAST_ERROR(EOVERFLOW);
@@ -318,6 +355,7 @@ ssize_t sync_tebako_fdtable::readv(int vfd, const struct ::iovec* iov, int iovcn
             break;
           }
           p_fd->second->pos += ssize;
+          remaining -= ssize;
           ret += ssize;
         }
         else {

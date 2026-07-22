@@ -105,10 +105,20 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # gnu legs build inside the tebako ubuntu-20.04 ci container so the
+          # shipped archives never reference glibc symbols newer than the
+          # tebako baseline (host runners are glibc 2.38+; packages built
+          # there fail to link on ubuntu-20.04, e.g. __isoc23_strtol).
+          # Pinned to the ci-containers v0.15.0-rc.1 publish (C++20 toolchain);
+          # per-arch sha tags because the rc manifest job did not produce a
+          # multi-arch semver index (follow-up: fix manifest plumbing for the
+          # 0.15.0 proper publish).
           - platform: linux-gnu-x86_64
             os: ubuntu-latest
+            container: ghcr.io/tamatebako/tebako-ubuntu-20.04:sha-59b1b86-amd64
           - platform: linux-gnu-arm64
             os: ubuntu-24.04-arm
+            container: ghcr.io/tamatebako/tebako-ubuntu-20.04:sha-59b1b86-arm64
           - platform: linux-musl-x86_64
             os: ubuntu-latest
             container: alpine:3.21
@@ -134,8 +144,8 @@ jobs:
             autoconf automake libtool pkgconf squashfs-tools
           pip3 install --break-system-packages --root-user-action ignore mistletoe
 
-      - name: Declare directory safe (musl)
-        if: matrix.platform == 'linux-musl-x86_64'
+      - name: Declare directory safe (container)
+        if: startswith(matrix.platform, 'linux-')
         run: git config --global --add safe.directory "$(pwd)"
 
       - name: Checkout
@@ -152,11 +162,13 @@ jobs:
           echo "version=${TAG#v}" >> "$GITHUB_ENV"
 
       - name: Install fixture tools (Linux)
-        # zip and mksquashfs are needed by tests/fixtures/regenerate_all.sh
+        # zip and mksquashfs are needed by tests/fixtures/regenerate_all.sh;
+        # unzip/ninja are vcpkg prerequisites the minimal gnu build containers
+        # lack (the musl bootstrap installs its own set).
         if: runner.os == 'Linux' && matrix.platform != 'linux-musl-x86_64'
         run: |
           sudo apt-get -y update
-          sudo apt-get -y install zip squashfs-tools
+          sudo apt-get -y install zip unzip squashfs-tools ninja-build
 
       - name: Install fixture tools (macOS)
         if: runner.os == 'macOS'
@@ -382,9 +394,15 @@ jobs:
           VIROOT=$(dirname "$VILIB")
           LIBS="$DEPS_LIBS"
           SHARES="$DEPS_SHARES"
+          HEADER_DIRS="$DEPS_HEADER_DIRS"
           if [ "$RUNNER_OS" != "macOS" ]; then
             LIBS="$LIBS libcrypto.a libssl.a"
             SHARES="$SHARES openssl"
+            # Ship the matching OpenSSL headers with the archives: tebako's
+            # ruby build (ext/openssl) configures against the triplet include
+            # dir; without them it fell back to system headers whose opaque
+            # structs mismatched the shipped 3.x libs and broke the build.
+            HEADER_DIRS="$HEADER_DIRS openssl"
           fi
           rm -rf deps-stage
           mkdir -p deps-stage/lib deps-stage/share
@@ -420,7 +438,7 @@ jobs:
           # archives (gem native extensions need e.g. <brotli/encode.h>).
           VIINC="$VIROOT/include"
           mkdir -p deps-stage/include
-          for d in $DEPS_HEADER_DIRS; do
+          for d in $HEADER_DIRS; do
             if [ ! -d "$VIINC/$d" ]; then
               echo "ERROR: expected dep header dir missing: $VIINC/$d" >&2; exit 1
             fi
