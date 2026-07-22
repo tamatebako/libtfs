@@ -21,7 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - libtfs-deps packages on Linux/musl now ship the matching `include/openssl` tree alongside `libssl.a`/`libcrypto.a`, so tebako's ruby build configures against a consistent OpenSSL 3.x.
 
 ### Changed
-- dwarfs overlay port: tebako-v0.14.1-14; man-page generation disabled (binaries-only artifacts).
+- dwarfs overlay port: tebako-v0.14.1-15; man-page generation disabled (binaries-only artifacts).
 
 ## [0.12.6] - 2026-07-22
 
