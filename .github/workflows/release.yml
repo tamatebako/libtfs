@@ -186,7 +186,9 @@ jobs:
         run: |
           ARCH=$(uname -m); case "$ARCH" in aarch64) ARCH=arm64;; x86_64) ARCH=x64;; esac
           wget -nv "https://github.com/xpack-dev-tools/cmake-xpack/releases/download/v3.31.9-1/xpack-cmake-3.31.9-1-linux-${ARCH}.tar.gz" -O /tmp/cmake.tgz
-          sudo tar -zxf /tmp/cmake.tgz --directory /usr --strip-components=1 --skip-old-files
+          # no --skip-old-files: the image's /usr/bin/cmake (3.24.4) is newer
+          # by mtime than the tar entries and must be overwritten
+          sudo tar -zxf /tmp/cmake.tgz --directory /usr --strip-components=1
           cmake --version | head -1
 
       - name: Install fixture tools (macOS)
