@@ -162,18 +162,15 @@ jobs:
           echo "version=${TAG#v}" >> "$GITHUB_ENV"
 
       - name: Install fixture tools (Linux)
-        # zip and mksquashfs are needed by tests/fixtures/regenerate_all.sh;
-        # unzip/ninja are vcpkg prerequisites the minimal gnu build containers
-        # lack (the musl bootstrap installs its own set).
-        if: runner.os == 'Linux' && matrix.platform != 'linux-musl-x86_64'
+        # Reserved for non-container Linux legs. The gnu ci containers already
+        # ship zip/unzip/ninja, and squashfs fixtures are optional in
+        # WITH_SQUASHFS=OFF builds (regenerate_all.sh skips them when
+        # mksquashfs is absent) — no apt in these legs, so the ubuntu archive
+        # state cannot break the release.
+        if: runner.os == 'Linux' && !startswith(matrix.platform, 'linux-')
         run: |
-          # ubuntu archive fetches flake inside containers on shared runners;
-          # retry the whole update+install a few times before giving up
-          for i in 1 2 3; do
-            sudo apt-get -y update && \
-            sudo apt-get -y install zip unzip squashfs-tools ninja-build && break
-            echo "apt attempt $i failed; retrying in 20s" && sleep 20
-          done
+          sudo apt-get -y update
+          sudo apt-get -y install zip unzip squashfs-tools ninja-build
 
       - name: Upgrade cmake (gnu container legs)
         # The 20.04 gnu ci containers ship cmake 3.24.4; boost-1.90's

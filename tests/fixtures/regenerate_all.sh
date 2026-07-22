@@ -23,8 +23,13 @@ fi
 echo ""
 
 # Regenerate SquashFS fixtures
-echo ">>> Regenerating SquashFS fixtures..."
-if cd "$SCRIPT_DIR/squashfs" && ./create_fixtures.sh; then
+# Skipped when mksquashfs is unavailable: WITH_SQUASHFS=OFF builds (e.g. the
+# release packages) never consume these fixtures, and minimal build
+# containers may legitimately lack the tool. Set REGEN_REQUIRE_SQUASHFS=1 to
+# restore the hard failure where the fixtures are mandatory.
+if ! command -v mksquashfs >/dev/null 2>&1 && [ "${REGEN_REQUIRE_SQUASHFS:-0}" != "1" ]; then
+    echo ">>> mksquashfs not found — skipping SquashFS fixtures (set REGEN_REQUIRE_SQUASHFS=1 to require)"
+elif cd "$SCRIPT_DIR/squashfs" && ./create_fixtures.sh; then
     echo "✅ SquashFS fixtures regenerated successfully"
 else
     echo "❌ SquashFS fixtures regeneration failed"
