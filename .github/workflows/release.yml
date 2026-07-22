@@ -373,13 +373,17 @@ jobs:
           rm -rf deps-stage
           mkdir -p deps-stage/lib deps-stage/share
           resolve() {
-            local base="$1" cand
+            local base="$1" stem f
+            stem="${base%.a}"
             case "$base" in
               libz.a)   cand="$VILIB/libz.a $VILIB/libzlib.a" ;;
               libbz2.a) cand="$VILIB/libbz2.a $VILIB/libbzip2.a" ;;
               *)        cand="$VILIB/$base" ;;
             esac
             for f in $cand; do [ -f "$f" ] && { echo "$f"; return 0; }; done
+            for f in "$VILIB/${stem}-mt.a" "$VILIB/${stem}"*.a; do
+              [ -f "$f" ] && { echo "$f"; return 0; }
+            done
             return 1
           }
           for l in $LIBS; do
@@ -413,13 +417,17 @@ jobs:
           rm -rf deps-stage
           mkdir -p deps-stage/lib deps-stage/share
           resolve() {
-            local base="$1" cand
+            local base="$1" stem f
+            stem="${base%.a}"
             case "$base" in
               libz.a)   cand="$VILIB/libz.a $VILIB/libzlib.a" ;;
               libbz2.a) cand="$VILIB/libbz2.a $VILIB/libbzip2.a" ;;
               *)        cand="$VILIB/$base" ;;
             esac
             for f in $cand; do [ -f "$f" ] && { echo "$f"; return 0; }; done
+            for f in "$VILIB/${stem}-mt.a" "$VILIB/${stem}"*.a; do
+              [ -f "$f" ] && { echo "$f"; return 0; }
+            done
             return 1
           }
           for l in $LIBS; do
