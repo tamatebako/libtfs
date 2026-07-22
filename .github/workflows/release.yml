@@ -170,6 +170,20 @@ jobs:
           sudo apt-get -y update
           sudo apt-get -y install zip unzip squashfs-tools ninja-build
 
+      - name: Upgrade cmake (gnu container legs)
+        # The 20.04 gnu ci containers ship cmake 3.24.4; boost-1.90's
+        # cmake_minimum_required is 3.25 and vcpkg port builds use the
+        # system cmake. Install the xpack 3.31.9 build (same mechanism as
+        # ci-containers' tools.sh; the image bump itself is tracked at
+        # tamatebako/tebako-ci-containers#67).
+        if: startswith(matrix.platform, 'linux-gnu')
+        shell: bash
+        run: |
+          ARCH=$(uname -m); case "$ARCH" in aarch64) ARCH=arm64;; x86_64) ARCH=x64;; esac
+          wget -nv "https://github.com/xpack-dev-tools/cmake-xpack/releases/download/v3.31.9-1/xpack-cmake-3.31.9-1-linux-${ARCH}.tar.gz" -O /tmp/cmake.tgz
+          sudo tar -zxf /tmp/cmake.tgz --directory /usr --strip-components=1 --skip-old-files
+          cmake --version | head -1
+
       - name: Install fixture tools (macOS)
         if: runner.os == 'macOS'
         run: brew install squashfs
