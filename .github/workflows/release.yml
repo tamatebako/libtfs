@@ -105,16 +105,17 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # gnu legs build inside the tebako ubuntu-20.04 dev container so the
+          # gnu legs build inside the tebako ubuntu-20.04 ci container so the
           # shipped archives never reference glibc symbols newer than the
           # tebako baseline (host runners are glibc 2.38+; packages built
           # there fail to link on ubuntu-20.04, e.g. __isoc23_strtol).
+          # The tag tracks the ci-containers publish with the C++20 toolchain.
           - platform: linux-gnu-x86_64
             os: ubuntu-latest
-            container: ghcr.io/tamatebako/tebako-ubuntu-20.04-dev:latest
+            container: ghcr.io/tamatebako/tebako-ubuntu-20.04:0.15.0-rc.1
           - platform: linux-gnu-arm64
             os: ubuntu-24.04-arm
-            container: ghcr.io/tamatebako/tebako-ubuntu-20.04-dev:latest
+            container: ghcr.io/tamatebako/tebako-ubuntu-20.04:0.15.0-rc.1
           - platform: linux-musl-x86_64
             os: ubuntu-latest
             container: alpine:3.21
