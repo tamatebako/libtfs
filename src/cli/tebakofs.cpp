@@ -7,6 +7,7 @@
  */
 
 #include <tebako/fs/cli/tebakofs.h>
+#include <tebako/fs/cli/package.h>
 #include <tebako/fs/backend_factory.h>
 #include <tebako/fs/directory_iterator.h>
 #include <argtable3.h>
@@ -15,6 +16,7 @@
 #include <fstream>
 #include <sstream>
 #include <ctime>
+#include <filesystem>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <fcntl.h>
@@ -350,6 +352,188 @@ int TebakofsCLI::run(int argc, char* argv[])
     arg_freetable(argtable, sizeof(argtable) / sizeof(argtable[0]));
     return 1;
   }
+  else if (command == "bundle") {
+    struct arg_lit* verbose = arg_lit0("v", "verbose", "verbose output");
+    struct arg_file* bootstrap = arg_file1(NULL, "bootstrap", "<exe>", "bootstrap/runtime executable");
+    struct arg_file* images =
+        arg_filen(NULL, "image", "<img[:mountpoint]>", 1, TPKG_MAX_SLOTS, "image files (repeatable)");
+    struct arg_file* output = arg_file1("o", "output", "<file>", "output binary");
+    struct arg_str* runtime_ref = arg_str0(NULL, "runtime-ref", "<ref>", "runtime reference for lean packages");
+    struct arg_lit* lean = arg_lit0(NULL, "lean", "mark the package as lean (bootstrap + images only)");
+    struct arg_int* abi = arg_int0(NULL, "launcher-abi", "<n>", "launcher ABI version (default: 0)");
+    struct arg_end* end = arg_end(20);
+
+    void* argtable[] = {verbose, bootstrap, images, output, runtime_ref, lean, abi, end};
+
+    int nerrors = arg_parse(argc - 1, argv + 1, argtable);
+
+    if (nerrors == 0) {
+      CLIOptions opts;
+      opts.verbose = verbose->count > 0;
+      opts.runtime_ref = runtime_ref->count > 0 ? runtime_ref->sval[0] : "";
+      opts.lean = lean->count > 0;
+      opts.launcher_abi = abi->count > 0 ? abi->ival[0] : 0;
+
+      std::vector<std::string> image_list;
+      for (int i = 0; i < images->count; i++) {
+        image_list.push_back(images->filename[i]);
+      }
+
+      int result = cmd_bundle(bootstrap->filename[0], image_list, output->filename[0], opts);
+
+      arg_freetable(argtable, sizeof(argtable) / sizeof(argtable[0]));
+      return result;
+    }
+
+    arg_print_errors(stderr, end, "tebakofs bundle");
+    arg_freetable(argtable, sizeof(argtable) / sizeof(argtable[0]));
+    return 1;
+  }
+  else if (command == "unbundle") {
+    struct arg_lit* verbose = arg_lit0("v", "verbose", "verbose output");
+    struct arg_file* binary = arg_file1(NULL, NULL, "<binary>", "three-part package binary");
+    struct arg_file* output = arg_file1("o", "output", "<dir>", "output directory");
+    struct arg_end* end = arg_end(20);
+
+    void* argtable[] = {verbose, binary, output, end};
+
+    int nerrors = arg_parse(argc - 1, argv + 1, argtable);
+
+    if (nerrors == 0) {
+      CLIOptions opts;
+      opts.verbose = verbose->count > 0;
+
+      int result = cmd_unbundle(binary->filename[0], output->filename[0], opts);
+
+      arg_freetable(argtable, sizeof(argtable) / sizeof(argtable[0]));
+      return result;
+    }
+
+    arg_print_errors(stderr, end, "tebakofs unbundle");
+    arg_freetable(argtable, sizeof(argtable) / sizeof(argtable[0]));
+    return 1;
+  }
+  else if (command == "reassemble") {
+    struct arg_lit* verbose = arg_lit0("v", "verbose", "verbose output");
+    struct arg_file* dir = arg_file1(NULL, NULL, "<dir>", "unbundled package directory");
+    struct arg_file* output = arg_file1("o", "output", "<file>", "output binary");
+    struct arg_end* end = arg_end(20);
+
+    void* argtable[] = {verbose, dir, output, end};
+
+    int nerrors = arg_parse(argc - 1, argv + 1, argtable);
+
+    if (nerrors == 0) {
+      CLIOptions opts;
+      opts.verbose = verbose->count > 0;
+
+      int result = cmd_reassemble(dir->filename[0], output->filename[0], opts);
+
+      arg_freetable(argtable, sizeof(argtable) / sizeof(argtable[0]));
+      return result;
+    }
+
+    arg_print_errors(stderr, end, "tebakofs reassemble");
+    arg_freetable(argtable, sizeof(argtable) / sizeof(argtable[0]));
+    return 1;
+  }
+  else if (command == "insert-image") {
+    struct arg_lit* verbose = arg_lit0("v", "verbose", "verbose output");
+    struct arg_file* binary = arg_file1(NULL, NULL, "<binary>", "three-part package binary (rewritten in place)");
+    struct arg_file* image = arg_file1(NULL, NULL, "<img[:mountpoint]>", "image to append");
+    struct arg_end* end = arg_end(20);
+
+    void* argtable[] = {verbose, binary, image, end};
+
+    int nerrors = arg_parse(argc - 1, argv + 1, argtable);
+
+    if (nerrors == 0) {
+      CLIOptions opts;
+      opts.verbose = verbose->count > 0;
+
+      int result = cmd_insert_image(binary->filename[0], image->filename[0], opts);
+
+      arg_freetable(argtable, sizeof(argtable) / sizeof(argtable[0]));
+      return result;
+    }
+
+    arg_print_errors(stderr, end, "tebakofs insert-image");
+    arg_freetable(argtable, sizeof(argtable) / sizeof(argtable[0]));
+    return 1;
+  }
+  else if (command == "remove-image") {
+    struct arg_lit* verbose = arg_lit0("v", "verbose", "verbose output");
+    struct arg_file* binary = arg_file1(NULL, NULL, "<binary>", "three-part package binary (rewritten in place)");
+    struct arg_int* slot = arg_int1(NULL, NULL, "<slot>", "slot index to remove");
+    struct arg_end* end = arg_end(20);
+
+    void* argtable[] = {verbose, binary, slot, end};
+
+    int nerrors = arg_parse(argc - 1, argv + 1, argtable);
+
+    if (nerrors == 0) {
+      CLIOptions opts;
+      opts.verbose = verbose->count > 0;
+
+      int result = cmd_remove_image(binary->filename[0], static_cast<uint32_t>(slot->ival[0]), opts);
+
+      arg_freetable(argtable, sizeof(argtable) / sizeof(argtable[0]));
+      return result;
+    }
+
+    arg_print_errors(stderr, end, "tebakofs remove-image");
+    arg_freetable(argtable, sizeof(argtable) / sizeof(argtable[0]));
+    return 1;
+  }
+  else if (command == "set-runtime") {
+    struct arg_lit* verbose = arg_lit0("v", "verbose", "verbose output");
+    struct arg_file* binary = arg_file1(NULL, NULL, "<binary>", "three-part package binary (rewritten in place)");
+    struct arg_file* runtime = arg_file1(NULL, NULL, "<runtime-file>", "new bootstrap/runtime executable");
+    struct arg_end* end = arg_end(20);
+
+    void* argtable[] = {verbose, binary, runtime, end};
+
+    int nerrors = arg_parse(argc - 1, argv + 1, argtable);
+
+    if (nerrors == 0) {
+      CLIOptions opts;
+      opts.verbose = verbose->count > 0;
+
+      int result = cmd_set_runtime(binary->filename[0], runtime->filename[0], opts);
+
+      arg_freetable(argtable, sizeof(argtable) / sizeof(argtable[0]));
+      return result;
+    }
+
+    arg_print_errors(stderr, end, "tebakofs set-runtime");
+    arg_freetable(argtable, sizeof(argtable) / sizeof(argtable[0]));
+    return 1;
+  }
+  else if (command == "mkimage") {
+    struct arg_lit* verbose = arg_lit0("v", "verbose", "verbose output");
+    struct arg_str* format = arg_str1(NULL, "format", "<format>", "image format (dwarfs)");
+    struct arg_file* srcdir = arg_file1(NULL, NULL, "<srcdir>", "source directory");
+    struct arg_file* output = arg_file1("o", "output", "<img>", "output image file");
+    struct arg_end* end = arg_end(20);
+
+    void* argtable[] = {verbose, format, srcdir, output, end};
+
+    int nerrors = arg_parse(argc - 1, argv + 1, argtable);
+
+    if (nerrors == 0) {
+      CLIOptions opts;
+      opts.verbose = verbose->count > 0;
+
+      int result = cmd_mkimage(format->sval[0], srcdir->filename[0], output->filename[0], opts);
+
+      arg_freetable(argtable, sizeof(argtable) / sizeof(argtable[0]));
+      return result;
+    }
+
+    arg_print_errors(stderr, end, "tebakofs mkimage");
+    arg_freetable(argtable, sizeof(argtable) / sizeof(argtable[0]));
+    return 1;
+  }
   else {
     std::cerr << "Error: Unknown command: " << command << std::endl;
     std::cerr << "Use 'tebakofs help' for usage information" << std::endl;
@@ -484,6 +668,56 @@ void TebakofsCLI::print_entry(const DirectoryEntry& entry, const std::string& pa
 
 int TebakofsCLI::cmd_info(const std::string& archive, const CLIOptions& opts)
 {
+  // A three-part package (bootstrap + images + tpkg trailer) is detected and
+  // dumped first; plain image files fall through to archive mounting below.
+  tpkg_manifest manifest;
+  int tpkg_err = 0;
+  if (package_probe(archive, manifest, tpkg_err)) {
+    std::error_code ec;
+    uint64_t total_size = std::filesystem::file_size(archive, ec);
+
+    std::cout << "Package: " << archive << std::endl;
+    std::cout << "Format: tebako three-part package (tpkg v" << manifest.version << ")" << std::endl;
+    if (!ec) {
+      std::cout << "Total size: " << format_size(static_cast<int64_t>(total_size)) << " (" << total_size << " bytes)"
+                << std::endl;
+    }
+    std::cout << "Flags: 0x" << std::hex << manifest.package_flags << std::dec;
+    if (manifest.package_flags & TPKG_FLAG_LEAN)
+      std::cout << " (LEAN)";
+    std::cout << std::endl;
+    std::cout << "Launcher ABI: " << manifest.launcher_abi << std::endl;
+    std::cout << "Runtime ref: " << (manifest.runtime_ref[0] ? manifest.runtime_ref : "(none — classic bundle)")
+              << std::endl;
+    std::cout << "Bootstrap size: " << manifest.slots[0].offset << " bytes" << std::endl;
+    std::cout << "Slots: " << manifest.slot_count << std::endl;
+    for (uint32_t i = 0; i < manifest.slot_count; i++) {
+      const tpkg_slot& s = manifest.slots[i];
+      std::cout << "  [" << i << "] offset=" << s.offset << " size=" << s.size << " format=";
+      switch (s.format_id) {
+        case TPKG_FORMAT_DWARFS:
+          std::cout << "dwarfs";
+          break;
+        case TPKG_FORMAT_SQUASHFS:
+          std::cout << "squashfs";
+          break;
+        case TPKG_FORMAT_ZIP:
+          std::cout << "zip";
+          break;
+        default:
+          std::cout << "auto";
+          break;
+      }
+      std::cout << " flags=" << s.flags << " mount=" << s.mount_point << std::endl;
+    }
+    std::cout << "Trailer: valid (magic and crc32 ok)" << std::endl;
+    return 0;
+  }
+  if (tpkg_err != TPKG_ERR_NO_TRAILER) {
+    std::cerr << "Error: " << archive << ": " << tpkg_strerror(tpkg_err) << std::endl;
+    return 1;
+  }
+
   auto fs = open_archive(archive);
   if (!fs)
     return 1;
@@ -860,6 +1094,114 @@ int TebakofsCLI::cmd_find(const std::string& archive, const std::string& pattern
   return 0;
 }
 
+int TebakofsCLI::cmd_bundle(const std::string& bootstrap,
+                            const std::vector<std::string>& images,
+                            const std::string& output,
+                            const CLIOptions& opts)
+{
+  std::vector<PackageImage> image_list;
+  for (const auto& spec : images) {
+    image_list.push_back(package_parse_image_spec(spec));
+  }
+
+  PackageOptions pkg_opts;
+  pkg_opts.runtime_ref = opts.runtime_ref;
+  pkg_opts.package_flags = opts.lean ? TPKG_FLAG_LEAN : 0;
+  pkg_opts.launcher_abi = opts.launcher_abi < 0 ? 0 : static_cast<uint32_t>(opts.launcher_abi);
+
+  auto res = package_bundle(bootstrap, image_list, output, pkg_opts);
+  if (!res.ok) {
+    std::cerr << "Error: bundle failed: " << res.error << std::endl;
+    return 1;
+  }
+  if (opts.verbose) {
+    std::cout << "Wrote package: " << output << " (" << image_list.size() << " image slot(s))" << std::endl;
+  }
+  return 0;
+}
+
+int TebakofsCLI::cmd_unbundle(const std::string& binary, const std::string& output_dir, const CLIOptions& opts)
+{
+  auto res = package_unbundle(binary, output_dir);
+  if (!res.ok) {
+    std::cerr << "Error: unbundle failed: " << res.error << std::endl;
+    return 1;
+  }
+  if (opts.verbose) {
+    std::cout << "Unbundled " << binary << " into: " << output_dir << std::endl;
+  }
+  return 0;
+}
+
+int TebakofsCLI::cmd_reassemble(const std::string& input_dir, const std::string& output, const CLIOptions& opts)
+{
+  auto res = package_reassemble(input_dir, output);
+  if (!res.ok) {
+    std::cerr << "Error: reassemble failed: " << res.error << std::endl;
+    return 1;
+  }
+  if (opts.verbose) {
+    std::cout << "Reassembled " << input_dir << " into: " << output << std::endl;
+  }
+  return 0;
+}
+
+int TebakofsCLI::cmd_insert_image(const std::string& binary, const std::string& image_spec, const CLIOptions& opts)
+{
+  auto image = package_parse_image_spec(image_spec);
+  auto res = package_insert_image(binary, image.path, image.mount_point);
+  if (!res.ok) {
+    std::cerr << "Error: insert-image failed: " << res.error << std::endl;
+    return 1;
+  }
+  if (opts.verbose) {
+    std::cout << "Inserted " << image.path << " into: " << binary << std::endl;
+  }
+  return 0;
+}
+
+int TebakofsCLI::cmd_remove_image(const std::string& binary, uint32_t slot_index, const CLIOptions& opts)
+{
+  auto res = package_remove_image(binary, slot_index);
+  if (!res.ok) {
+    std::cerr << "Error: remove-image failed: " << res.error << std::endl;
+    return 1;
+  }
+  if (opts.verbose) {
+    std::cout << "Removed slot " << slot_index << " from: " << binary << std::endl;
+  }
+  return 0;
+}
+
+int TebakofsCLI::cmd_set_runtime(const std::string& binary, const std::string& runtime_file, const CLIOptions& opts)
+{
+  auto res = package_set_runtime(binary, runtime_file);
+  if (!res.ok) {
+    std::cerr << "Error: set-runtime failed: " << res.error << std::endl;
+    return 1;
+  }
+  if (opts.verbose) {
+    std::cout << "Replaced the bootstrap portion of: " << binary << std::endl;
+  }
+  return 0;
+}
+
+int TebakofsCLI::cmd_mkimage(const std::string& format,
+                             const std::string& source_dir,
+                             const std::string& output,
+                             const CLIOptions& opts)
+{
+  auto res = package_mkimage(format, source_dir, output, "");
+  if (!res.ok) {
+    std::cerr << "Error: mkimage failed: " << res.error << std::endl;
+    return 1;
+  }
+  if (opts.verbose) {
+    std::cout << "Wrote " << format << " image: " << output << std::endl;
+  }
+  return 0;
+}
+
 int TebakofsCLI::cmd_help(const std::string& command)
 {
   if (command.empty()) {
@@ -867,12 +1209,19 @@ int TebakofsCLI::cmd_help(const std::string& command)
     std::cout << "Usage: tebakofs <command> [options] <archive> [args...]\n\n";
     std::cout << "Commands:\n";
     std::cout << "  ls       List directory contents\n";
-    std::cout << "  info     Show archive information\n";
+    std::cout << "  info     Show archive information (or dump a three-part package trailer)\n";
     std::cout << "  cat      Display file contents\n";
     std::cout << "  tree     Show directory tree\n";
     std::cout << "  stat     Show file/directory metadata\n";
     std::cout << "  extract  Extract archive contents\n";
     std::cout << "  find     Search for files\n";
+    std::cout << "  bundle        Assemble a three-part package (bootstrap + images + trailer)\n";
+    std::cout << "  unbundle      Decompose a three-part package into a directory\n";
+    std::cout << "  reassemble    Rebuild a binary from an unbundled directory\n";
+    std::cout << "  insert-image  Append an image slot to a package (in place)\n";
+    std::cout << "  remove-image  Remove an image slot from a package (in place)\n";
+    std::cout << "  set-runtime   Replace the bootstrap portion of a package (in place)\n";
+    std::cout << "  mkimage       Create a dwarfs image from a directory (wraps mkdwarfs)\n";
     std::cout << "  help     Show help for a command\n\n";
     std::cout << "Use 'tebakofs help <command>' for more information about a command.\n";
   }
@@ -899,6 +1248,83 @@ int TebakofsCLI::cmd_help(const std::string& command)
     std::cout << "  tebakofs extract archive.zip\n";
     std::cout << "  tebakofs extract archive.zip file1.txt file2.txt\n";
     std::cout << "  tebakofs extract -d /tmp/out archive.sqfs\n";
+  }
+  else if (command == "info") {
+    std::cout << "Usage: tebakofs info [options] <archive>\n\n";
+    std::cout << "Show archive information. When the file carries a tpkg manifest trailer\n";
+    std::cout << "(a tebako three-part package), the trailer is dumped instead: slot count,\n";
+    std::cout << "offsets, sizes, mountpoints and trailer validity.\n\n";
+    std::cout << "Options:\n";
+    std::cout << "  -v, --verbose  Verbose output\n";
+  }
+  else if (command == "bundle") {
+    std::cout << "Usage: tebakofs bundle --bootstrap <exe> --image <img[:mountpoint]>... --output <file>\n\n";
+    std::cout << "Assemble a tebako three-part package: copy the bootstrap bytes, append each\n";
+    std::cout << "image as a slot, and write the tpkg manifest trailer. The default mountpoint\n";
+    std::cout << "for image slot 0 is /__tebako_memfs__ (slot N: /__tebako_memfs_N__); image\n";
+    std::cout << "formats are sniffed from magic bytes (dwarfs/squashfs/zip, else auto).\n\n";
+    std::cout << "Options:\n";
+    std::cout << "  --bootstrap <exe>        Bootstrap/runtime executable (required)\n";
+    std::cout << "  --image <img[:mount]>    Image file, repeatable (1.." << TPKG_MAX_SLOTS << ")\n";
+    std::cout << "  -o, --output <file>      Output binary (required)\n";
+    std::cout << "  --runtime-ref <ref>      Runtime reference recorded in the trailer\n";
+    std::cout << "  --lean                   Mark the package as lean (TPKG_FLAG_LEAN)\n";
+    std::cout << "  --launcher-abi <n>       Launcher ABI version (default: 0)\n\n";
+    std::cout << "Examples:\n";
+    std::cout << "  tebakofs bundle --bootstrap runtime --image app.dwarfs -o myapp\n";
+    std::cout << "  tebakofs bundle --bootstrap boot --image app.dwarfs:/app --image data.dwarfs:/data -o myapp\n";
+  }
+  else if (command == "unbundle") {
+    std::cout << "Usage: tebakofs unbundle <binary> --output <dir>\n\n";
+    std::cout << "Decompose a three-part package: writes bootstrap.bin, image-<N>.bin per slot\n";
+    std::cout << "and manifest.json (slot table: offset, size, format, mountpoint, crc32).\n\n";
+    std::cout << "Options:\n";
+    std::cout << "  -o, --output <dir>  Output directory (required)\n\n";
+    std::cout << "Examples:\n";
+    std::cout << "  tebakofs unbundle myapp -o parts/\n";
+  }
+  else if (command == "reassemble") {
+    std::cout << "Usage: tebakofs reassemble <dir> --output <file>\n\n";
+    std::cout << "Rebuild a binary from an unbundled directory. With unchanged parts the result\n";
+    std::cout << "is byte-identical to the original; swapped or edited parts (and manifest.json\n";
+    std::cout << "metadata edits) are picked up and offsets/sizes recomputed.\n\n";
+    std::cout << "Options:\n";
+    std::cout << "  -o, --output <file>  Output binary (required)\n\n";
+    std::cout << "Examples:\n";
+    std::cout << "  tebakofs reassemble parts/ -o myapp.patched\n";
+  }
+  else if (command == "insert-image") {
+    std::cout << "Usage: tebakofs insert-image <binary> <img[:mountpoint]>\n\n";
+    std::cout << "Append an image slot to a three-part package (rewrites the file in place).\n";
+    std::cout << "Default mountpoint: /__tebako_memfs_<N>__ for the new slot index N.\n\n";
+    std::cout << "Examples:\n";
+    std::cout << "  tebakofs insert-image myapp extra.dwarfs:/extra\n";
+  }
+  else if (command == "remove-image") {
+    std::cout << "Usage: tebakofs remove-image <binary> <slot>\n\n";
+    std::cout << "Remove an image slot from a three-part package (rewrites the file in place).\n";
+    std::cout << "The last remaining slot cannot be removed (a manifest requires >= 1 slot).\n\n";
+    std::cout << "Examples:\n";
+    std::cout << "  tebakofs remove-image myapp 1\n";
+  }
+  else if (command == "set-runtime") {
+    std::cout << "Usage: tebakofs set-runtime <binary> <runtime-file>\n\n";
+    std::cout << "Replace the bootstrap (executable) portion of a three-part package: for a\n";
+    std::cout << "classic stitched package this swaps the embedded runtime, for a lean package\n";
+    std::cout << "the bootstrap launcher. Images and trailer fields are preserved.\n\n";
+    std::cout << "Examples:\n";
+    std::cout << "  tebakofs set-runtime myapp tebako-runtime-3.3.7-macos-arm64\n";
+  }
+  else if (command == "mkimage") {
+    std::cout << "Usage: tebakofs mkimage --format dwarfs <srcdir> --output <img>\n\n";
+    std::cout << "Create a filesystem image from a directory. Thin wrapper around mkdwarfs,\n";
+    std::cout << "located via TEBAKO_MKDWARFS or PATH. Only the dwarfs format is supported:\n";
+    std::cout << "the zip backend is read-only.\n\n";
+    std::cout << "Options:\n";
+    std::cout << "  --format <format>   Image format: dwarfs (required)\n";
+    std::cout << "  -o, --output <img>  Output image file (required)\n\n";
+    std::cout << "Examples:\n";
+    std::cout << "  tebakofs mkimage --format dwarfs app/ -o app.dwarfs\n";
   }
   else {
     std::cout << "Use 'tebakofs help' for general help.\n";

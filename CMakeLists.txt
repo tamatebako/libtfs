@@ -1033,7 +1033,9 @@ endif(WITH_TESTS)
 add_executable(tebakofs
   "src/tebakofs_main.cpp"
   "src/cli/tebakofs.cpp"
+  "src/cli/package.cpp"
   "include/tebako/fs/cli/tebakofs.h"
+  "include/tebako/fs/cli/package.h"
 )
 
 target_include_directories(tebakofs PRIVATE

@@ -158,6 +158,47 @@ cd build
 ./tebakofs help extract
 ```
 
+### 9. Package Tooling (three-part packages)
+
+tebakofs assembles and edits tebako "three-part packages" — a single
+executable composed of a bootstrap/runtime portion, one or more appended
+filesystem images (slots), and a `tpkg` manifest trailer at the end of the
+file (wire format: `include/tebako/tpkg.h`).
+
+```bash
+# Assemble a package (bootstrap + images + manifest trailer)
+./tebakofs bundle --bootstrap runtime --image app.dwarfs -o myapp
+./tebakofs bundle --bootstrap runtime --image app.dwarfs:/app --image data.dwarfs:/data -o myapp
+
+# Dump the manifest trailer of an executable
+./tebakofs info myapp
+
+# Decompose into bootstrap.bin, image-<N>.bin and manifest.json
+./tebakofs unbundle myapp -o parts/
+
+# Rebuild (byte-identical when nothing changed; picks up swapped parts)
+./tebakofs reassemble parts/ -o myapp.patched
+
+# Granular part editing (rewrites the binary in place)
+./tebakofs insert-image myapp extra.dwarfs:/extra
+./tebakofs remove-image myapp 1
+./tebakofs set-runtime myapp new-runtime
+
+# Create a dwarfs image from a directory (wraps mkdwarfs)
+./tebakofs mkimage --format dwarfs app/ -o app.dwarfs
+```
+
+**Notes:**
+- `bundle` defaults the mountpoint of image slot 0 to `/__tebako_memfs__`
+  (slot N: `/__tebako_memfs_N__`) and sniffs image formats from magic bytes.
+  Optional: `--runtime-ref <ref>`, `--lean`, `--launcher-abi <n>`.
+- `info` keeps its archive behavior for plain image files; the package dump
+  appears only when a tpkg trailer is present.
+- `remove-image` refuses to remove the last remaining slot (a manifest
+  requires at least one slot).
+- `mkimage` locates `mkdwarfs` via `TEBAKO_MKDWARFS` or PATH. Only the
+  dwarfs format is supported — the zip backend is read-only.
+
 ## Supported Archive Formats
 
 tebakofs auto-detects format from magic bytes and works with:
