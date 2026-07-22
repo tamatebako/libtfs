@@ -105,10 +105,16 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # gnu legs build inside the tebako ubuntu-20.04 dev container so the
+          # shipped archives never reference glibc symbols newer than the
+          # tebako baseline (host runners are glibc 2.38+; packages built
+          # there fail to link on ubuntu-20.04, e.g. __isoc23_strtol).
           - platform: linux-gnu-x86_64
             os: ubuntu-latest
+            container: ghcr.io/tamatebako/tebako-ubuntu-20.04-dev:latest
           - platform: linux-gnu-arm64
             os: ubuntu-24.04-arm
+            container: ghcr.io/tamatebako/tebako-ubuntu-20.04-dev:latest
           - platform: linux-musl-x86_64
             os: ubuntu-latest
             container: alpine:3.21
@@ -134,8 +140,8 @@ jobs:
             autoconf automake libtool pkgconf squashfs-tools
           pip3 install --break-system-packages --root-user-action ignore mistletoe
 
-      - name: Declare directory safe (musl)
-        if: matrix.platform == 'linux-musl-x86_64'
+      - name: Declare directory safe (container)
+        if: startswith(matrix.platform, 'linux-')
         run: git config --global --add safe.directory "$(pwd)"
 
       - name: Checkout
@@ -382,9 +388,15 @@ jobs:
           VIROOT=$(dirname "$VILIB")
           LIBS="$DEPS_LIBS"
           SHARES="$DEPS_SHARES"
+          HEADER_DIRS="$DEPS_HEADER_DIRS"
           if [ "$RUNNER_OS" != "macOS" ]; then
             LIBS="$LIBS libcrypto.a libssl.a"
             SHARES="$SHARES openssl"
+            # Ship the matching OpenSSL headers with the archives: tebako's
+            # ruby build (ext/openssl) configures against the triplet include
+            # dir; without them it fell back to system headers whose opaque
+            # structs mismatched the shipped 3.x libs and broke the build.
+            HEADER_DIRS="$HEADER_DIRS openssl"
           fi
           rm -rf deps-stage
           mkdir -p deps-stage/lib deps-stage/share
@@ -420,7 +432,7 @@ jobs:
           # archives (gem native extensions need e.g. <brotli/encode.h>).
           VIINC="$VIROOT/include"
           mkdir -p deps-stage/include
-          for d in $DEPS_HEADER_DIRS; do
+          for d in $HEADER_DIRS; do
             if [ ! -d "$VIINC/$d" ]; then
               echo "ERROR: expected dep header dir missing: $VIINC/$d" >&2; exit 1
             fi
