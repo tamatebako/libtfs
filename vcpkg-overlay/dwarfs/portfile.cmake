@@ -1,6 +1,6 @@
 # vcpkg portfile for dwarfs
 # DwarFS - A fast high-compression read-only file system
-# Source: tamatebako/dwarfs-t fork, tag tebako-v0.14.1-16
+# Source: tamatebako/dwarfs-t fork, tag tebako-v0.14.1-17
 
 vcpkg_check_linkage(ONLY_STATIC_LIBRARY)
 
@@ -17,8 +17,8 @@ endif()
 vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
     REPO tamatebako/dwarfs-t
-    REF tebako-v0.14.1-16
-    SHA512 b8386689b1dc9a94798650a2eda43c99f28e7fca86934a59288ee2335131404e4c14b5c0e5826d4125377339f9207595e2cd0267ed4b18e3820501932eb80830
+    REF tebako-v0.14.1-17
+    SHA512 815c858462dfb621d2b1b7a73384c443fd9e4ee20c1df44f9946400d4e5951992dd4621c0d204daa27748a5af4a0880eadb20fb687e9cbbcf01d8c606171e03
     HEAD_REF main
 )
 

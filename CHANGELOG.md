@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.8] - 2026-07-23
+
+### Fixed
+- dwarfs-t tebako-v0.14.1-17: directory streams synthesize `.` and `..` (POSIX readdir semantics) — packaged ruby's `Dir.read` contract (tebako patches-dir test) holds on libtfs images.
+- dwarfs port: `USE_JEMALLOC=OFF` — consumers no longer inherit a shared jemalloc reference (brew dylib leak into tebako packaged binaries on macOS).
+
+### Changed
+- dwarfs overlay port: tebako-v0.14.1-17.
+
 ## [0.12.7] - 2026-07-22
 
 ### Fixed
