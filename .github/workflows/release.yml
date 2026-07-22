@@ -158,11 +158,13 @@ jobs:
           echo "version=${TAG#v}" >> "$GITHUB_ENV"
 
       - name: Install fixture tools (Linux)
-        # zip and mksquashfs are needed by tests/fixtures/regenerate_all.sh
+        # zip and mksquashfs are needed by tests/fixtures/regenerate_all.sh;
+        # unzip/ninja are vcpkg prerequisites the minimal gnu build containers
+        # lack (the musl bootstrap installs its own set).
         if: runner.os == 'Linux' && matrix.platform != 'linux-musl-x86_64'
         run: |
           sudo apt-get -y update
-          sudo apt-get -y install zip squashfs-tools
+          sudo apt-get -y install zip unzip squashfs-tools ninja-build
 
       - name: Install fixture tools (macOS)
         if: runner.os == 'macOS'
