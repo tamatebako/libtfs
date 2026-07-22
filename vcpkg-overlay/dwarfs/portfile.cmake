@@ -4,6 +4,16 @@
 
 vcpkg_check_linkage(ONLY_STATIC_LIBRARY)
 
+# Link the C++ runtime statically on Linux so the shipped tools (mkdwarfs,
+# dwarfsck, dwarfsextract) run on hosts whose libstdc++/libgcc are older than
+# the build container's (tebako consumes these binaries in its CI images and
+# on user machines; a dynamic C++ runtime made musl binaries fail with
+# "Error relocating ... _M_replace_cold: symbol not found").
+set(__DWARFS_EXE_LINKER_OPTIONS "")
+if(VCPKG_TARGET_IS_LINUX)
+    set(__DWARFS_EXE_LINKER_OPTIONS "-DCMAKE_EXE_LINKER_FLAGS=-static-libstdc++ -static-libgcc")
+endif()
+
 vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
     REPO tamatebako/dwarfs-t
@@ -19,6 +29,9 @@ vcpkg_cmake_configure(
         -DWITH_LIBDWARFS=ON
         -DWITH_TOOLS=ON
         -DWITH_FUSE_DRIVER=OFF
+        # shipped artifacts are libs + binaries only; man pages need the
+        # mistletoe Python module that minimal build containers do not have
+        -DWITH_MAN_PAGES=OFF
         # tarball builds have no git metadata; version.cmake's source-build override
         -DNIXPKGS_DWARFS_VERSION_OVERRIDE=v0.14.1
         # need_fuse.cmake is included unconditionally and FATAL_ERRORs without FUSE-T;
@@ -28,6 +41,7 @@ vcpkg_cmake_configure(
         -DTRY_ENABLE_FLAC=OFF
         # keep consumers hermetic; stops a brew probe leaking into dwarfs-config.cmake
         -DUSE_HOMEBREW_LIBARCHIVE=OFF
+        ${__DWARFS_EXE_LINKER_OPTIONS}
 )
 
 vcpkg_cmake_install()
