@@ -30,8 +30,11 @@ vcpkg_cmake_configure(
         -DWITH_TOOLS=ON
         -DWITH_FUSE_DRIVER=OFF
         # shipped artifacts are libs + binaries only; man pages need the
-        # mistletoe Python module that minimal build containers do not have
+        # mistletoe Python module that minimal build containers do not have.
+        # WITH_MAN_PAGES covers the standalone .1 files, WITH_MAN_OPTION the
+        # text embedded in the tools (--man) — both must be off.
         -DWITH_MAN_PAGES=OFF
+        -DWITH_MAN_OPTION=OFF
         # tarball builds have no git metadata; version.cmake's source-build override
         -DNIXPKGS_DWARFS_VERSION_OVERRIDE=v0.14.1
         # need_fuse.cmake is included unconditionally and FATAL_ERRORs without FUSE-T;
