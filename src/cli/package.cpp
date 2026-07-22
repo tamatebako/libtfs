@@ -733,9 +733,13 @@ std::string shell_quote(const std::string& arg)
 {
   std::string out = "\"";
   for (char c : arg) {
+#ifndef _WIN32
+    // POSIX shells process backslash escapes inside double quotes; cmd.exe
+    // does not, and a Windows path separator must stay a single backslash
     if (c == '"' || c == '\\') {
       out += '\\';
     }
+#endif
     out += c;
   }
   out += "\"";
@@ -1221,8 +1225,20 @@ PackageResult package_mkimage(const std::string& format,
     return fail("mkdwarfs not found: " + exe);
   }
 
+  // Native-preferred separators for the CreateProcess/cmd.exe path handling
+  exe = fsys::path(exe).make_preferred().string();
+
   std::string cmd =
       shell_quote(exe) + " -i " + shell_quote(source_dir) + " -o " + shell_quote(output) + " --no-progress --force";
+#ifdef _WIN32
+  // std::system() goes through cmd.exe /c, which strips the first and last
+  // quote of a line that starts with one; with more than two quoted segments
+  // that mangles the line and cmd fails with ERROR_INVALID_NAME ("The
+  // filename, directory name, or volume label syntax is incorrect.") before
+  // mkdwarfs even starts. An extra outer pair of quotes survives the strip
+  // (the cmd /c ""exe" args" idiom).
+  cmd = "\"" + cmd + "\"";
+#endif
   int rc = std::system(cmd.c_str());
   if (rc != 0) {
     return fail("mkdwarfs failed (exit code " + std::to_string(rc) + "): " + cmd);

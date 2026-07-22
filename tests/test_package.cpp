@@ -130,7 +130,15 @@ struct CliResult {
 // Runs the built tebakofs binary (compile-time path) with the given arguments.
 CliResult RunCli(const std::string& args)
 {
-  std::string cmd = "\"" TEBAKOFS_BINARY "\" " + args + " 2>&1";
+  const std::string binary = fsys::path(TEBAKOFS_BINARY).make_preferred().string();
+  std::string cmd = "\"" + binary + "\" " + args + " 2>&1";
+#ifdef _WIN32
+  // popen goes through cmd.exe /c, which strips the first and last quote of a
+  // line that starts with one; with more than two quoted segments that mangles
+  // the line and cmd fails with ERROR_INVALID_NAME before tebakofs starts.
+  // An extra outer pair of quotes survives the strip (cmd /c ""exe" args").
+  cmd = "\"" + cmd + "\"";
+#endif
   CliResult res;
   FILE* pipe = popen(cmd.c_str(), "r");
   if (!pipe) {
