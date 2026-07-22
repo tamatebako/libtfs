@@ -30,6 +30,12 @@
 # `cmake --install` and package:
 #   libtfs-<ver>-<platform>.tar.gz (or .zip on Windows): libtfs.a, public
 #     headers (include/tebako/**), CMake package config (lib/cmake/libtfs/)
+#   libtfs-deps-<ver>-<platform>.tar.gz: the transitive static libs a consumer
+#     links against (dwarfs reader set, flatbuffers, zip, fmt, xxhash, zstd,
+#     lz4, lzma, brotli, z, bzip2, boost filesystem+chrono; plus OpenSSL on
+#     Linux/Windows) with their CMake package configs — the libtfs package
+#     plus the matching libtfs-deps package are fully self-contained, so
+#     consumers need no vcpkg downstream
 #   mkdwarfs-<platform>, tebakofs-<platform> (.exe on Windows)
 # The publish job attaches all of them plus SHA256SUMS to the GitHub release.
 
@@ -57,6 +63,24 @@ env:
   # Pin from vcpkg-configuration.json default-registry baseline
   VCPKG_COMMIT: 11bbc873e00e9e58d4e9dffb30b7a5493a030e0b
   VCPKG_BINARY_SOURCES: clear;files,${{ github.workspace }}/.vcpkg-cache,readwrite
+  # libtfs-deps contract: the exact transitive static libs consumers link
+  # against (Linux/Windows builds add libcrypto.a/libssl.a in the packaging
+  # step; macOS consumers link brew/system OpenSSL). A missing lib fails the
+  # step. Excluded by contract: libarchive, gtest/gmock, argtable3, jemalloc
+  # (consumers bring their own), mbedtls, header-only ports (nlohmann-json,
+  # parallel-hashmap, range-v3, date, utfcpp), squashfs (LGPL), other boost.
+  DEPS_LIBS: >-
+    libdwarfs_reader.a libdwarfs_common.a libdwarfs_metadata_legacy.a
+    libdwarfs_decompressor.a libflatbuffers.a libzip.a libfmt.a libxxhash.a
+    libzstd.a liblz4.a liblzma.a libbrotlidec.a libbrotlienc.a
+    libbrotlicommon.a libz.a libbz2.a libboost_filesystem.a libboost_chrono.a
+  # CMake package config dirs (share/<port>, or lib/cmake/<port> where a port
+  # installs there) shipped with the libs so find_dependency can still
+  # resolve; copied only when present (not every port ships a config).
+  DEPS_SHARES: >-
+    dwarfs flatbuffers libzip fmt xxhash zstd lz4 liblzma unofficial-brotli
+    brotli zlib bzip2 boost-filesystem boost-chrono boost_filesystem
+    boost_chrono
 
 jobs:
   build:
@@ -328,6 +352,78 @@ jobs:
           objdump -p stage/bin/mkdwarfs.exe | grep "DLL Name" || true
           objdump -p stage/bin/tebakofs.exe | grep "DLL Name" || true
 
+      - name: Package deps (Linux/macOS/musl)
+        # libtfs-deps-<ver>-<platform>.tar.gz: the transitive static libs a
+        # consumer links against (see DEPS_LIBS), so libtfs + libtfs-deps is
+        # self-contained — no vcpkg downstream. Fails loudly when an expected
+        # lib is missing. macOS ships no libcrypto/libssl (brew/system OpenSSL
+        # at link time); Linux and musl include them.
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euxo pipefail
+          VILIB=$(ls -d build/vcpkg_installed/*/lib | head -1)
+          VIROOT=$(dirname "$VILIB")
+          LIBS="$DEPS_LIBS"
+          SHARES="$DEPS_SHARES"
+          if [ "$RUNNER_OS" != "macOS" ]; then
+            LIBS="$LIBS libcrypto.a libssl.a"
+            SHARES="$SHARES openssl"
+          fi
+          rm -rf deps-stage
+          mkdir -p deps-stage/lib deps-stage/share
+          for l in $LIBS; do
+            if [ ! -f "$VILIB/$l" ]; then
+              echo "ERROR: expected dep lib missing: $VILIB/$l" >&2
+              exit 1
+            fi
+            cp "$VILIB/$l" deps-stage/lib/
+          done
+          for s in $SHARES; do
+            if [ -d "$VIROOT/share/$s" ]; then
+              cp -R "$VIROOT/share/$s" deps-stage/share/
+            fi
+            if [ -d "$VILIB/cmake/$s" ]; then
+              mkdir -p deps-stage/lib/cmake
+              cp -R "$VILIB/cmake/$s" deps-stage/lib/cmake/
+            fi
+          done
+          tar -C deps-stage -czf "artifacts/libtfs-deps-${{ env.version }}-${{ matrix.platform }}.tar.gz" lib share
+          tar -tzf "artifacts/libtfs-deps-${{ env.version }}-${{ matrix.platform }}.tar.gz"
+
+      - name: Package deps (Windows)
+        # Same deps contract as POSIX (shipped as .tar.gz, not .zip: MSYS2 tar
+        # handles it and the asset name stays uniform across platforms);
+        # OpenSSL (libcrypto/libssl) is included on Windows.
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: |
+          set -euxo pipefail
+          VILIB=$(ls -d build/vcpkg_installed/*/lib | head -1)
+          VIROOT=$(dirname "$VILIB")
+          LIBS="$DEPS_LIBS libcrypto.a libssl.a"
+          SHARES="$DEPS_SHARES openssl"
+          rm -rf deps-stage
+          mkdir -p deps-stage/lib deps-stage/share
+          for l in $LIBS; do
+            if [ ! -f "$VILIB/$l" ]; then
+              echo "ERROR: expected dep lib missing: $VILIB/$l" >&2
+              exit 1
+            fi
+            cp "$VILIB/$l" deps-stage/lib/
+          done
+          for s in $SHARES; do
+            if [ -d "$VIROOT/share/$s" ]; then
+              cp -R "$VIROOT/share/$s" deps-stage/share/
+            fi
+            if [ -d "$VILIB/cmake/$s" ]; then
+              mkdir -p deps-stage/lib/cmake
+              cp -R "$VILIB/cmake/$s" deps-stage/lib/cmake/
+            fi
+          done
+          tar -C deps-stage -czf "artifacts/libtfs-deps-${{ env.version }}-${{ matrix.platform }}.tar.gz" lib share
+          tar -tzf "artifacts/libtfs-deps-${{ env.version }}-${{ matrix.platform }}.tar.gz"
+
       - name: Upload release assets
         uses: actions/upload-artifact@v4
         with:
@@ -359,12 +455,13 @@ jobs:
           merge-multiple: true
 
       - name: Verify asset set
-        # 6 platforms x 3 assets (libtfs package + mkdwarfs + tebakofs)
+        # 6 platforms x 4 assets (libtfs package + libtfs-deps package +
+        # mkdwarfs + tebakofs)
         run: |
           ls -l dist
           count=$(find dist -maxdepth 1 -type f | wc -l)
-          if [ "$count" -ne 18 ]; then
-            echo "ERROR: expected 18 release assets, found $count"
+          if [ "$count" -ne 24 ]; then
+            echo "ERROR: expected 24 release assets, found $count"
             exit 1
           fi
 
@@ -398,8 +495,26 @@ jobs:
               of libtfs where the legacy tebako API is built; not shipped on Windows)
             - `include/tebako/**` — public headers
             - `lib/cmake/libtfs/` — CMake package config (`find_package(libtfs)`)
+          - `libtfs-deps-<version>-<platform>.tar.gz` (all platforms): the
+            transitive static libraries consumers link against —
+            `libdwarfs_reader`, `libdwarfs_common`, `libdwarfs_metadata_legacy`,
+            `libdwarfs_decompressor`, `libflatbuffers`, `libzip`, `libfmt`,
+            `libxxhash`, `libzstd`, `liblz4`, `liblzma`, brotli (dec/enc/common),
+            `libz`, `libbz2`, `libboost_filesystem`, `libboost_chrono`, plus
+            `libcrypto`/`libssl` on Linux and Windows (macOS consumers link
+            brew/system OpenSSL at link time) — with the CMake package configs
+            of those ports under `share/` (or `lib/cmake/` where a port installs
+            there), so `find_dependency` can still resolve.
           - `mkdwarfs-<platform>` and `tebakofs-<platform>` — command-line tools
             (`.exe` suffix on `windows-ucrt64`)
+
+          **Self-contained consumption:** a `libtfs-<version>-<platform>`
+          package plus the matching `libtfs-deps-<version>-<platform>` package
+          are fully self-contained — linking `libtfs.a` needs no vcpkg (and no
+          C++20 dependency build) on the consumer machine, only a linker and
+          the platform system libraries (plus brew/system OpenSSL on macOS).
+          Consumers that prefer to resolve dependencies themselves (e.g. their
+          own vcpkg) can keep using the `libtfs` package alone.
 
           Linkage notes (from the shipped binaries' `ldd`/`objdump` output):
 
