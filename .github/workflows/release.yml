@@ -126,6 +126,9 @@ jobs:
             # consumers on older-libstdc++ containers (tebako alpine-3.17,
             # gcc-12) still close the link — see the packaging step.
             container: alpine:3.21
+          - platform: linux-musl-arm64
+            os: ubuntu-24.04-arm
+            container: alpine:3.21
           - platform: macos-arm64
             os: macos-14
           - platform: macos-x86_64
@@ -139,7 +142,7 @@ jobs:
         # apk cmake is musl-native 3.31 (boost-1.90 needs >= 3.25) — do NOT
         # use the xpack cmake here, it is a glibc binary and cannot run on
         # musl. mistletoe unnecessary (man pages off); squashfs optional.
-        if: matrix.platform == 'linux-musl-x86_64'
+        if: startswith(matrix.platform, 'linux-musl')
         run: |
           apk --no-cache --upgrade add \
             bash git curl ca-certificates zip unzip tar gzip \
@@ -211,7 +214,7 @@ jobs:
       # Cache keys match the per-platform CI workflows so release jobs reuse
       # the warm caches from main.
       - name: Cache vcpkg package archives (Linux/macOS)
-        if: runner.os != 'Windows' && matrix.platform != 'linux-musl-x86_64'
+        if: runner.os != 'Windows' && !startswith(matrix.platform, 'linux-musl')
         uses: actions/cache@v4
         with:
           path: .vcpkg-cache
@@ -219,7 +222,7 @@ jobs:
           restore-keys: vcpkg-archives-${{ runner.os }}-${{ matrix.os }}-
 
       - name: Cache vcpkg package archives (musl)
-        if: matrix.platform == 'linux-musl-x86_64'
+        if: startswith(matrix.platform, 'linux-musl')
         uses: actions/cache@v4
         with:
           path: .vcpkg-cache
@@ -235,7 +238,7 @@ jobs:
           restore-keys: vcpkg-archives-${{ runner.os }}-${{ runner.arch }}-mingw-
 
       - name: Cache vcpkg installed tree (Linux/macOS)
-        if: runner.os != 'Windows' && matrix.platform != 'linux-musl-x86_64'
+        if: runner.os != 'Windows' && !startswith(matrix.platform, 'linux-musl')
         uses: actions/cache@v4
         with:
           path: build/vcpkg_installed
@@ -243,7 +246,7 @@ jobs:
           restore-keys: vcpkg-installed-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Cache vcpkg installed tree (musl)
-        if: matrix.platform == 'linux-musl-x86_64'
+        if: startswith(matrix.platform, 'linux-musl')
         uses: actions/cache@v4
         with:
           path: build/vcpkg_installed
@@ -428,7 +431,7 @@ jobs:
           fi
           rm -rf deps-stage
           mkdir -p deps-stage/lib deps-stage/share
-          if [ "${{ matrix.platform }}" = "linux-musl-x86_64" ]; then
+          if [[ "${{ matrix.platform }}" == linux-musl-* ]]; then
             # Ship the build's C++/C runtime archives so tebako's musl link
             # (-l:libstdc++.a, -lgcc_eh, -l:libgcc.a) resolves the dep set's
             # references (e.g. _M_replace_cold from libstdc++ >= 13) on
@@ -701,7 +704,8 @@ jobs:
           ## Release artifacts
 
           Per-platform packages (platform ids: `linux-gnu-x86_64`, `linux-gnu-arm64`,
-          `linux-musl-x86_64`, `macos-arm64`, `macos-x86_64`, `windows-ucrt64`):
+          `linux-musl-x86_64`, `linux-musl-arm64`, `macos-arm64`, `macos-x86_64`,
+          `windows-ucrt64`):
 
           - `libtfs-<version>-<platform>.tar.gz` (`.zip` on Windows):
             - `lib/libtfs.a` — the libtfs static library
@@ -740,13 +744,17 @@ jobs:
 
           Linkage notes (from the shipped binaries' `ldd`/`objdump` output):
 
-          - All C/C++ third-party dependencies (dwarfs-t, libzip, fmt,
-            jemalloc, Boost, …) are statically linked into the binaries on
-            every platform.
-          - `linux-gnu-*`: dynamic glibc/libstdc++ (built on ubuntu-24.04;
-            requires glibc ≥ 2.38 at runtime, e.g. Ubuntu 24.04 or newer).
-          - `linux-musl-x86_64`: dynamic musl libc + libstdc++/libgcc_s (built
-            on Alpine 3.21; on a minimal Alpine install: `apk add libstdc++ libgcc`).
+          - All C/C++ third-party dependencies (dwarfs-t, libzip, fmt, Boost, …)
+            are statically linked into the binaries on every platform.
+          - `linux-gnu-*`: dynamic glibc only (built inside the tebako
+            ubuntu-20.04 ci container; libstdc++/libgcc linked statically —
+            runs on any glibc ≥ 2.31 system such as Ubuntu 20.04+).
+          - `linux-musl-*`: dynamic musl libc only (built on Alpine 3.21;
+            libstdc++/libgcc linked statically — runs on any musl system,
+            including tebako's older alpine-3.17 containers). The musl deps
+            packages additionally carry the build's `libstdc++.a`/`libgcc.a`/
+            `libgcc_eh.a` so consumers on older toolchains can still close
+            the static link.
           - `macos-*`: dynamic macOS system libraries only (libSystem, libc++;
             built on `macos-14` / `macos-15-intel`).
           - `windows-ucrt64`: dynamic UCRT + MSYS2 runtime DLLs

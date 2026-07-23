@@ -48,7 +48,7 @@
  *     offset  size  field
  *        0     8    u64 offset (image start, absolute file offset)
  *        8     8    u64 size   (image length in bytes)
- *       16     4    u32 format_id (0=auto(magic), 1=dwarfs, 2=squashfs, 3=zip)
+ *       16     4    u32 format_id (0=auto(magic), 1=dwarfs, 2=squashfs, 3=zip, 4=runtime payload)
  *       20     4    u32 flags
  *       24   256    char mount_point[256] (UTF-8, NUL-padded)
  *
@@ -108,6 +108,9 @@ extern "C" {
 #define TPKG_FORMAT_DWARFS 1u
 #define TPKG_FORMAT_SQUASHFS 2u
 #define TPKG_FORMAT_ZIP 3u
+/* A runtime payload slot (fat packages): the compressed language-runtime
+ * package the bootstrap installs into the shared cache on first run. */
+#define TPKG_FORMAT_RUNTIME 4u
 
 /* ---- error codes (returned by tpkg_errno) -------------------------------- */
 
@@ -157,7 +160,7 @@ int tpkg_read_mem(const void* data, size_t size, tpkg_manifest* out);
 int tpkg_write_fd(int fd, const tpkg_manifest* m);
 
 /* Magic-independent structural checks: version supported, slot_count in
- * 1..TPKG_MAX_SLOTS, offset+size non-overflowing, format_id <= TPKG_FORMAT_ZIP,
+ * 1..TPKG_MAX_SLOTS, offset+size non-overflowing, format_id <= TPKG_FORMAT_RUNTIME,
  * runtime_ref and mount_points NUL-terminated within their fixed fields. */
 int tpkg_validate(const tpkg_manifest* m);
 
@@ -390,7 +393,7 @@ int tpkg_validate(const tpkg_manifest* m)
     if (s->size > UINT64_MAX - s->offset) {
       return tpkg__fail(TPKG_ERR_INVALID);
     }
-    if (s->format_id > TPKG_FORMAT_ZIP) {
+    if (s->format_id > TPKG_FORMAT_RUNTIME) {
       return tpkg__fail(TPKG_ERR_INVALID);
     }
     if (tpkg__strnlen(s->mount_point, TPKG_MOUNT_POINT_LEN) == TPKG_MOUNT_POINT_LEN) {

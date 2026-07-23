@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.9] - 2026-07-23
+
+### Added
+- `TPKG_FORMAT_RUNTIME` (format_id 4): a runtime payload slot in the tpkg manifest — fat three-part packages (bootstrap + runtime payload + images) validate as well-formed; vendored into tebako and tebako-bootstrap from this header.
+- `linux-musl-arm64` release leg (prebuilt libtfs + deps + mkdwarfs + tebakofs for musl/arm64) — enables the runtime-ruby musl-arm64 matrix and tebako prebuilt flows on arm64 Alpine.
+
+### Changed
+- Release notes corrected for the current build/link reality (gnu legs in the ubuntu-20.04 ci container with static C++ runtime; musl legs static C++ runtime + shipped toolchain archives).
+
+
 ## [0.12.8] - 2026-07-23
 
 ### Fixed
