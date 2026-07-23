@@ -27,13 +27,13 @@ http://en.wikipedia.org/wiki/Android_%28operating_system%29[Android] platform.
 #define BOOST_PLAT_ANDROID BOOST_VERSION_NUMBER_NOT_AVAILABLE
 
 #if defined(__ANDROID__)
-#   undef BOOST_PLAT_ANDROID
-#   define BOOST_PLAT_ANDROID BOOST_VERSION_NUMBER_AVAILABLE
+#undef BOOST_PLAT_ANDROID
+#define BOOST_PLAT_ANDROID BOOST_VERSION_NUMBER_AVAILABLE
 #endif
 
 #if BOOST_PLAT_ANDROID
-#   define BOOST_PLAT_ANDROID_AVAILABLE
-#   include <boost/predef/detail/platform_detected.h>
+#define BOOST_PLAT_ANDROID_AVAILABLE
+#include <boost/predef/detail/platform_detected.h>
 #endif
 
 #define BOOST_PLAT_ANDROID_NAME "Android"
@@ -41,4 +41,4 @@ http://en.wikipedia.org/wiki/Android_%28operating_system%29[Android] platform.
 #endif
 
 #include <boost/predef/detail/test.h>
-BOOST_PREDEF_DECLARE_TEST(BOOST_PLAT_ANDROID,BOOST_PLAT_ANDROID_NAME)
+BOOST_PREDEF_DECLARE_TEST(BOOST_PLAT_ANDROID, BOOST_PLAT_ANDROID_NAME)

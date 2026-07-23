@@ -28,16 +28,14 @@ http://en.wikipedia.org/wiki/HP-UX[HP-UX] operating system.
 
 #define BOOST_OS_HPUX BOOST_VERSION_NUMBER_NOT_AVAILABLE
 
-#if !defined(BOOST_PREDEF_DETAIL_OS_DETECTED) && ( \
-    defined(hpux) || defined(_hpux) || defined(__hpux) \
-    )
-#   undef BOOST_OS_HPUX
-#   define BOOST_OS_HPUX BOOST_VERSION_NUMBER_AVAILABLE
+#if !defined(BOOST_PREDEF_DETAIL_OS_DETECTED) && (defined(hpux) || defined(_hpux) || defined(__hpux))
+#undef BOOST_OS_HPUX
+#define BOOST_OS_HPUX BOOST_VERSION_NUMBER_AVAILABLE
 #endif
 
 #if BOOST_OS_HPUX
-#   define BOOST_OS_HPUX_AVAILABLE
-#   include <boost/predef/detail/os_detected.h>
+#define BOOST_OS_HPUX_AVAILABLE
+#include <boost/predef/detail/os_detected.h>
 #endif
 
 #define BOOST_OS_HPUX_NAME "HP-UX"
@@ -45,4 +43,4 @@ http://en.wikipedia.org/wiki/HP-UX[HP-UX] operating system.
 #endif
 
 #include <boost/predef/detail/test.h>
-BOOST_PREDEF_DECLARE_TEST(BOOST_OS_HPUX,BOOST_OS_HPUX_NAME)
+BOOST_PREDEF_DECLARE_TEST(BOOST_OS_HPUX, BOOST_OS_HPUX_NAME)

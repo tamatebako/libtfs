@@ -43,14 +43,15 @@ Version number depends on the most recent detected extension.
 #define BOOST_HW_SIMD_ARM BOOST_VERSION_NUMBER_NOT_AVAILABLE
 
 #undef BOOST_HW_SIMD_ARM
-#if !defined(BOOST_HW_SIMD_ARM) && (defined(__ARM_NEON__) || defined(__aarch64__) || defined (_M_ARM) || defined (_M_ARM64))
-#   define BOOST_HW_SIMD_ARM BOOST_HW_SIMD_ARM_NEON_VERSION
+#if !defined(BOOST_HW_SIMD_ARM) && \
+    (defined(__ARM_NEON__) || defined(__aarch64__) || defined(_M_ARM) || defined(_M_ARM64))
+#define BOOST_HW_SIMD_ARM BOOST_HW_SIMD_ARM_NEON_VERSION
 #endif
 
 #if !defined(BOOST_HW_SIMD_ARM)
-#   define BOOST_HW_SIMD_ARM BOOST_VERSION_NUMBER_NOT_AVAILABLE
+#define BOOST_HW_SIMD_ARM BOOST_VERSION_NUMBER_NOT_AVAILABLE
 #else
-#   define BOOST_HW_SIMD_ARM_AVAILABLE
+#define BOOST_HW_SIMD_ARM_AVAILABLE
 #endif
 
 #define BOOST_HW_SIMD_ARM_NAME "ARM SIMD"

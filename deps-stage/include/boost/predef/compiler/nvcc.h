@@ -30,11 +30,11 @@ Version number available as major, minor, and patch beginning with version 7.5.
 #define BOOST_COMP_NVCC BOOST_VERSION_NUMBER_NOT_AVAILABLE
 
 #if defined(__NVCC__)
-#   if !defined(__CUDACC_VER_MAJOR__) || !defined(__CUDACC_VER_MINOR__) || !defined(__CUDACC_VER_BUILD__)
-#       define BOOST_COMP_NVCC_DETECTION BOOST_VERSION_NUMBER_AVAILABLE
-#   else
-#       define BOOST_COMP_NVCC_DETECTION BOOST_VERSION_NUMBER(__CUDACC_VER_MAJOR__, __CUDACC_VER_MINOR__, __CUDACC_VER_BUILD__)
-#   endif
+#if !defined(__CUDACC_VER_MAJOR__) || !defined(__CUDACC_VER_MINOR__) || !defined(__CUDACC_VER_BUILD__)
+#define BOOST_COMP_NVCC_DETECTION BOOST_VERSION_NUMBER_AVAILABLE
+#else
+#define BOOST_COMP_NVCC_DETECTION BOOST_VERSION_NUMBER(__CUDACC_VER_MAJOR__, __CUDACC_VER_MINOR__, __CUDACC_VER_BUILD__)
+#endif
 #endif
 
 #ifdef BOOST_COMP_NVCC_DETECTION
@@ -60,10 +60,10 @@ This behavior is similar to what boost config is doing in `select_compiler_confi
 There the NVCC detection is not handled as a real compiler (part of the
 #if-#elif) but as additional option before the real compiler.
 */
-#   undef BOOST_COMP_NVCC
-#   define BOOST_COMP_NVCC BOOST_COMP_NVCC_DETECTION
-#   define BOOST_COMP_NVCC_AVAILABLE
-#   include <boost/predef/detail/comp_detected.h>
+#undef BOOST_COMP_NVCC
+#define BOOST_COMP_NVCC BOOST_COMP_NVCC_DETECTION
+#define BOOST_COMP_NVCC_AVAILABLE
+#include <boost/predef/detail/comp_detected.h>
 #endif
 
 #define BOOST_COMP_NVCC_NAME "NVCC"
@@ -71,4 +71,4 @@ There the NVCC detection is not handled as a real compiler (part of the
 #endif
 
 #include <boost/predef/detail/test.h>
-BOOST_PREDEF_DECLARE_TEST(BOOST_COMP_NVCC,BOOST_COMP_NVCC_NAME)
+BOOST_PREDEF_DECLARE_TEST(BOOST_COMP_NVCC, BOOST_COMP_NVCC_NAME)

@@ -27,12 +27,12 @@ http://en.wikipedia.org/wiki/Objective-C[Objective-C] language.
 #define BOOST_LANG_OBJC BOOST_VERSION_NUMBER_NOT_AVAILABLE
 
 #if defined(__OBJC__)
-#   undef BOOST_LANG_OBJC
-#   define BOOST_LANG_OBJC BOOST_VERSION_NUMBER_AVAILABLE
+#undef BOOST_LANG_OBJC
+#define BOOST_LANG_OBJC BOOST_VERSION_NUMBER_AVAILABLE
 #endif
 
 #if BOOST_LANG_OBJC
-#   define BOOST_LANG_OBJC_AVAILABLE
+#define BOOST_LANG_OBJC_AVAILABLE
 #endif
 
 #define BOOST_LANG_OBJC_NAME "Objective-C"
@@ -40,4 +40,4 @@ http://en.wikipedia.org/wiki/Objective-C[Objective-C] language.
 #endif
 
 #include <boost/predef/detail/test.h>
-BOOST_PREDEF_DECLARE_TEST(BOOST_LANG_OBJC,BOOST_LANG_OBJC_NAME)
+BOOST_PREDEF_DECLARE_TEST(BOOST_LANG_OBJC, BOOST_LANG_OBJC_NAME)

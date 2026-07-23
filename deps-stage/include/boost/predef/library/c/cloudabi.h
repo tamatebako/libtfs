@@ -37,13 +37,12 @@ Version number available as major, and minor.
 #define BOOST_LIB_C_CLOUDABI BOOST_VERSION_NUMBER_NOT_AVAILABLE
 
 #if defined(__cloudlibc__)
-#   undef BOOST_LIB_C_CLOUDABI
-#   define BOOST_LIB_C_CLOUDABI \
-            BOOST_VERSION_NUMBER(__cloudlibc_major__,__cloudlibc_minor__,0)
+#undef BOOST_LIB_C_CLOUDABI
+#define BOOST_LIB_C_CLOUDABI BOOST_VERSION_NUMBER(__cloudlibc_major__, __cloudlibc_minor__, 0)
 #endif
 
 #if BOOST_LIB_C_CLOUDABI
-#   define BOOST_LIB_C_CLOUDABI_AVAILABLE
+#define BOOST_LIB_C_CLOUDABI_AVAILABLE
 #endif
 
 #define BOOST_LIB_C_CLOUDABI_NAME "cloudlibc"
@@ -51,4 +50,4 @@ Version number available as major, and minor.
 #endif
 
 #include <boost/predef/detail/test.h>
-BOOST_PREDEF_DECLARE_TEST(BOOST_LIB_C_CLOUDABI,BOOST_LIB_C_CLOUDABI_NAME)
+BOOST_PREDEF_DECLARE_TEST(BOOST_LIB_C_CLOUDABI, BOOST_LIB_C_CLOUDABI_NAME)

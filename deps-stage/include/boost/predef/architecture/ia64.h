@@ -31,20 +31,19 @@ http://en.wikipedia.org/wiki/Ia64[Intel Itanium 64] architecture.
 
 #define BOOST_ARCH_IA64 BOOST_VERSION_NUMBER_NOT_AVAILABLE
 
-#if defined(__ia64__) || defined(_IA64) || \
-    defined(__IA64__) || defined(__ia64) || \
-    defined(_M_IA64) || defined(__itanium__)
-#   undef BOOST_ARCH_IA64
-#   define BOOST_ARCH_IA64 BOOST_VERSION_NUMBER_AVAILABLE
+#if defined(__ia64__) || defined(_IA64) || defined(__IA64__) || defined(__ia64) || defined(_M_IA64) || \
+    defined(__itanium__)
+#undef BOOST_ARCH_IA64
+#define BOOST_ARCH_IA64 BOOST_VERSION_NUMBER_AVAILABLE
 #endif
 
 #if BOOST_ARCH_IA64
-#   define BOOST_ARCH_IA64_AVAILABLE
+#define BOOST_ARCH_IA64_AVAILABLE
 #endif
 
 #if BOOST_ARCH_IA64
-#   undef BOOST_ARCH_WORD_BITS_64
-#   define BOOST_ARCH_WORD_BITS_64 BOOST_VERSION_NUMBER_AVAILABLE
+#undef BOOST_ARCH_WORD_BITS_64
+#define BOOST_ARCH_WORD_BITS_64 BOOST_VERSION_NUMBER_AVAILABLE
 #endif
 
 #define BOOST_ARCH_IA64_NAME "Intel Itanium 64"
@@ -52,4 +51,4 @@ http://en.wikipedia.org/wiki/Ia64[Intel Itanium 64] architecture.
 #endif
 
 #include <boost/predef/detail/test.h>
-BOOST_PREDEF_DECLARE_TEST(BOOST_ARCH_IA64,BOOST_ARCH_IA64_NAME)
+BOOST_PREDEF_DECLARE_TEST(BOOST_ARCH_IA64, BOOST_ARCH_IA64_NAME)

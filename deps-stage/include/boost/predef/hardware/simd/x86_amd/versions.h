@@ -19,7 +19,6 @@ Those defines represent x86 (AMD specific) SIMD extensions versions.
 NOTE: You *MUST* compare them with the predef `BOOST_HW_SIMD_X86_AMD`.
 */ // end::reference[]
 
-
 // ---------------------------------
 
 /* tag::reference[]

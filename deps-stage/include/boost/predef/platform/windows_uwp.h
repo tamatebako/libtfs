@@ -16,7 +16,7 @@ http://www.boost.org/LICENSE_1_0.txt)
 = `BOOST_PLAT_WINDOWS_UWP`
 
 http://docs.microsoft.com/windows/uwp/[Universal Windows Platform]
-is available if the current development environment is capable of targeting 
+is available if the current development environment is capable of targeting
 UWP development.
 
 [options="header"]
@@ -34,23 +34,23 @@ UWP development.
 #if BOOST_OS_WINDOWS
 //  MinGW (32-bit), WinCE, and wineg++ don't have a ntverp.h header
 #if !defined(__MINGW32__) && !defined(_WIN32_WCE) && !defined(__WINE__)
-#   include <ntverp.h>
-#   undef BOOST_PLAT_WINDOWS_SDK_VERSION
-#   define BOOST_PLAT_WINDOWS_SDK_VERSION BOOST_VERSION_NUMBER(0, 0, VER_PRODUCTBUILD)
+#include <ntverp.h>
+#undef BOOST_PLAT_WINDOWS_SDK_VERSION
+#define BOOST_PLAT_WINDOWS_SDK_VERSION BOOST_VERSION_NUMBER(0, 0, VER_PRODUCTBUILD)
 #endif
 
 // 9200 is Windows SDK 8.0 from ntverp.h which introduced family support
 #if ((BOOST_PLAT_WINDOWS_SDK_VERSION >= BOOST_VERSION_NUMBER(0, 0, 9200)) || \
      (defined(__MINGW64__) && __MINGW64_VERSION_MAJOR >= 3))
-#   undef BOOST_PLAT_WINDOWS_UWP
-#   define BOOST_PLAT_WINDOWS_UWP BOOST_VERSION_NUMBER_AVAILABLE
+#undef BOOST_PLAT_WINDOWS_UWP
+#define BOOST_PLAT_WINDOWS_UWP BOOST_VERSION_NUMBER_AVAILABLE
 #endif
 #endif
 
 #if BOOST_PLAT_WINDOWS_UWP
-#   define BOOST_PLAT_WINDOWS_UWP_AVAILABLE
-#   include <boost/predef/detail/platform_detected.h>
-#   include <winapifamily.h>    // Windows SDK
+#define BOOST_PLAT_WINDOWS_UWP_AVAILABLE
+#include <boost/predef/detail/platform_detected.h>
+#include <winapifamily.h>  // Windows SDK
 #endif
 
 #define BOOST_PLAT_WINDOWS_UWP_NAME "Universal Windows Platform"

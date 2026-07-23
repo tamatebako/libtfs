@@ -31,17 +31,15 @@ http://en.wikipedia.org/wiki/iOS[iOS] operating system.
 
 #define BOOST_OS_IOS BOOST_VERSION_NUMBER_NOT_AVAILABLE
 
-#if !defined(BOOST_PREDEF_DETAIL_OS_DETECTED) && ( \
-    defined(__APPLE__) && defined(__MACH__) && \
-    defined(__ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__) \
-    )
-#   undef BOOST_OS_IOS
-#   define BOOST_OS_IOS (__ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__*1000)
+#if !defined(BOOST_PREDEF_DETAIL_OS_DETECTED) && \
+    (defined(__APPLE__) && defined(__MACH__) && defined(__ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__))
+#undef BOOST_OS_IOS
+#define BOOST_OS_IOS (__ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__ * 1000)
 #endif
 
 #if BOOST_OS_IOS
-#   define BOOST_OS_IOS_AVAILABLE
-#   include <boost/predef/detail/os_detected.h>
+#define BOOST_OS_IOS_AVAILABLE
+#include <boost/predef/detail/os_detected.h>
 #endif
 
 #define BOOST_OS_IOS_NAME "iOS"
@@ -49,4 +47,4 @@ http://en.wikipedia.org/wiki/iOS[iOS] operating system.
 #endif
 
 #include <boost/predef/detail/test.h>
-BOOST_PREDEF_DECLARE_TEST(BOOST_OS_IOS,BOOST_OS_IOS_NAME)
+BOOST_PREDEF_DECLARE_TEST(BOOST_OS_IOS, BOOST_OS_IOS_NAME)

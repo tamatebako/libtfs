@@ -30,20 +30,18 @@ https://en.wikipedia.org/wiki/X86-64[X86-64] architecture.
 
 #define BOOST_ARCH_X86_64 BOOST_VERSION_NUMBER_NOT_AVAILABLE
 
-#if defined(__x86_64) || defined(__x86_64__) || \
-    defined(__amd64__) || defined(__amd64) || \
-    defined(_M_X64)
-#   undef BOOST_ARCH_X86_64
-#   define BOOST_ARCH_X86_64 BOOST_VERSION_NUMBER_AVAILABLE
+#if defined(__x86_64) || defined(__x86_64__) || defined(__amd64__) || defined(__amd64) || defined(_M_X64)
+#undef BOOST_ARCH_X86_64
+#define BOOST_ARCH_X86_64 BOOST_VERSION_NUMBER_AVAILABLE
 #endif
 
 #if BOOST_ARCH_X86_64
-#   define BOOST_ARCH_X86_64_AVAILABLE
+#define BOOST_ARCH_X86_64_AVAILABLE
 #endif
 
 #if BOOST_ARCH_X86_64
-#   undef BOOST_ARCH_WORD_BITS_64
-#   define BOOST_ARCH_WORD_BITS_64 BOOST_VERSION_NUMBER_AVAILABLE
+#undef BOOST_ARCH_WORD_BITS_64
+#define BOOST_ARCH_WORD_BITS_64 BOOST_VERSION_NUMBER_AVAILABLE
 #endif
 
 #define BOOST_ARCH_X86_64_NAME "Intel x86-64"
@@ -53,4 +51,4 @@ https://en.wikipedia.org/wiki/X86-64[X86-64] architecture.
 #endif
 
 #include <boost/predef/detail/test.h>
-BOOST_PREDEF_DECLARE_TEST(BOOST_ARCH_X86_64,BOOST_ARCH_X86_64_NAME)
+BOOST_PREDEF_DECLARE_TEST(BOOST_ARCH_X86_64, BOOST_ARCH_X86_64_NAME)

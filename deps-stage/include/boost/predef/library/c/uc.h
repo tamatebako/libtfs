@@ -31,13 +31,12 @@ http://en.wikipedia.org/wiki/Uclibc[uClibc] Standard C library.
 #define BOOST_LIB_C_UC BOOST_VERSION_NUMBER_NOT_AVAILABLE
 
 #if defined(__UCLIBC__)
-#   undef BOOST_LIB_C_UC
-#   define BOOST_LIB_C_UC BOOST_VERSION_NUMBER(\
-        __UCLIBC_MAJOR__,__UCLIBC_MINOR__,__UCLIBC_SUBLEVEL__)
+#undef BOOST_LIB_C_UC
+#define BOOST_LIB_C_UC BOOST_VERSION_NUMBER(__UCLIBC_MAJOR__, __UCLIBC_MINOR__, __UCLIBC_SUBLEVEL__)
 #endif
 
 #if BOOST_LIB_C_UC
-#   define BOOST_LIB_C_UC_AVAILABLE
+#define BOOST_LIB_C_UC_AVAILABLE
 #endif
 
 #define BOOST_LIB_C_UC_NAME "uClibc"
@@ -45,4 +44,4 @@ http://en.wikipedia.org/wiki/Uclibc[uClibc] Standard C library.
 #endif
 
 #include <boost/predef/detail/test.h>
-BOOST_PREDEF_DECLARE_TEST(BOOST_LIB_C_UC,BOOST_LIB_C_UC_NAME)
+BOOST_PREDEF_DECLARE_TEST(BOOST_LIB_C_UC, BOOST_LIB_C_UC_NAME)

@@ -29,21 +29,21 @@ https://en.wikipedia.org/wiki/Elbrus_2000[E2K] architecture.
 #define BOOST_ARCH_E2K BOOST_VERSION_NUMBER_NOT_AVAILABLE
 
 #if defined(__e2k__)
-#   undef BOOST_ARCH_E2K
-#   if !defined(BOOST_ARCH_E2K) && defined(__iset__)
-#       define BOOST_ARCH_E2K BOOST_VERSION_NUMBER(__iset__,0,0)
-#   endif
-#   if !defined(BOOST_ARCH_E2K)
-#       define BOOST_ARCH_E2K BOOST_VERSION_NUMBER_AVAILABLE
-#   endif
+#undef BOOST_ARCH_E2K
+#if !defined(BOOST_ARCH_E2K) && defined(__iset__)
+#define BOOST_ARCH_E2K BOOST_VERSION_NUMBER(__iset__, 0, 0)
+#endif
+#if !defined(BOOST_ARCH_E2K)
+#define BOOST_ARCH_E2K BOOST_VERSION_NUMBER_AVAILABLE
+#endif
 #endif
 
 #if BOOST_ARCH_E2K
-#   define BOOST_ARCH_E2K_AVAILABLE
+#define BOOST_ARCH_E2K_AVAILABLE
 #endif
 
 #if BOOST_ARCH_E2K
-#   define BOOST_ARCH_WORD_BITS_64 BOOST_VERSION_NUMBER_AVAILABLE
+#define BOOST_ARCH_WORD_BITS_64 BOOST_VERSION_NUMBER_AVAILABLE
 #endif
 
 #define BOOST_ARCH_E2K_NAME "E2K"
@@ -51,4 +51,4 @@ https://en.wikipedia.org/wiki/Elbrus_2000[E2K] architecture.
 #endif
 
 #include <boost/predef/detail/test.h>
-BOOST_PREDEF_DECLARE_TEST(BOOST_ARCH_E2K,BOOST_ARCH_E2K_NAME)
+BOOST_PREDEF_DECLARE_TEST(BOOST_ARCH_E2K, BOOST_ARCH_E2K_NAME)

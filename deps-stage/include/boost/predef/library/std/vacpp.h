@@ -29,12 +29,12 @@ http://www.ibm.com/software/awdtools/xlcpp/[IBM VACPP Standard {CPP}] library.
 #define BOOST_LIB_STD_IBM BOOST_VERSION_NUMBER_NOT_AVAILABLE
 
 #if defined(__IBMCPP__)
-#   undef BOOST_LIB_STD_IBM
-#   define BOOST_LIB_STD_IBM BOOST_VERSION_NUMBER_AVAILABLE
+#undef BOOST_LIB_STD_IBM
+#define BOOST_LIB_STD_IBM BOOST_VERSION_NUMBER_AVAILABLE
 #endif
 
 #if BOOST_LIB_STD_IBM
-#   define BOOST_LIB_STD_IBM_AVAILABLE
+#define BOOST_LIB_STD_IBM_AVAILABLE
 #endif
 
 #define BOOST_LIB_STD_IBM_NAME "IBM VACPP"
@@ -42,4 +42,4 @@ http://www.ibm.com/software/awdtools/xlcpp/[IBM VACPP Standard {CPP}] library.
 #endif
 
 #include <boost/predef/detail/test.h>
-BOOST_PREDEF_DECLARE_TEST(BOOST_LIB_STD_IBM,BOOST_LIB_STD_IBM_NAME)
+BOOST_PREDEF_DECLARE_TEST(BOOST_LIB_STD_IBM, BOOST_LIB_STD_IBM_NAME)

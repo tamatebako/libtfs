@@ -31,12 +31,12 @@ http://libcxx.llvm.org/[libc++] {CPP} Standard Library.
 #define BOOST_LIB_STD_CXX BOOST_VERSION_NUMBER_NOT_AVAILABLE
 
 #if defined(_LIBCPP_VERSION)
-#   undef BOOST_LIB_STD_CXX
-#   define BOOST_LIB_STD_CXX BOOST_PREDEF_MAKE_10_VVPPP(_LIBCPP_VERSION)
+#undef BOOST_LIB_STD_CXX
+#define BOOST_LIB_STD_CXX BOOST_PREDEF_MAKE_10_VVPPP(_LIBCPP_VERSION)
 #endif
 
 #if BOOST_LIB_STD_CXX
-#   define BOOST_LIB_STD_CXX_AVAILABLE
+#define BOOST_LIB_STD_CXX_AVAILABLE
 #endif
 
 #define BOOST_LIB_STD_CXX_NAME "libc++"
@@ -44,4 +44,4 @@ http://libcxx.llvm.org/[libc++] {CPP} Standard Library.
 #endif
 
 #include <boost/predef/detail/test.h>
-BOOST_PREDEF_DECLARE_TEST(BOOST_LIB_STD_CXX,BOOST_LIB_STD_CXX_NAME)
+BOOST_PREDEF_DECLARE_TEST(BOOST_LIB_STD_CXX, BOOST_LIB_STD_CXX_NAME)
