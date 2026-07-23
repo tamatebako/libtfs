@@ -416,6 +416,18 @@ jobs:
           SHIP_TOOLCHAIN_RT: ${{ startswith(matrix.platform, 'linux-musl') && '1' || '0' }}
         run: bash .github/scripts/package-deps.sh
 
+      - name: Package deps (Windows)
+        # Same shared logic as POSIX (shipped as .tar.gz for asset-name
+        # uniformity; OpenSSL included on Windows).
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        env:
+          PLATFORM: ${{ matrix.platform }}
+          VERSION: ${{ env.version }}
+          SHIP_OPENSSL: 1
+          SHIP_TOOLCHAIN_RT: 0
+        run: bash .github/scripts/package-deps.sh
+
       - name: Upload release assets
         uses: actions/upload-artifact@v4
         with:
