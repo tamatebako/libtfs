@@ -157,4 +157,4 @@ done
 du -sh deps-stage/include deps-stage/include/boost || true
 mkdir -p artifacts
 tar -C deps-stage -czf "artifacts/libtfs-deps-${VERSION}-${PLATFORM}.tar.gz" lib share include
-tar -tzf "artifacts/libtfs-deps-${VERSION}-${PLATFORM}.tar.gz" | head -5
+tar -tzf "artifacts/libtfs-deps-${VERSION}-${PLATFORM}.tar.gz" > /dev/null
