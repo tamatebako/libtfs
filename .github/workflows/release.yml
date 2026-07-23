@@ -411,7 +411,7 @@ jobs:
         shell: bash
         env:
           PLATFORM: ${{ matrix.platform }}
-          VERSION: ${{ env.version }}
+          PKG_VERSION: ${{ env.version }}
           SHIP_OPENSSL: ${{ runner.os != 'macOS' && '1' || '0' }}
           SHIP_TOOLCHAIN_RT: ${{ startswith(matrix.platform, 'linux-musl') && '1' || '0' }}
         run: bash .github/scripts/package-deps.sh
@@ -423,7 +423,10 @@ jobs:
         shell: msys2 {0}
         env:
           PLATFORM: ${{ matrix.platform }}
-          VERSION: ${{ env.version }}
+          # PKG_VERSION, not VERSION: the Windows runner merges env
+          # case-insensitively and a step-level VERSION would collide with the
+          # GITHUB_ENV-provided lowercase "version" and be silently dropped
+          PKG_VERSION: ${{ env.version }}
           SHIP_OPENSSL: 1
           SHIP_TOOLCHAIN_RT: 0
         run: bash .github/scripts/package-deps.sh
@@ -539,7 +542,7 @@ jobs:
 
       - name: Package deps (container)
         shell: bash
-        run: docker exec -e DEPS_LIBS="$DEPS_LIBS" -e DEPS_SHARES="$DEPS_SHARES" -e DEPS_HEADER_DIRS="$DEPS_HEADER_DIRS" -e DEPS_HEADER_FILES="$DEPS_HEADER_FILES" -e PLATFORM="${{ env.PLATFORM }}" -e VERSION="${{ env.version }}" -e SHIP_OPENSSL=1 -e SHIP_TOOLCHAIN_RT=1 -e WORKDIR=/w muslbuild bash /w/.github/scripts/package-deps.sh
+        run: docker exec -e DEPS_LIBS="$DEPS_LIBS" -e DEPS_SHARES="$DEPS_SHARES" -e DEPS_HEADER_DIRS="$DEPS_HEADER_DIRS" -e DEPS_HEADER_FILES="$DEPS_HEADER_FILES" -e PLATFORM="${{ env.PLATFORM }}" -e PKG_VERSION="${{ env.version }}" -e SHIP_OPENSSL=1 -e SHIP_TOOLCHAIN_RT=1 -e WORKDIR=/w muslbuild bash /w/.github/scripts/package-deps.sh
 
       - name: Upload release assets
         uses: actions/upload-artifact@v4

@@ -11,7 +11,10 @@
 #
 # Inputs (env):
 #   PLATFORM            required (e.g. linux-gnu-x86_64)
-#   VERSION             required (e.g. 0.12.9)
+#   PKG_VERSION         required (e.g. 0.12.9) — NOT "VERSION": on Windows the
+#                       runner merges env case-insensitively and a step-level
+#                       VERSION collides with the GITHUB_ENV-provided lowercase
+#                       "version" (the step value is silently dropped)
 #   DEPS_LIBS / DEPS_SHARES / DEPS_HEADER_DIRS / DEPS_HEADER_FILES (workflow env)
 #   SHIP_OPENSSL        "1" to include libcrypto/libssl + openssl headers (non-macOS)
 #   SHIP_TOOLCHAIN_RT   "1" to include libstdc++/libgcc/libgcc_eh archives (musl)
@@ -20,7 +23,7 @@
 set -euo pipefail
 
 PLATFORM="${PLATFORM:?required}"
-VERSION="${VERSION:?required}"
+PKG_VERSION="${PKG_VERSION:?required}"
 WORKDIR="${WORKDIR:-$PWD}"
 SHIP_OPENSSL="${SHIP_OPENSSL:-1}"
 SHIP_TOOLCHAIN_RT="${SHIP_TOOLCHAIN_RT:-0}"
@@ -156,5 +159,5 @@ done
 
 du -sh deps-stage/include deps-stage/include/boost || true
 mkdir -p artifacts
-tar -C deps-stage -czf "artifacts/libtfs-deps-${VERSION}-${PLATFORM}.tar.gz" lib share include
-tar -tzf "artifacts/libtfs-deps-${VERSION}-${PLATFORM}.tar.gz" > /dev/null
+tar -C deps-stage -czf "artifacts/libtfs-deps-${PKG_VERSION}-${PLATFORM}.tar.gz" lib share include
+tar -tzf "artifacts/libtfs-deps-${PKG_VERSION}-${PLATFORM}.tar.gz" > /dev/null
