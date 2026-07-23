@@ -121,7 +121,10 @@ jobs:
             container: ghcr.io/tamatebako/tebako-ubuntu-20.04:sha-59b1b86-arm64
           - platform: linux-musl-x86_64
             os: ubuntu-latest
-            container: alpine:3.21
+            # alpine-3.17 ci container: gcc-12 libstdc++, the tebako baseline.
+            # Deps built in newer alpines reference libstdc++ symbols tebako's
+            # gcc-12-era containers cannot resolve (_M_replace_cold, gcc-13+).
+            container: ghcr.io/tamatebako/tebako-alpine-3.17:sha-59b1b86-amd64
           - platform: macos-arm64
             os: macos-14
           - platform: macos-x86_64
@@ -131,18 +134,33 @@ jobs:
 
     steps:
       - name: Bootstrap container (musl)
-        # Same bootstrap as alpine.yml: nodejs + gcompat/libc6-compat run the
-        # runner's Node actions on musl; GNU tar for the cache action; zip +
-        # squashfs-tools for tests/fixtures/regenerate_all.sh; mistletoe for
-        # the dwarfs tools man pages.
+        # nodejs + gcompat/libc6-compat run the runner's Node actions on musl.
+        # The ci image already carries the clang toolchain, git, curl, zip and
+        # cmake (upgraded below); mistletoe is unnecessary (man pages disabled
+        # in the port) and squashfs fixtures are optional without mksquashfs.
         if: matrix.platform == 'linux-musl-x86_64'
         run: |
           apk --no-cache --upgrade add \
-            bash git curl ca-certificates zip unzip tar gzip \
+            bash ca-certificates tar gzip \
             nodejs gcompat libc6-compat \
-            build-base cmake ninja linux-headers perl python3 py3-pip \
-            autoconf automake libtool pkgconf squashfs-tools
-          pip3 install --break-system-packages --root-user-action ignore mistletoe
+            autoconf automake libtool pkgconf ninja
+
+      - name: Upgrade cmake (container legs with cmake < 3.25)
+        # The 20.04 gnu ci containers ship cmake 3.24.4; boost-1.90's
+        # cmake_minimum_required is 3.25 and vcpkg port builds use the
+        # system cmake. Install the xpack 3.31.9 build (same mechanism as
+        # ci-containers' tools.sh; the image bump itself is tracked at
+        # tamatebako/tebako-ci-containers#67).
+        if: startswith(matrix.platform, 'linux-')
+        shell: bash
+        run: |
+          ARCH=$(uname -m); case "$ARCH" in aarch64) ARCH=arm64;; x86_64) ARCH=x64;; esac
+          wget -nv "https://github.com/xpack-dev-tools/cmake-xpack/releases/download/v3.31.9-1/xpack-cmake-3.31.9-1-linux-${ARCH}.tar.gz" -O /tmp/cmake.tgz
+          # no --skip-old-files: the image's /usr/bin/cmake outdates the tar
+          # entries by mtime and must be overwritten
+          if [ "$(id -u)" = "0" ]; then SUDO=""; else SUDO="sudo"; fi
+          $SUDO tar -zxf /tmp/cmake.tgz --directory /usr --strip-components=1
+          cmake --version | head -1
 
       - name: Declare directory safe (container)
         if: startswith(matrix.platform, 'linux-')
@@ -171,22 +189,6 @@ jobs:
         run: |
           sudo apt-get -y update
           sudo apt-get -y install zip unzip squashfs-tools ninja-build
-
-      - name: Upgrade cmake (gnu container legs)
-        # The 20.04 gnu ci containers ship cmake 3.24.4; boost-1.90's
-        # cmake_minimum_required is 3.25 and vcpkg port builds use the
-        # system cmake. Install the xpack 3.31.9 build (same mechanism as
-        # ci-containers' tools.sh; the image bump itself is tracked at
-        # tamatebako/tebako-ci-containers#67).
-        if: startswith(matrix.platform, 'linux-gnu')
-        shell: bash
-        run: |
-          ARCH=$(uname -m); case "$ARCH" in aarch64) ARCH=arm64;; x86_64) ARCH=x64;; esac
-          wget -nv "https://github.com/xpack-dev-tools/cmake-xpack/releases/download/v3.31.9-1/xpack-cmake-3.31.9-1-linux-${ARCH}.tar.gz" -O /tmp/cmake.tgz
-          # no --skip-old-files: the image's /usr/bin/cmake (3.24.4) is newer
-          # by mtime than the tar entries and must be overwritten
-          sudo tar -zxf /tmp/cmake.tgz --directory /usr --strip-components=1
-          cmake --version | head -1
 
       - name: Install fixture tools (macOS)
         if: runner.os == 'macOS'
