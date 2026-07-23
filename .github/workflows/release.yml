@@ -121,10 +121,11 @@ jobs:
             container: ghcr.io/tamatebako/tebako-ubuntu-20.04:sha-59b1b86-arm64
           - platform: linux-musl-x86_64
             os: ubuntu-latest
-            # alpine-3.17 ci container: gcc-12 libstdc++, the tebako baseline.
-            # Deps built in newer alpines reference libstdc++ symbols tebako's
-            # gcc-12-era containers cannot resolve (_M_replace_cold, gcc-13+).
-            container: ghcr.io/tamatebako/tebako-alpine-3.17:sha-59b1b86-amd64
+            # alpine:3.21 for the build (musl-native cmake 3.31, working
+            # toolchain); the deps package carries the build's libstdc++.a so
+            # consumers on older-libstdc++ containers (tebako alpine-3.17,
+            # gcc-12) still close the link — see the packaging step.
+            container: alpine:3.21
           - platform: macos-arm64
             os: macos-14
           - platform: macos-x86_64
@@ -134,24 +135,25 @@ jobs:
 
     steps:
       - name: Bootstrap container (musl)
-        # nodejs + gcompat/libc6-compat run the runner's Node actions on musl.
-        # The ci image already carries the clang toolchain, git, curl, zip and
-        # cmake (upgraded below); mistletoe is unnecessary (man pages disabled
-        # in the port) and squashfs fixtures are optional without mksquashfs.
+        # nodejs + gcompat/libc6-compat run the runner's Node actions on musl;
+        # apk cmake is musl-native 3.31 (boost-1.90 needs >= 3.25) — do NOT
+        # use the xpack cmake here, it is a glibc binary and cannot run on
+        # musl. mistletoe unnecessary (man pages off); squashfs optional.
         if: matrix.platform == 'linux-musl-x86_64'
         run: |
           apk --no-cache --upgrade add \
-            bash ca-certificates tar gzip \
+            bash git curl ca-certificates zip unzip tar gzip \
             nodejs gcompat libc6-compat \
-            autoconf automake libtool pkgconf ninja
+            build-base cmake ninja linux-headers perl python3 py3-pip \
+            autoconf automake libtool pkgconf
 
-      - name: Upgrade cmake (container legs with cmake < 3.25)
+      - name: Upgrade cmake (gnu container legs with cmake < 3.25)
         # The 20.04 gnu ci containers ship cmake 3.24.4; boost-1.90's
         # cmake_minimum_required is 3.25 and vcpkg port builds use the
         # system cmake. Install the xpack 3.31.9 build (same mechanism as
         # ci-containers' tools.sh; the image bump itself is tracked at
         # tamatebako/tebako-ci-containers#67).
-        if: startswith(matrix.platform, 'linux-')
+        if: startswith(matrix.platform, 'linux-gnu')
         shell: bash
         run: |
           ARCH=$(uname -m); case "$ARCH" in aarch64) ARCH=arm64;; x86_64) ARCH=x64;; esac
@@ -426,6 +428,19 @@ jobs:
           fi
           rm -rf deps-stage
           mkdir -p deps-stage/lib deps-stage/share
+          if [ "${{ matrix.platform }}" = "linux-musl-x86_64" ]; then
+            # Ship the build's C++/C runtime archives so tebako's musl link
+            # (-l:libstdc++.a, -lgcc_eh, -l:libgcc.a) resolves the dep set's
+            # references (e.g. _M_replace_cold from libstdc++ >= 13) on
+            # containers with an older toolchain (tebako alpine-3.17, gcc-12).
+            for tl in libstdc++.a libgcc.a libgcc_eh.a; do
+              src=$(g++ -print-file-name=$tl)
+              if [ ! -f "$src" ]; then
+                echo "ERROR: expected toolchain archive missing: $tl" >&2; exit 1
+              fi
+              cp "$src" deps-stage/lib/
+            done
+          fi
           resolve() {
             local base="$1" stem f
             stem="${base%.a}"

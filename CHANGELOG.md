@@ -15,7 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - dwarfs overlay port: tebako-v0.14.1-18 (identical content to -17; renamed after a vcpkg asset-cache poisoning by a propagation-lag download).
-- musl release legs build in the tebako-alpine-3.17 ci container (gcc-12 libstdc++, tebako's baseline) instead of alpine:3.21 — deps built with gcc-14 referenced `_M_replace_cold`, which tebako's gcc-12-era containers cannot resolve at link time.
+- musl deps packages now also ship the build's `libstdc++.a`/`libgcc.a`/`libgcc_eh.a` so tebako's musl link resolves the dep set's references (e.g. `_M_replace_cold` from libstdc++ >= 13) on older-toolchain containers (tebako alpine-3.17, gcc-12); musl release legs stay on alpine:3.21 with musl-native cmake (the xpack cmake is a glibc binary and cannot run on musl).
 
 ## [0.12.7] - 2026-07-22
 
