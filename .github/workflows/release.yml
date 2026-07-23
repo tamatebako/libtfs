@@ -560,13 +560,13 @@ jobs:
           merge-multiple: true
 
       - name: Verify asset set
-        # 6 platforms x 4 assets (libtfs package + libtfs-deps package +
+        # 7 platforms x 4 assets (libtfs package + libtfs-deps package +
         # mkdwarfs + tebakofs)
         run: |
           ls -l dist
           count=$(find dist -maxdepth 1 -type f | wc -l)
-          if [ "$count" -ne 24 ]; then
-            echo "ERROR: expected 24 release assets, found $count"
+          if [ "$count" -ne 28 ]; then
+            echo "ERROR: expected 28 release assets, found $count"
             exit 1
           fi
 
