@@ -186,14 +186,13 @@ inline StatT* operator<<(StatT* o, stati128 i)
  *
  * The legacy quartet (file-ctl/file-io, dir-ctl/dir-io), dl-ctl and
  * fs/internal/fd_table.h call a handful of POSIX functions via raw global
- * scope names (::open, ::close, ::write, ::readlink, getuid, ...). In the
- * ruby build context these resolve through ruby's win32 layer; standalone
- * MinGW has neither ruby nor these functions. Moreover the CRT's own
- * <io.h> is unreachable here: include/tebako/fs is on the include path, so
- * every `#include <io.h>` (including the one inside mingw's <sys/stat.h>)
- * resolves to the tebako shadow header tebako/fs/io.h. Declare the UCRT
- * low-I/O primitives locally and map the POSIX names onto them; the shim
- * stays inert in the ruby build context (RUBY_WIN32_H).
+ * scope names (::readlink, getuid, ...) that the UCRT does not provide.
+ * In the ruby build context these resolve through ruby's win32 layer, so
+ * the shim stays inert there (RUBY_WIN32_H). The CRT low-I/O surface
+ * (open/close/read/write, _get_osfhandle, the F_OK..R_OK bits, ...) is
+ * covered by the real <io.h> -- tebako/fs/io.h chains to it via
+ * include_next; the three declarations below are only a fallback for
+ * including this header without tebako/fs/io.h.
  * ----------------------------------------------------------------------- */
 #include <errno.h>
 #include <fcntl.h>
@@ -204,39 +203,9 @@ inline StatT* operator<<(StatT* o, stati128 i)
 extern "C" {
 #endif
 
-/* UCRT low-I/O primitives (normally declared by the shadowed <io.h>) */
 int _open(const char*, int, ...);
-int _close(int);
 int _read(int, void*, unsigned int);
-int _write(int, const void*, unsigned int);
 __int64 _lseeki64(int, __int64, int);
-
-static inline int open(const char* path, int flags, ...)
-{
-  int mode = 0;
-  if (flags & O_CREAT) {
-    va_list args;
-    va_start(args, flags);
-    mode = va_arg(args, int);
-    va_end(args);
-  }
-  return _open(path, flags, mode);
-}
-
-static inline int close(int fd)
-{
-  return _close(fd);
-}
-
-static inline ssize_t read(int fd, void* buf, size_t nbyte)
-{
-  return (ssize_t)_read(fd, buf, (unsigned int)nbyte);
-}
-
-static inline ssize_t write(int fd, const void* buf, size_t nbyte)
-{
-  return (ssize_t)_write(fd, buf, (unsigned int)nbyte);
-}
 
 /* Windows has no uid/gid; 0 matches ruby's win32 stubs (win32.h maps these
  * to 0 there as well) */

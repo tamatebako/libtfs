@@ -36,9 +36,14 @@
 #include <string>
 #include <type_traits>
 
-// Define file_off_t as off_t for file offset operations
+// Define file_off_t for file offset operations. Must match dwarfs::file_off_t
+// (int64_t): off_t silently truncates to 32 bits on Windows, and where
+// `using namespace dwarfs` is in effect (tebako-memfs.cpp) an off_t-based
+// alias makes unqualified file_off_t uses ill-formed -- the global typedef
+// and dwarfs's alias are distinct types there.
+#include <stdint.h>
 #include <sys/types.h>
-typedef off_t file_off_t;
+typedef int64_t file_off_t;
 
 namespace tebako {
 namespace util {
