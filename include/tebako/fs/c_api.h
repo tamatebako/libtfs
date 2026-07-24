@@ -40,6 +40,15 @@ extern "C" {
 #include <sys/stat.h>
 #include <tebako/fs/platform.h>
 
+/* <dirent.h> must be included BEFORE the DT_* fallbacks below: on glibc the
+ * DT_* values are an anonymous enum (not macros), so the #ifndef guards cannot
+ * see them — if any TU later includes <dirent.h> after these fallback macros
+ * are defined, the enum declaration is macro-poisoned and fails to parse.
+ * Including it here makes every TU safe regardless of include order. */
+#ifndef _WIN32
+#include <dirent.h>
+#endif
+
 /* Directory entry type constants (from POSIX dirent.h) */
 #ifndef DT_REG
 #define DT_REG 8 /**< Regular file */
