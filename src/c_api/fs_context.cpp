@@ -26,6 +26,8 @@
 #include <fstream>
 #include <limits>
 #include <mutex>
+#include <random>
+#include <sstream>
 
 namespace tebako {
 namespace fs {
@@ -123,6 +125,17 @@ FsContext& FsContext::instance()
 FsContext::~FsContext()
 {
   unmount();
+
+  // Legacy dlmap2file semantics: extracted files live for the process run
+  // and are removed at teardown
+  std::error_code ec;
+  for (const auto& [vfs_path, host_path] : dl_cache_) {
+    std::filesystem::remove(host_path, ec);
+  }
+  dl_cache_.clear();
+  if (!dl_tmpdir_.empty()) {
+    std::filesystem::remove_all(dl_tmpdir_, ec);
+  }
 }
 
 FsContext::FsContext() = default;
@@ -172,6 +185,48 @@ std::string mount_point_basename(std::string_view mount_point)
   size_t pos = mp.find_last_of('/');
   std::string_view base = (pos == std::string_view::npos) ? mp : mp.substr(pos + 1);
   return base.empty() ? std::string("root") : std::string(base);
+}
+
+/**
+ * @brief Create a per-process temporary directory for dlmap2file extractions
+ *
+ * Mirrors the legacy sync_tebako_dltable::create_temporary_directory
+ * (src/dl-ctl.cpp): a random hex subdirectory of the system temp dir.
+ * Returns "" on failure.
+ */
+std::string create_dl_tmpdir()
+{
+  const uint64_t MAX_TRIES = 1024;
+  auto tmp_dir = std::filesystem::temp_directory_path();
+  uint64_t i = 1;
+  std::random_device dev;
+  std::mt19937 prng(dev());
+  std::uniform_int_distribution<uint64_t> rand(0);
+  while (true) {
+    std::stringstream ss;
+    ss << std::hex << rand(prng);
+    std::filesystem::path candidate = tmp_dir / ss.str();
+    std::error_code ec;
+    if (std::filesystem::create_directory(candidate, ec)) {
+      return candidate.string();
+    }
+    if (i == MAX_TRIES) {
+      return "";
+    }
+    i++;
+  }
+}
+
+/**
+ * @brief Portable strdup for the caller-owned dlmap2file return value
+ */
+char* dup_cstr(const std::string& s)
+{
+#ifdef _WIN32
+  return _strdup(s.c_str());
+#else
+  return strdup(s.c_str());
+#endif
 }
 
 /**
@@ -508,6 +563,32 @@ ssize_t FsContext::read(int fd, void* buffer, size_t count)
   return bytes_read;
 }
 
+ssize_t FsContext::pread(int fd, void* buffer, size_t count, off_t offset)
+{
+  std::lock_guard lock(mutex_);
+
+  FdEntry* entry = lookup_fd(fd);
+  if (entry == nullptr) {
+    set_errno(EBADF);
+    return -1;
+  }
+
+  if (offset < 0) {
+    set_errno(EINVAL);
+    return -1;
+  }
+
+  // Offset read on the owning mount's handle; the fd position is untouched
+  ssize_t bytes_read = entry->handle->pread(buffer, count, offset);
+  if (bytes_read < 0) {
+    set_errno(EIO);
+  }
+  else {
+    set_errno(0);
+  }
+  return bytes_read;
+}
+
 off_t FsContext::lseek(int fd, off_t offset, int whence)
 {
   std::lock_guard lock(mutex_);
@@ -606,6 +687,7 @@ tebako_c_dirent* FsContext::readdir(void* dir)
   state->current_entry.d_name[sizeof(state->current_entry.d_name) - 1] = '\0';
   state->current_entry.d_type = entry.is_directory ? DT_DIR : DT_REG;
   state->has_current = true;
+  state->position++;
 
   set_errno(0);
   return &state->current_entry;
@@ -622,6 +704,78 @@ int FsContext::closedir(void* dir)
 
   set_errno(0);
   return 0;
+}
+
+int FsContext::dir_is_embedded(void* dir) const
+{
+  std::lock_guard lock(mutex_);
+  return dir != nullptr && dir_table_.find(dir) != dir_table_.end() ? 1 : 0;
+}
+
+void FsContext::rewinddir(void* dir)
+{
+  std::lock_guard lock(mutex_);
+
+  auto it = dir_table_.find(dir);
+  if (it == dir_table_.end() || it->second->iterator == nullptr) {
+    set_errno(EBADF);
+    return;
+  }
+
+  auto& state = it->second;
+  state->iterator->reset();
+  state->position = 0;
+  state->has_current = false;
+
+  set_errno(0);
+}
+
+long FsContext::telldir(void* dir)
+{
+  std::lock_guard lock(mutex_);
+
+  auto it = dir_table_.find(dir);
+  if (it == dir_table_.end() || it->second->iterator == nullptr) {
+    set_errno(EBADF);
+    return -1;
+  }
+
+  set_errno(0);
+  return it->second->position;
+}
+
+void FsContext::seekdir(void* dir, long pos)
+{
+  std::lock_guard lock(mutex_);
+
+  auto it = dir_table_.find(dir);
+  if (it == dir_table_.end() || it->second->iterator == nullptr) {
+    set_errno(EBADF);
+    return;
+  }
+
+  if (pos < 0) {
+    set_errno(EINVAL);
+    return;
+  }
+
+  auto& state = it->second;
+
+  // Backward seek: reset the forward-only iterator and advance afresh
+  if (pos < state->position) {
+    state->iterator->reset();
+    state->position = 0;
+  }
+
+  // Forward seek (including after a reset): consume entries; seeking past
+  // the end leaves the stream at end-of-directory
+  while (state->position < pos && state->iterator->has_next()) {
+    state->iterator->next();
+    state->position++;
+  }
+  state->has_current = false;
+
+  set_errno(0);
 }
 
 // ===================================================================
@@ -719,6 +873,115 @@ int FsContext::extract_all(std::string_view dest_path)
 
   set_errno(0);
   return 0;
+}
+
+char* FsContext::dlmap2file(std::string_view path)
+{
+  std::lock_guard lock(mutex_);
+
+  const Mount* mount = find_mount(path);
+  if (mount == nullptr) {
+    set_errno(ENOENT);
+    return nullptr;
+  }
+
+  const std::string key(path);
+  auto cached = dl_cache_.find(key);
+  if (cached != dl_cache_.end()) {
+    set_errno(0);
+    char* ret = dup_cstr(cached->second);
+    if (ret == nullptr) {
+      set_errno(ENOMEM);
+    }
+    return ret;
+  }
+
+  // Open through the owning mount (longest-prefix dispatch)
+  auto handle_result = mount->fs->open(path, O_RDONLY);
+  if (handle_result.is_err()) {
+    map_error_to_errno(handle_result.error());
+    return nullptr;
+  }
+  auto handle = std::move(handle_result).unwrap();
+
+  if (dl_tmpdir_.empty()) {
+    dl_tmpdir_ = create_dl_tmpdir();
+    if (dl_tmpdir_.empty()) {
+      set_errno(EIO);
+      return nullptr;
+    }
+  }
+
+  // Host path: <tmpdir>/<mount-point-basename>/<path relative to mount>;
+  // the per-mount subtree keeps same-named files of different mounts apart
+  std::string_view rel = path;
+  rel.remove_prefix(mount->mount_point.size());
+  while (!rel.empty() && rel.front() == '/') {
+    rel.remove_prefix(1);
+  }
+  if (rel.empty()) {
+    set_errno(EISDIR);
+    return nullptr;
+  }
+
+  const std::filesystem::path host_path =
+      std::filesystem::path(dl_tmpdir_) / mount_point_basename(mount->mount_point) / std::string(rel);
+
+  std::error_code ec;
+  std::filesystem::create_directories(host_path.parent_path(), ec);
+  if (ec) {
+    set_errno(EIO);
+    return nullptr;
+  }
+
+  {
+    std::ofstream out(host_path, std::ios::binary | std::ios::trunc);
+    if (!out.is_open()) {
+      set_errno(EIO);
+      return nullptr;
+    }
+
+    char buffer[8192];
+    bool ok = true;
+    while (true) {
+      ssize_t bytes_read = handle->read(buffer, sizeof(buffer));
+      if (bytes_read < 0) {
+        ok = false;
+        break;
+      }
+      if (bytes_read == 0) {
+        break;  // EOF
+      }
+      out.write(buffer, bytes_read);
+      if (!out.good()) {
+        ok = false;
+        break;
+      }
+    }
+    out.close();
+    if (!ok) {
+      std::filesystem::remove(host_path, ec);
+      set_errno(EIO);
+      return nullptr;
+    }
+  }
+
+  // Permissions, best effort (dlopen needs a readable/executable file)
+  auto perms_result = mount->fs->permissions(path);
+  if (perms_result.is_ok()) {
+    std::filesystem::permissions(host_path, static_cast<std::filesystem::perms>(perms_result.unwrap()),
+                                 std::filesystem::perm_options::replace, ec);
+  }
+
+  const std::string host_str = host_path.string();
+  dl_cache_.emplace(key, host_str);
+
+  set_errno(0);
+  char* ret = dup_cstr(host_str);
+  if (ret == nullptr) {
+    set_errno(ENOMEM);
+  }
+  return ret;
 }
 
 // ===================================================================

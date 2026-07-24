@@ -123,6 +123,63 @@ class ZipFileHandle : public FileHandle {
   }
 
   /**
+   * @brief Read data at a given offset (POSIX pread semantics)
+   *
+   * libzip streams are forward-only, so the read runs on an independent
+   * temporary stream (open, skip to offset, read, close); the handle's
+   * own stream, position, and eof state are not modified.
+   */
+  ssize_t pread(void* buffer, size_t count, off_t offset) override
+  {
+    if (!file_) {
+      return -1;  // File is closed - return error
+    }
+
+    if (offset < 0) {
+      return -1;
+    }
+
+    if (count == 0 || offset >= size_) {
+      return 0;
+    }
+
+    size_t to_read = std::min(count, static_cast<size_t>(size_ - offset));
+
+    zip_file_t* tmp = zip_fopen_index(archive_, index_, 0);
+    if (!tmp) {
+      return -1;
+    }
+
+    // Skip to the requested offset
+    off_t remaining = offset;
+    char skip[8192];
+    while (remaining > 0) {
+      zip_int64_t n = zip_fread(tmp, skip, std::min(remaining, static_cast<off_t>(sizeof(skip))));
+      if (n <= 0) {
+        zip_fclose(tmp);
+        return -1;
+      }
+      remaining -= n;
+    }
+
+    size_t total = 0;
+    while (total < to_read) {
+      zip_int64_t n = zip_fread(tmp, static_cast<char*>(buffer) + total, to_read - total);
+      if (n < 0) {
+        zip_fclose(tmp);
+        return -1;
+      }
+      if (n == 0) {
+        break;  // EOF
+      }
+      total += static_cast<size_t>(n);
+    }
+
+    zip_fclose(tmp);
+    return static_cast<ssize_t>(total);
+  }
+
+  /**
    * @brief Seek to a position in the file
    *
    * ZIP doesn't support native seeking, so we implement it by:

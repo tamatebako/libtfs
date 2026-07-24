@@ -85,6 +85,24 @@ class FileHandle {
    */
   virtual ssize_t read(void* buffer, size_t count) = 0;
 
+  /**
+   * @brief Read data from the file at a given offset
+   *
+   * Reads up to 'count' bytes starting at byte 'offset' into 'buffer',
+   * like POSIX pread(). The current file position (see tell()) is NOT
+   * modified, and no seek is performed on this handle — implementations
+   * must use the backend's offset-read primitive (or an independent
+   * stream) so that concurrent read()/seek() on the same handle is
+   * unaffected.
+   *
+   * @param buffer Destination buffer for read data
+   * @param count Maximum number of bytes to read
+   * @param offset Byte offset from the beginning of the file
+   * @return Number of bytes actually read, 0 when offset is at or past
+   *         end of file, -1 on error
+   */
+  virtual ssize_t pread(void* buffer, size_t count, off_t offset) = 0;
+
   // ===================================================================
   // Seek Operations
   // ===================================================================
