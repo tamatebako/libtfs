@@ -54,6 +54,16 @@
 #define S_ISDIR(mode) _S_ISTYPE((mode), _S_IFDIR)
 #endif
 
+/* Standalone MinGW (no ruby build context): pull in the CRT types the
+ * shims below rely on -- ino_t/_dev_t (sys/types.h), struct stat
+ * (sys/stat.h), __time64_t (corecrt.h via sys/types.h). In the ruby build
+ * context these come from ruby's win32 headers and RUBY_WIN32_H is set, so
+ * this branch stays inert there. */
+#if !defined(RUBY_WIN32_H)
+#include <sys/types.h>
+#include <sys/stat.h>
+#endif
+
 #ifndef LOCK_SH
 #define LOCK_SH 1
 #endif
