@@ -11,12 +11,14 @@
 
 #pragma once
 
-#include <tebako/fs/c_api.h>  // For tebako_c_dirent
+#include <tebako/fs/c_api.h>  // For tebako_c_dirent, tebako_mount_t
 #include <tebako/fs/filesystem.h>
 #include <tebako/fs/file_handle.h>
 #include <tebako/fs/directory_iterator.h>
+#include <tebako/fs/core/error.h>
 
 #include <cstdint>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -48,24 +50,63 @@ namespace fs {
 namespace c_api {
 
 /**
+ * @brief Set the C API thread-local errno (and the C errno)
+ *
+ * Shared by fs_context.cpp and c_api.cpp so that all C API entry points
+ * report through the single thread-local cell read by tebako_get_errno().
+ */
+void set_errno(int err);
+
+/**
+ * @brief Read the C API thread-local errno
+ */
+int get_errno();
+
+/**
+ * @brief Map a backend Error to the C API thread-local errno
+ */
+void map_error_to_errno(const Error& error);
+
+/**
+ * @brief One mounted archive in the mount table
+ */
+struct Mount {
+  tebako_mount_t handle = -1;
+  std::string mount_point;
+  std::unique_ptr<FileSystem> fs;
+  // Owned image region for offset/length mounts; mount_from_memory()
+  // requires the buffer to outlive the mounted filesystem
+  std::unique_ptr<char[]> owned_region;
+};
+
+/**
+ * @brief File descriptor table entry (handle plus owning mount)
+ */
+struct FdEntry {
+  std::unique_ptr<FileHandle> handle;
+  tebako_mount_t owner = -1;
+};
+
+/**
  * @brief Directory state for C API directory iteration
  */
 struct DirectoryState {
   std::unique_ptr<DirectoryIterator> iterator;
   tebako_c_dirent current_entry{};
   bool has_current = false;
+  tebako_mount_t owner = -1;
 };
 
 /**
  * @brief Encapsulated filesystem context
  *
- * Manages all state for a single mounted filesystem including:
- * - Filesystem instance
- * - File descriptor table
- * - Directory handle table
- * - Mount point tracking
+ * Manages all state for the C API:
+ * - Mount table (handle -> Mount), supporting N concurrent mounts
+ * - File descriptor table (single namespace, per-mount ownership)
+ * - Directory handle table (single namespace, per-mount ownership)
+ * - Compat handle for the single-mount tebako_fs_init* API
  *
- * Thread Safety: All methods are thread-safe using mutex.
+ * Thread Safety: All methods are thread-safe; one mutex guards everything.
  *
  * @note For C API compatibility, use FsContext::instance()
  * @note For testing, can create standalone instances
@@ -89,33 +130,77 @@ class FsContext {
   FsContext& operator=(FsContext&&) = delete;
 
   // ===================================================================
-  // Lifecycle Operations
+  // Multi-Mount Lifecycle Operations
   // ===================================================================
 
   /**
    * @brief Mount an archive from file
    * @param archive_path Path to archive file
-   * @param mount_point Virtual mount point
+   * @param mount_point Virtual mount point (must be non-empty)
+   * @param out_handle Receives the mount handle on success
    * @return 0 on success, -1 on error (errno set)
    */
-  int mount(std::string_view archive_path, std::string_view mount_point);
+  int mount_from_file(std::string_view archive_path, std::string_view mount_point, tebako_mount_t* out_handle);
+
+  /**
+   * @brief Mount a region of an archive file
+   * @param archive_path Path to the file containing the archive
+   * @param offset Byte offset of the archive start within the file
+   * @param length Length of the archive in bytes; 0 means "to end of file"
+   * @param mount_point Virtual mount point (must be non-empty)
+   * @param out_handle Receives the mount handle on success
+   * @return 0 on success, -1 on error (errno set)
+   */
+  int mount_from_file_at(std::string_view archive_path, uint64_t offset, uint64_t length, std::string_view mount_point,
+                         tebako_mount_t* out_handle);
 
   /**
    * @brief Mount an archive from memory
    * @param data Pointer to archive data
    * @param size Size of archive data
-   * @param mount_point Virtual mount point
+   * @param mount_point Virtual mount point (must be non-empty)
+   * @param out_handle Receives the mount handle on success
    * @return 0 on success, -1 on error (errno set)
    */
-  int mount_from_memory(const void* data, size_t size, std::string_view mount_point);
+  int mount_from_memory(const void* data, size_t size, std::string_view mount_point, tebako_mount_t* out_handle);
 
   /**
-   * @brief Unmount the current filesystem
+   * @brief Unmount a single mount by handle
+   *
+   * Force-closes and erases only that mount's fds/dirs, destroys that
+   * Filesystem, and erases the Mount. Other mounts are unaffected.
+   * @param handle Mount handle
+   * @return 0 on success, -1 with errno=ENODEV for unknown handle
+   */
+  int unmount_handle(tebako_mount_t handle);
+
+  // ===================================================================
+  // Compat Single-Mount Lifecycle (tebako_fs_init*)
+  // ===================================================================
+
+  /**
+   * @brief Compat mount from file; fails with EEXIST if any mount exists
+   */
+  int init_from_file(std::string_view archive_path, std::string_view mount_point);
+
+  /**
+   * @brief Compat mount from a file region; EEXIST if any mount exists
+   */
+  int init_from_file_at(std::string_view archive_path, uint64_t offset, uint64_t length,
+                        std::string_view mount_point);
+
+  /**
+   * @brief Compat mount from memory; EEXIST if any mount exists
+   */
+  int init_from_memory(const void* data, size_t size, std::string_view mount_point);
+
+  /**
+   * @brief Unmount ALL mounts and clear the fd/dir tables
    */
   void unmount();
 
   /**
-   * @brief Check if filesystem is mounted
+   * @brief Check if any filesystem is mounted
    */
   bool is_mounted() const;
 
@@ -125,7 +210,7 @@ class FsContext {
 
   /**
    * @brief Open a file
-   * @param path Absolute path to file
+   * @param path Absolute path to file (dispatched by longest mount-point prefix)
    * @param flags Open flags
    * @return File descriptor on success, -1 on error
    */
@@ -162,7 +247,7 @@ class FsContext {
 
   /**
    * @brief Open directory for reading
-   * @param path Absolute path to directory
+   * @param path Absolute path to directory (dispatched by longest prefix)
    * @return Directory handle on success, nullptr on error
    */
   void* opendir(std::string_view path);
@@ -187,7 +272,7 @@ class FsContext {
 
   /**
    * @brief Get file status
-   * @param path Absolute path to file
+   * @param path Absolute path to file (dispatched by longest prefix)
    * @param st Stat buffer to fill
    * @return 0 on success, -1 on error
    */
@@ -206,7 +291,7 @@ class FsContext {
   // ===================================================================
 
   /**
-   * @brief Check if path is within mounted filesystem
+   * @brief Check if path is within any mounted filesystem
    * @param path Path to check
    * @return 1 if embedded, 0 if not
    */
@@ -215,23 +300,40 @@ class FsContext {
   /**
    * @brief Check if fd refers to embedded file
    * @param fd File descriptor
-   * @return 1 if embedded, 0 if not, -1 on error
+   * @return 1 if embedded, 0 if not
    */
   int fd_is_embedded(int fd) const;
 
   /**
    * @brief Extract all files to destination
+   *
+   * Single mount: the mount's tree is extracted directly into dest_path
+   * (historic behavior). Multiple mounts: each mount's tree is extracted
+   * into its own "<dest_path>/<mount-point-basename>" subtree.
    * @param dest_path Destination directory
    * @return 0 on success, -1 on error
    */
   int extract_all(std::string_view dest_path);
 
   // ===================================================================
-  // Accessor Methods
+  // Compat Accessor Methods (report the compat/first mount)
   // ===================================================================
 
-  std::string mount_point() const { return mount_point_; }
+  /**
+   * @brief Mount point of the compat mount, nullptr when not compat-mounted
+   *
+   * The returned pointer is valid until the compat mount is unmounted.
+   */
+  const char* mount_point_c_str() const;
+
+  /**
+   * @brief Archive path of the compat mount ("" when none or memory-mounted)
+   */
   std::string archive_path() const;
+
+  /**
+   * @brief Backend name of the compat mount ("" when not compat-mounted)
+   */
   std::string backend_name() const;
 
  private:
@@ -241,29 +343,68 @@ class FsContext {
   FsContext();
 
   /**
-   * @brief Validate and normalize path
+   * @brief Find the mount owning a path (longest mount-point prefix wins)
+   *
+   * Caller must hold mutex_.
    */
-  std::string validate_path(std::string_view path) const;
+  const Mount* find_mount(std::string_view path) const;
 
   /**
-   * @brief Allocate new file descriptor
+   * @brief Check if a mount point is already mounted
+   *
+   * Caller must hold mutex_.
+   */
+  bool mount_point_taken(std::string_view mount_point) const;
+
+  /**
+   * @brief Insert a fully mounted filesystem into the mount table
+   *
+   * Caller must hold mutex_.
+   */
+  int insert_mount(std::unique_ptr<FileSystem> fs, std::string_view mount_point, std::unique_ptr<char[]> owned_region,
+                   tebako_mount_t* out_handle);
+
+  /**
+   * @brief Locked bodies shared by the multi-mount and compat entry points
+   *
+   * Caller must hold mutex_.
+   */
+  int mount_from_file_locked(std::string_view archive_path, std::string_view mount_point, tebako_mount_t* out_handle);
+  int mount_from_file_at_locked(std::string_view archive_path, uint64_t offset, uint64_t length,
+                                std::string_view mount_point, tebako_mount_t* out_handle);
+  int mount_from_memory_locked(const void* data, size_t size, std::string_view mount_point,
+                               tebako_mount_t* out_handle);
+
+  /**
+   * @brief Locked body of file_stat (fd_stat re-dispatches by path)
+   *
+   * Caller must hold mutex_.
+   */
+  int file_stat_locked(std::string_view path, struct ::stat* st);
+
+  /**
+   * @brief Look up a table entry for an external fd
+   *
+   * Caller must hold mutex_.
+   */
+  FdEntry* lookup_fd(int fd);
+
+  /**
+   * @brief Allocate new internal file descriptor
+   *
+   * Caller must hold mutex_.
    */
   int allocate_fd();
 
-  /**
-   * @brief Store handle and return FD
-   */
-  int store_handle(std::unique_ptr<FileHandle> handle);
-
   // Member variables
-  std::unique_ptr<FileSystem> filesystem_;
-  std::string mount_point_;
-  std::unordered_map<int, std::unique_ptr<FileHandle>> fd_table_;
+  std::map<tebako_mount_t, Mount> mounts_;
+  std::unordered_map<int, FdEntry> fd_table_;
   std::unordered_map<void*, std::unique_ptr<DirectoryState>> dir_table_;
-  int next_fd_ = TEBAKO_FD_FLAG;
+  tebako_mount_t compat_handle_ = -1;  // Mount created by tebako_fs_init* (-1 = none)
+  tebako_mount_t next_handle_ = 0;     // Never reused within a process run
+  int next_fd_ = 1;                    // Internal FD counter (external FDs OR TEBAKO_FD_FLAG)
   std::uintptr_t next_dir_id_ = 1;
   mutable std::mutex mutex_;
-  bool mounted_ = false;
 };
 
 }  // namespace c_api

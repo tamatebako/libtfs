@@ -173,6 +173,112 @@ void tebako_fs_unmount(void);
 int tebako_is_initialized(void);
 
 /* ============================================================
+ * Multi-Mount Management
+ * ============================================================ */
+
+/**
+ * @brief Opaque mount handle
+ *
+ * Identifies one mounted archive in the libtfs mount table.
+ * Handles are small increasing integers (>= 0) and are never reused
+ * within a process run.
+ */
+typedef int tebako_mount_t;
+
+/**
+ * @brief Mount an archive file, returning a mount handle
+ *
+ * Multi-mount variant of tebako_fs_init_from_file(): mounts the archive at
+ * the specified mount point without disturbing any existing mounts.
+ * The archive format is auto-detected (ZIP, SquashFS, etc.).
+ *
+ * @param archive_path Path to archive file on disk
+ * @param mount_point Virtual mount point (e.g., "/__tebako_data__");
+ *                    must be non-empty and not already mounted
+ * @param out_handle Receives the mount handle on success
+ * @return 0 on success, -1 on error (check errno via tebako_get_errno())
+ *
+ * @note Returns -1 with errno=EEXIST if mount_point is already mounted
+ * @note Returns -1 with errno=EINVAL for bad arguments (NULL archive_path,
+ *       NULL or empty mount_point, NULL out_handle)
+ * @note Any number of archives can be mounted concurrently; paths are
+ *       dispatched to the owning mount by longest mount-point prefix match
+ *
+ * @example
+ * @code
+ * tebako_mount_t h;
+ * if (tebako_fs_mount_from_file("/app/data.zip", "/__tebako_data__", &h) == 0) {
+ *     // ... use ...
+ *     tebako_fs_unmount_handle(h);
+ * }
+ * @endcode
+ */
+int tebako_fs_mount_from_file(const char* archive_path, const char* mount_point, tebako_mount_t* out_handle);
+
+/**
+ * @brief Mount a region of a file, returning a mount handle
+ *
+ * Multi-mount variant of tebako_fs_init_from_file_at(): mounts `length`
+ * bytes starting at byte `offset` of the archive file at the specified
+ * mount point. The archive format is auto-detected from the region content
+ * (DwarFS, ZIP, SquashFS).
+ *
+ * @param archive_path Path to the file containing the archive
+ * @param offset Byte offset of the archive start within the file
+ * @param length Length of the archive in bytes; 0 means "to end of file"
+ * @param mount_point Virtual mount point; must be non-empty and not
+ *                    already mounted
+ * @param out_handle Receives the mount handle on success
+ * @return 0 on success, -1 on error (check errno via tebako_get_errno())
+ *
+ * @note Returns -1 with errno=EEXIST if mount_point is already mounted
+ * @note Returns -1 with errno=EINVAL for bad arguments (NULL archive_path,
+ *       NULL or empty mount_point, NULL out_handle, offset past end of
+ *       file, offset+length exceeding the file size)
+ * @note Returns -1 with errno=ENOENT if the file does not exist
+ * @note offset == 0 && length == 0 mounts the whole file directly
+ *       (zero-copy); any other region is read into memory owned by libtfs
+ *       until the mount is unmounted
+ */
+int tebako_fs_mount_from_file_at(const char* archive_path, uint64_t offset, uint64_t length, const char* mount_point,
+                                 tebako_mount_t* out_handle);
+
+/**
+ * @brief Mount an archive from memory, returning a mount handle
+ *
+ * Multi-mount variant of tebako_fs_init(): mounts an archive residing in
+ * memory (typically embedded in an executable). The archive format is
+ * auto-detected.
+ *
+ * @param data Pointer to archive data in memory
+ * @param size Size of archive in bytes
+ * @param mount_point Virtual mount point; must be non-empty and not
+ *                    already mounted
+ * @param out_handle Receives the mount handle on success
+ * @return 0 on success, -1 on error
+ *
+ * @note The memory buffer must remain valid until the mount is unmounted
+ * @note Returns -1 with errno=EEXIST if mount_point is already mounted
+ * @note Returns -1 with errno=EINVAL for bad arguments (NULL data, zero
+ *       size, NULL or empty mount_point, NULL out_handle)
+ */
+int tebako_fs_mount_from_memory(const void* data, size_t size, const char* mount_point, tebako_mount_t* out_handle);
+
+/**
+ * @brief Unmount a single mount by handle
+ *
+ * Force-closes all file descriptors and directory handles owned by this
+ * mount (subsequent operations on them fail with EBADF), destroys the
+ * filesystem, and releases the mount point. Other mounts are unaffected.
+ *
+ * @param handle Mount handle returned by a tebako_fs_mount_* call
+ * @return 0 on success, -1 with errno=ENODEV if the handle is unknown
+ *
+ * @note tebako_fs_unmount() still unmounts ALL mounts at once
+ */
+int tebako_fs_unmount_handle(tebako_mount_t handle);
+
+/* ============================================================
  * File Operations
  * ============================================================ */
 

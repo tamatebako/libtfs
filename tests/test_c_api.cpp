@@ -1071,3 +1071,415 @@ TEST_F(CApiOffsetTest, DoubleInitStillFailsWithEEXIST)
   EXPECT_EQ(-1, tebako_fs_init_from_file_at(combined_path.c_str(), kJunkSize, 0, mount_point.c_str()));
   EXPECT_EQ(EEXIST, tebako_get_errno());
 }
+
+// ============================================================
+// Multi-Mount Tests
+// (tebako_fs_mount_from_file / tebako_fs_mount_from_file_at /
+//  tebako_fs_mount_from_memory / tebako_fs_unmount_handle)
+// ============================================================
+
+/**
+ * @brief Test fixture for multi-mount C API tests
+ *
+ * Builds two ZIP archives with entries at the archive root:
+ *  - Archive A: "content/alpha.txt" ("alpha-content") plus
+ *    "nested/beta.txt" ("from-A") which deliberately shadows archive B's
+ *    root file to prove longest-prefix dispatch
+ *  - Archive B: "beta.txt" ("beta-content")
+ *
+ * NOTE: Shares the global C API state; serialized via RESOURCE_LOCK like the
+ * other test_c_api tests.
+ */
+class CApiMultiMountTest : public ::testing::Test {
+ protected:
+  std::string test_dir;
+  std::string archive_a_path;
+  std::string archive_b_path;
+  std::vector<uint8_t> archive_a;
+  std::vector<uint8_t> archive_b;
+
+  void SetUp() override
+  {
+    test_dir = (fs::temp_directory_path() / "tebako_c_api_mm_test").generic_string();
+    fs::create_directories(test_dir);
+
+    fs::path tree_a = fs::path(test_dir) / "tree_a";
+    fs::create_directories(tree_a / "content");
+    fs::create_directories(tree_a / "nested");
+    write_file(tree_a / "content" / "alpha.txt", "alpha-content");
+    write_file(tree_a / "nested" / "beta.txt", "from-A");
+
+    fs::path tree_b = fs::path(test_dir) / "tree_b";
+    fs::create_directories(tree_b);
+    write_file(tree_b / "beta.txt", "beta-content");
+
+    archive_a_path = test_dir + "/a.zip";
+    archive_b_path = test_dir + "/b.zip";
+    ASSERT_TRUE(tebako_test::create_zip_from_dir(archive_a_path, tree_a, "")) << "Failed to create archive A";
+    ASSERT_TRUE(tebako_test::create_zip_from_dir(archive_b_path, tree_b, "")) << "Failed to create archive B";
+
+    archive_a = read_bytes(archive_a_path);
+    archive_b = read_bytes(archive_b_path);
+    ASSERT_FALSE(archive_a.empty());
+    ASSERT_FALSE(archive_b.empty());
+  }
+
+  void TearDown() override
+  {
+    tebako_fs_unmount();
+    if (fs::exists(test_dir)) {
+      fs::remove_all(test_dir);
+    }
+  }
+
+  void write_file(const fs::path& path, const std::string& content)
+  {
+    std::ofstream ofs(path, std::ios::binary);
+    ofs << content;
+    ofs.close();
+  }
+
+  static std::vector<uint8_t> read_bytes(const std::string& path)
+  {
+    std::ifstream ifs(path, std::ios::binary | std::ios::ate);
+    if (!ifs.is_open()) {
+      return {};
+    }
+    auto size = ifs.tellg();
+    std::vector<uint8_t> data(static_cast<size_t>(size));
+    ifs.seekg(0);
+    ifs.read(reinterpret_cast<char*>(data.data()), size);
+    return data;
+  }
+
+  tebako_mount_t mount_a_from_memory(const std::string& mount_point)
+  {
+    tebako_mount_t handle = -1;
+    EXPECT_EQ(0, tebako_fs_mount_from_memory(archive_a.data(), archive_a.size(), mount_point.c_str(), &handle));
+    return handle;
+  }
+
+  tebako_mount_t mount_b_from_memory(const std::string& mount_point)
+  {
+    tebako_mount_t handle = -1;
+    EXPECT_EQ(0, tebako_fs_mount_from_memory(archive_b.data(), archive_b.size(), mount_point.c_str(), &handle));
+    return handle;
+  }
+
+  std::string read_file_via_api(const std::string& path)
+  {
+    int fd = tebako_fs_open(path.c_str(), O_RDONLY);
+    if (fd < 0)
+      return "";
+
+    std::vector<char> buffer(4096);
+    ssize_t n = tebako_fs_read(fd, buffer.data(), buffer.size());
+    tebako_fs_close(fd);
+
+    if (n <= 0)
+      return "";
+    return std::string(buffer.data(), n);
+  }
+};
+
+TEST_F(CApiMultiMountTest, MountTwoFromMemory_ReadFromBoth)
+{
+  const std::string mp_a = "/__mm_a__";
+  const std::string mp_b = "/__mm_b__";
+
+  tebako_mount_t ha = mount_a_from_memory(mp_a);
+  tebako_mount_t hb = mount_b_from_memory(mp_b);
+  ASSERT_GE(ha, 0);
+  ASSERT_GE(hb, 0);
+  EXPECT_NE(ha, hb);
+  EXPECT_EQ(1, tebako_is_initialized());
+
+  EXPECT_EQ("alpha-content", read_file_via_api(mp_a + "/content/alpha.txt"));
+  EXPECT_EQ("beta-content", read_file_via_api(mp_b + "/beta.txt"));
+
+  EXPECT_EQ(0, tebako_fs_unmount_handle(ha));
+  EXPECT_EQ(1, tebako_is_initialized());  // B still mounted
+  EXPECT_EQ(0, tebako_fs_unmount_handle(hb));
+  EXPECT_EQ(0, tebako_is_initialized());
+}
+
+TEST_F(CApiMultiMountTest, MountFromFile_ReadFromBoth)
+{
+  tebako_mount_t ha = -1;
+  tebako_mount_t hb = -1;
+  ASSERT_EQ(0, tebako_fs_mount_from_file(archive_a_path.c_str(), "/__mm_fa__", &ha));
+  ASSERT_EQ(0, tebako_fs_mount_from_file(archive_b_path.c_str(), "/__mm_fb__", &hb));
+  EXPECT_GE(ha, 0);
+  EXPECT_GE(hb, 0);
+
+  EXPECT_EQ("alpha-content", read_file_via_api("/__mm_fa__/content/alpha.txt"));
+  EXPECT_EQ("beta-content", read_file_via_api("/__mm_fb__/beta.txt"));
+}
+
+TEST_F(CApiMultiMountTest, MountFromFileAt_MixedWithMemoryMount)
+{
+  // Combined file: junk prefix + archive A bytes
+  const std::string combined_path = test_dir + "/combined.bin";
+  constexpr uint64_t junk_size = 1000;
+  {
+    std::ofstream ofs(combined_path, std::ios::binary | std::ios::trunc);
+    ASSERT_TRUE(ofs.is_open());
+    for (uint64_t i = 0; i < junk_size; ++i) {
+      char c = static_cast<char>('A' + (i * 7) % 26);
+      ofs.write(&c, 1);
+    }
+    ofs.write(reinterpret_cast<const char*>(archive_a.data()), static_cast<std::streamsize>(archive_a.size()));
+  }
+
+  tebako_mount_t ha = -1;
+  ASSERT_EQ(0, tebako_fs_mount_from_file_at(combined_path.c_str(), junk_size, static_cast<uint64_t>(archive_a.size()),
+                                           "/__mm_at__", &ha));
+  tebako_mount_t hb = mount_b_from_memory("/__mm_mem__");
+  ASSERT_GE(hb, 0);
+
+  EXPECT_EQ("alpha-content", read_file_via_api("/__mm_at__/content/alpha.txt"));
+  EXPECT_EQ("beta-content", read_file_via_api("/__mm_mem__/beta.txt"));
+}
+
+TEST_F(CApiMultiMountTest, LongestPrefix_NestedMountsDispatch)
+{
+  const std::string mp_outer = "/__mm__";
+  const std::string mp_nested = "/__mm__/nested";
+
+  ASSERT_GE(mount_a_from_memory(mp_outer), 0);
+  ASSERT_GE(mount_b_from_memory(mp_nested), 0);
+
+  // Outer mount still serves its own subtree
+  EXPECT_EQ("alpha-content", read_file_via_api(mp_outer + "/content/alpha.txt"));
+
+  // The nested mount owns the /__mm__/nested prefix: archive B's "beta.txt"
+  // must win over archive A's shadowing "nested/beta.txt" ("from-A")
+  EXPECT_EQ("beta-content", read_file_via_api(mp_nested + "/beta.txt"));
+
+  struct stat st;
+  ASSERT_EQ(0, tebako_fs_stat((mp_nested + "/beta.txt").c_str(), &st));
+  EXPECT_EQ(static_cast<off_t>(std::strlen("beta-content")), st.st_size);
+}
+
+TEST_F(CApiMultiMountTest, DuplicateMountPoint_FailsWithEEXIST)
+{
+  const std::string mp = "/__mm_dup__";
+  ASSERT_GE(mount_a_from_memory(mp), 0);
+
+  tebako_mount_t h = -1;
+  EXPECT_EQ(-1, tebako_fs_mount_from_memory(archive_b.data(), archive_b.size(), mp.c_str(), &h));
+  EXPECT_EQ(EEXIST, tebako_get_errno());
+
+  EXPECT_EQ(-1, tebako_fs_mount_from_file(archive_b_path.c_str(), mp.c_str(), &h));
+  EXPECT_EQ(EEXIST, tebako_get_errno());
+
+  // Original mount is still fully usable
+  EXPECT_EQ("alpha-content", read_file_via_api(mp + "/content/alpha.txt"));
+}
+
+TEST_F(CApiMultiMountTest, Mount_BadArguments)
+{
+  tebako_mount_t h = -1;
+
+  // NULL out_handle
+  EXPECT_EQ(-1, tebako_fs_mount_from_memory(archive_a.data(), archive_a.size(), "/__mm_x__", nullptr));
+  EXPECT_EQ(EINVAL, tebako_get_errno());
+  EXPECT_EQ(-1, tebako_fs_mount_from_file(archive_a_path.c_str(), "/__mm_x__", nullptr));
+  EXPECT_EQ(EINVAL, tebako_get_errno());
+  EXPECT_EQ(-1, tebako_fs_mount_from_file_at(archive_a_path.c_str(), 0, 1, "/__mm_x__", nullptr));
+  EXPECT_EQ(EINVAL, tebako_get_errno());
+
+  // NULL / empty mount point
+  EXPECT_EQ(-1, tebako_fs_mount_from_memory(archive_a.data(), archive_a.size(), nullptr, &h));
+  EXPECT_EQ(EINVAL, tebako_get_errno());
+  EXPECT_EQ(-1, tebako_fs_mount_from_memory(archive_a.data(), archive_a.size(), "", &h));
+  EXPECT_EQ(EINVAL, tebako_get_errno());
+  EXPECT_EQ(-1, tebako_fs_mount_from_file(archive_a_path.c_str(), "", &h));
+  EXPECT_EQ(EINVAL, tebako_get_errno());
+
+  // NULL data / zero size
+  EXPECT_EQ(-1, tebako_fs_mount_from_memory(nullptr, 100, "/__mm_x__", &h));
+  EXPECT_EQ(EINVAL, tebako_get_errno());
+  EXPECT_EQ(-1, tebako_fs_mount_from_memory(archive_a.data(), 0, "/__mm_x__", &h));
+  EXPECT_EQ(EINVAL, tebako_get_errno());
+
+  // NULL archive path
+  EXPECT_EQ(-1, tebako_fs_mount_from_file(nullptr, "/__mm_x__", &h));
+  EXPECT_EQ(EINVAL, tebako_get_errno());
+  EXPECT_EQ(-1, tebako_fs_mount_from_file_at(nullptr, 0, 0, "/__mm_x__", &h));
+  EXPECT_EQ(EINVAL, tebako_get_errno());
+
+  EXPECT_EQ(0, tebako_is_initialized());
+}
+
+TEST_F(CApiMultiMountTest, UnmountHandle_UnknownHandle_ENODEV)
+{
+  EXPECT_EQ(-1, tebako_fs_unmount_handle(999));
+  EXPECT_EQ(ENODEV, tebako_get_errno());
+
+  ASSERT_GE(mount_a_from_memory("/__mm_u__"), 0);
+  EXPECT_EQ(-1, tebako_fs_unmount_handle(999));
+  EXPECT_EQ(ENODEV, tebako_get_errno());
+}
+
+TEST_F(CApiMultiMountTest, UnmountHandle_ForceClosesOnlyOwnFdsAndDirs)
+{
+  const std::string mp_a = "/__mm_iso_a__";
+  const std::string mp_b = "/__mm_iso_b__";
+  tebako_mount_t ha = mount_a_from_memory(mp_a);
+  tebako_mount_t hb = mount_b_from_memory(mp_b);
+  ASSERT_GE(ha, 0);
+  ASSERT_GE(hb, 0);
+
+  int fd_a = tebako_fs_open((mp_a + "/content/alpha.txt").c_str(), O_RDONLY);
+  int fd_b = tebako_fs_open((mp_b + "/beta.txt").c_str(), O_RDONLY);
+  ASSERT_GT(fd_a, 0);
+  ASSERT_GT(fd_b, 0);
+
+  tebako_dir_t dir_a = tebako_fs_opendir((mp_a + "/content").c_str());
+  tebako_dir_t dir_b = tebako_fs_opendir(mp_b.c_str());
+  ASSERT_NE(nullptr, dir_a);
+  ASSERT_NE(nullptr, dir_b);
+
+  ASSERT_EQ(0, tebako_fs_unmount_handle(ha));
+
+  // A's handles are force-closed
+  char buf[16];
+  EXPECT_EQ(-1, tebako_fs_read(fd_a, buf, sizeof(buf)));
+  EXPECT_EQ(EBADF, tebako_get_errno());
+  EXPECT_EQ(-1, tebako_fs_close(fd_a));
+  EXPECT_EQ(EBADF, tebako_get_errno());
+  EXPECT_EQ(nullptr, tebako_fs_readdir(dir_a));
+  EXPECT_EQ(EBADF, tebako_get_errno());
+  EXPECT_EQ(-1, tebako_fs_closedir(dir_a));
+  EXPECT_EQ(EBADF, tebako_get_errno());
+
+  // B is unaffected
+  std::vector<char> rbuf(64);
+  ssize_t n = tebako_fs_read(fd_b, rbuf.data(), rbuf.size());
+  ASSERT_GT(n, 0);
+  EXPECT_EQ("beta-content", std::string(rbuf.data(), static_cast<size_t>(n)));
+  struct tebako_c_dirent* entry = tebako_fs_readdir(dir_b);
+  ASSERT_NE(nullptr, entry);
+  EXPECT_STREQ("beta.txt", entry->d_name);
+
+  // New operations on B still work
+  EXPECT_EQ("beta-content", read_file_via_api(mp_b + "/beta.txt"));
+  EXPECT_EQ(1, tebako_is_initialized());
+
+  EXPECT_EQ(0, tebako_fs_close(fd_b));
+  EXPECT_EQ(0, tebako_fs_closedir(dir_b));
+  EXPECT_EQ(0, tebako_fs_unmount_handle(hb));
+  EXPECT_EQ(0, tebako_is_initialized());
+}
+
+TEST_F(CApiMultiMountTest, UnmountHandle_AllowsRemount_HandlesNotReused)
+{
+  const std::string mp = "/__mm_re__";
+  tebako_mount_t h1 = mount_a_from_memory(mp);
+  ASSERT_GE(h1, 0);
+  ASSERT_EQ(0, tebako_fs_unmount_handle(h1));
+
+  // The mount point is free again; the handle is not reused
+  tebako_mount_t h2 = mount_b_from_memory(mp);
+  ASSERT_GE(h2, 0);
+  EXPECT_GT(h2, h1);
+  EXPECT_EQ("beta-content", read_file_via_api(mp + "/beta.txt"));
+}
+
+TEST_F(CApiMultiMountTest, Compat_InitFailsWhenMountsExist)
+{
+  ASSERT_GE(mount_a_from_memory("/__mm_c__"), 0);
+
+  // init* stays single-mount: any existing mount makes it fail
+  EXPECT_EQ(-1, tebako_fs_init_from_file(archive_b_path.c_str(), "/__mm_other__"));
+  EXPECT_EQ(EEXIST, tebako_get_errno());
+  EXPECT_EQ(-1, tebako_fs_init(archive_b.data(), archive_b.size(), "/__mm_other__"));
+  EXPECT_EQ(EEXIST, tebako_get_errno());
+
+  EXPECT_EQ("alpha-content", read_file_via_api("/__mm_c__/content/alpha.txt"));
+}
+
+TEST_F(CApiMultiMountTest, Compat_MountAfterInit_GettersUnaffected)
+{
+  ASSERT_EQ(0, tebako_fs_init_from_file(archive_a_path.c_str(), "/__mm_compat__"));
+
+  tebako_mount_t hb = mount_b_from_memory("/__mm_extra__");
+  ASSERT_GE(hb, 0);
+  EXPECT_EQ(1, tebako_is_initialized());
+
+  // Compat getters still report the init* mount
+  const char* mp = tebako_get_mount_point();
+  ASSERT_NE(nullptr, mp);
+  EXPECT_STREQ("/__mm_compat__", mp);
+  const char* bn = tebako_get_backend_name();
+  ASSERT_NE(nullptr, bn);
+  EXPECT_STREQ("ZIP", bn);
+  const char* ap = tebako_get_archive_path();
+  ASSERT_NE(nullptr, ap);
+  EXPECT_STREQ(archive_a_path.c_str(), ap);
+
+  // Both mounts readable
+  EXPECT_EQ("alpha-content", read_file_via_api("/__mm_compat__/content/alpha.txt"));
+  EXPECT_EQ("beta-content", read_file_via_api("/__mm_extra__/beta.txt"));
+
+  // tebako_fs_unmount() tears down everything
+  tebako_fs_unmount();
+  EXPECT_EQ(0, tebako_is_initialized());
+  EXPECT_EQ(nullptr, tebako_get_mount_point());
+}
+
+TEST_F(CApiMultiMountTest, Compat_UnmountAllForceClosesAllMounts)
+{
+  const std::string mp_a = "/__mm_ua__";
+  const std::string mp_b = "/__mm_ub__";
+  ASSERT_GE(mount_a_from_memory(mp_a), 0);
+  ASSERT_GE(mount_b_from_memory(mp_b), 0);
+
+  int fd_a = tebako_fs_open((mp_a + "/content/alpha.txt").c_str(), O_RDONLY);
+  int fd_b = tebako_fs_open((mp_b + "/beta.txt").c_str(), O_RDONLY);
+  ASSERT_GT(fd_a, 0);
+  ASSERT_GT(fd_b, 0);
+
+  tebako_fs_unmount();
+  EXPECT_EQ(0, tebako_is_initialized());
+
+  char buf[16];
+  EXPECT_EQ(-1, tebako_fs_read(fd_a, buf, sizeof(buf)));
+  EXPECT_EQ(EBADF, tebako_get_errno());
+  EXPECT_EQ(-1, tebako_fs_read(fd_b, buf, sizeof(buf)));
+  EXPECT_EQ(EBADF, tebako_get_errno());
+}
+
+TEST_F(CApiMultiMountTest, PathIsEmbedded_MultiMounts)
+{
+  ASSERT_GE(mount_a_from_memory("/__mm_pa__"), 0);
+  ASSERT_GE(mount_b_from_memory("/__mm_pb__"), 0);
+
+  EXPECT_EQ(1, tebako_path_is_embedded("/__mm_pa__/content/alpha.txt"));
+  EXPECT_EQ(1, tebako_path_is_embedded("/__mm_pb__/beta.txt"));
+  EXPECT_EQ(1, tebako_path_is_embedded("/__mm_pb__"));
+  EXPECT_EQ(0, tebako_path_is_embedded("/__mm_other__/x"));
+  EXPECT_EQ(0, tebako_path_is_embedded("/tmp/file.txt"));
+}
+
+TEST_F(CApiMultiMountTest, ExtractAll_MultiMount_Subtrees)
+{
+  ASSERT_GE(mount_a_from_memory("/__mm_xa__"), 0);
+  ASSERT_GE(mount_b_from_memory("/__mm_xb__"), 0);
+
+  std::string dest = test_dir + "/extracted";
+  fs::create_directories(dest);
+  ASSERT_EQ(0, tebako_fs_extract_all(dest.c_str()));
+
+  // Each mount is extracted under its own mount-point-basename subtree
+  std::ifstream ifs_a(fs::path(dest) / "__mm_xa__" / "content" / "alpha.txt");
+  ASSERT_TRUE(ifs_a.is_open());
+  std::string content_a((std::istreambuf_iterator<char>(ifs_a)), std::istreambuf_iterator<char>());
+  EXPECT_EQ("alpha-content", content_a);
+
+  std::ifstream ifs_b(fs::path(dest) / "__mm_xb__" / "beta.txt");
+  ASSERT_TRUE(ifs_b.is_open());
+  std::string content_b((std::istreambuf_iterator<char>(ifs_b)), std::istreambuf_iterator<char>());
+  EXPECT_EQ("beta-content", content_b);
+}

@@ -62,10 +62,12 @@ inline bool create_zip_from_dir(const std::string& zip_path,
 
   bool ok = true;
 
-  // Recursive walk; explicit directory entries like Info-ZIP creates
+  // Recursive walk; explicit directory entries like Info-ZIP creates.
+  // An empty zip_root_name stores entries at the archive root.
   auto add_tree = [&](auto&& self, const fs::path& dir, const std::string& prefix) -> bool {
     for (const auto& entry : fs::directory_iterator(dir)) {
-      std::string name = prefix + "/" + entry.path().filename().generic_string();
+      std::string name =
+          prefix.empty() ? entry.path().filename().generic_string() : prefix + "/" + entry.path().filename().generic_string();
       if (entry.is_directory()) {
         if (zip_dir_add(archive, (name + "/").c_str(), ZIP_FL_ENC_UTF_8) < 0) {
           return false;
@@ -100,7 +102,7 @@ inline bool create_zip_from_dir(const std::string& zip_path,
     return true;
   };
 
-  if (zip_dir_add(archive, (zip_root_name + "/").c_str(), ZIP_FL_ENC_UTF_8) < 0 ||
+  if ((!zip_root_name.empty() && zip_dir_add(archive, (zip_root_name + "/").c_str(), ZIP_FL_ENC_UTF_8) < 0) ||
       !add_tree(add_tree, content_root, zip_root_name)) {
     ok = false;
   }
