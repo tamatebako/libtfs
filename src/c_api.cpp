@@ -226,6 +226,22 @@ extern "C" ssize_t tebako_fs_read(int fd, void* buf, size_t count)
   }
 }
 
+extern "C" ssize_t tebako_fs_pread(int fd, void* buf, size_t nbyte, off_t offset)
+{
+  if (buf == nullptr) {
+    set_errno(EINVAL);
+    return -1;
+  }
+
+  try {
+    return FsContext::instance().pread(fd, buf, nbyte, offset);
+  }
+  catch (...) {
+    handle_exception();
+    return -1;
+  }
+}
+
 extern "C" off_t tebako_fs_lseek(int fd, off_t offset, int whence)
 {
   try {
@@ -287,6 +303,47 @@ extern "C" int tebako_fs_closedir(tebako_dir_t dir)
   catch (...) {
     handle_exception();
     return -1;
+  }
+}
+
+extern "C" int tebako_fs_dir_is_embedded(tebako_dir_t dir)
+{
+  try {
+    return FsContext::instance().dir_is_embedded(dir);
+  }
+  catch (...) {
+    return 0;
+  }
+}
+
+extern "C" void tebako_fs_rewinddir(tebako_dir_t dir)
+{
+  try {
+    FsContext::instance().rewinddir(dir);
+  }
+  catch (...) {
+    handle_exception();
+  }
+}
+
+extern "C" long tebako_fs_telldir(tebako_dir_t dir)
+{
+  try {
+    return FsContext::instance().telldir(dir);
+  }
+  catch (...) {
+    handle_exception();
+    return -1;
+  }
+}
+
+extern "C" void tebako_fs_seekdir(tebako_dir_t dir, long pos)
+{
+  try {
+    FsContext::instance().seekdir(dir, pos);
+  }
+  catch (...) {
+    handle_exception();
   }
 }
 
@@ -375,6 +432,26 @@ extern "C" int tebako_fs_extract_all(const char* dest_path)
   catch (...) {
     handle_exception();
     return -1;
+  }
+}
+
+// ===================================================================
+// Dynamic Loading Support
+// ===================================================================
+
+extern "C" char* tebako_fs_dlmap2file(const char* path)
+{
+  if (path == nullptr) {
+    set_errno(EINVAL);
+    return nullptr;
+  }
+
+  try {
+    return FsContext::instance().dlmap2file(path);
+  }
+  catch (...) {
+    handle_exception();
+    return nullptr;
   }
 }
 

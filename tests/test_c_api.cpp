@@ -32,6 +32,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <string>
 #include <vector>
@@ -1482,4 +1483,449 @@ TEST_F(CApiMultiMountTest, ExtractAll_MultiMount_Subtrees)
   ASSERT_TRUE(ifs_b.is_open());
   std::string content_b((std::istreambuf_iterator<char>(ifs_b)), std::istreambuf_iterator<char>());
   EXPECT_EQ("beta-content", content_b);
+}
+
+// ============================================================
+// tebako_fs_pread Tests
+// ============================================================
+
+TEST_F(CApiTest, Pread_ReadsAtOffset_LeavesPositionIntact)
+{
+  ASSERT_EQ(0, tebako_fs_init_from_file(archive_path.c_str(), mount_point.c_str()));
+
+  int fd = tebako_fs_open((mount_point + "/content/hello.txt").c_str(), O_RDONLY);
+  ASSERT_GT(fd, 0);
+
+  // "Hello, World!" — 5 bytes at offset 7 is "World"
+  char buffer[16] = {0};
+  ssize_t n = tebako_fs_pread(fd, buffer, 5, 7);
+  EXPECT_EQ(5, n);
+  EXPECT_STREQ("World", buffer);
+
+  // The fd position must be untouched: a plain read starts at offset 0
+  char full[32] = {0};
+  n = tebako_fs_read(fd, full, sizeof(full) - 1);
+  EXPECT_EQ(13, n);
+  EXPECT_STREQ("Hello, World!", full);
+
+  EXPECT_EQ(0, tebako_fs_close(fd));
+}
+
+TEST_F(CApiTest, Pread_AfterSeek_DoesNotMovePosition)
+{
+  ASSERT_EQ(0, tebako_fs_init_from_file(archive_path.c_str(), mount_point.c_str()));
+
+  int fd = tebako_fs_open((mount_point + "/content/hello.txt").c_str(), O_RDONLY);
+  ASSERT_GT(fd, 0);
+
+  ASSERT_EQ(3, tebako_fs_lseek(fd, 3, SEEK_SET));
+
+  char buffer[16] = {0};
+  ssize_t n = tebako_fs_pread(fd, buffer, 5, 7);
+  EXPECT_EQ(5, n);
+  EXPECT_STREQ("World", buffer);
+
+  // Plain read must resume from the seek position (3), not from 7+5
+  char rest[32] = {0};
+  n = tebako_fs_read(fd, rest, sizeof(rest) - 1);
+  EXPECT_EQ(10, n);
+  EXPECT_STREQ("lo, World!", rest);
+
+  EXPECT_EQ(0, tebako_fs_close(fd));
+}
+
+TEST_F(CApiTest, Pread_OffsetBeyondEof_ReturnsZero)
+{
+  ASSERT_EQ(0, tebako_fs_init_from_file(archive_path.c_str(), mount_point.c_str()));
+
+  int fd = tebako_fs_open((mount_point + "/content/hello.txt").c_str(), O_RDONLY);
+  ASSERT_GT(fd, 0);
+
+  char buffer[16];
+  EXPECT_EQ(0, tebako_fs_pread(fd, buffer, sizeof(buffer), 13));  // at EOF
+  EXPECT_EQ(0, tebako_fs_pread(fd, buffer, sizeof(buffer), 4096));
+
+  // Position still intact
+  char full[32] = {0};
+  ssize_t n = tebako_fs_read(fd, full, sizeof(full) - 1);
+  EXPECT_EQ(13, n);
+  EXPECT_STREQ("Hello, World!", full);
+
+  EXPECT_EQ(0, tebako_fs_close(fd));
+}
+
+TEST_F(CApiTest, Pread_InvalidFd)
+{
+  ASSERT_EQ(0, tebako_fs_init_from_file(archive_path.c_str(), mount_point.c_str()));
+
+  char buffer[16];
+  EXPECT_EQ(-1, tebako_fs_pread(999, buffer, sizeof(buffer), 0));
+  EXPECT_EQ(EBADF, tebako_get_errno());
+
+  // Host fds are not libtfs fds even with a valid buffer
+  EXPECT_EQ(-1, tebako_fs_pread(0, buffer, sizeof(buffer), 0));
+  EXPECT_EQ(EBADF, tebako_get_errno());
+}
+
+TEST_F(CApiTest, Pread_NullBuffer)
+{
+  ASSERT_EQ(0, tebako_fs_init_from_file(archive_path.c_str(), mount_point.c_str()));
+
+  int fd = tebako_fs_open((mount_point + "/content/hello.txt").c_str(), O_RDONLY);
+  ASSERT_GT(fd, 0);
+
+  EXPECT_EQ(-1, tebako_fs_pread(fd, nullptr, 16, 0));
+  EXPECT_EQ(EINVAL, tebako_get_errno());
+
+  EXPECT_EQ(0, tebako_fs_close(fd));
+}
+
+TEST_F(CApiTest, Pread_NegativeOffset)
+{
+  ASSERT_EQ(0, tebako_fs_init_from_file(archive_path.c_str(), mount_point.c_str()));
+
+  int fd = tebako_fs_open((mount_point + "/content/hello.txt").c_str(), O_RDONLY);
+  ASSERT_GT(fd, 0);
+
+  char buffer[16];
+  EXPECT_EQ(-1, tebako_fs_pread(fd, buffer, sizeof(buffer), -1));
+  EXPECT_EQ(EINVAL, tebako_get_errno());
+
+  EXPECT_EQ(0, tebako_fs_close(fd));
+}
+
+// ============================================================
+// Directory handle introspection / positioning Tests
+// ============================================================
+
+TEST_F(CApiTest, DirIsEmbedded_Handles)
+{
+  ASSERT_EQ(0, tebako_fs_init_from_file(archive_path.c_str(), mount_point.c_str()));
+
+  tebako_dir_t dir = tebako_fs_opendir((mount_point + "/content").c_str());
+  ASSERT_NE(nullptr, dir);
+  EXPECT_EQ(1, tebako_fs_dir_is_embedded(dir));
+
+  ASSERT_EQ(0, tebako_fs_closedir(dir));
+  // Closed handle is no longer in the registry
+  EXPECT_EQ(0, tebako_fs_dir_is_embedded(dir));
+}
+
+TEST_F(CApiTest, DirIsEmbedded_NullAndUnknown)
+{
+  ASSERT_EQ(0, tebako_fs_init_from_file(archive_path.c_str(), mount_point.c_str()));
+
+  EXPECT_EQ(0, tebako_fs_dir_is_embedded(nullptr));
+  // Wild pointer that was never registered: membership test must not crash
+  EXPECT_EQ(0, tebako_fs_dir_is_embedded(reinterpret_cast<tebako_dir_t>(static_cast<uintptr_t>(0xdeadbeef))));
+}
+
+TEST_F(CApiTest, Telldir_TracksReadPosition)
+{
+  ASSERT_EQ(0, tebako_fs_init_from_file(archive_path.c_str(), mount_point.c_str()));
+
+  tebako_dir_t dir = tebako_fs_opendir((mount_point + "/content").c_str());
+  ASSERT_NE(nullptr, dir);
+
+  // Fresh stream: next entry ordinal is 0
+  EXPECT_EQ(0, tebako_fs_telldir(dir));
+
+  long expected = 0;
+  struct tebako_c_dirent* entry;
+  while ((entry = tebako_fs_readdir(dir)) != nullptr) {
+    expected++;
+    EXPECT_EQ(expected, tebako_fs_telldir(dir));
+  }
+  EXPECT_GT(expected, 0);
+
+  tebako_fs_closedir(dir);
+}
+
+TEST_F(CApiTest, Telldir_InvalidHandle)
+{
+  ASSERT_EQ(0, tebako_fs_init_from_file(archive_path.c_str(), mount_point.c_str()));
+
+  EXPECT_EQ(-1, tebako_fs_telldir(nullptr));
+  EXPECT_EQ(EBADF, tebako_get_errno());
+}
+
+TEST_F(CApiTest, Rewinddir_ResetsStream)
+{
+  ASSERT_EQ(0, tebako_fs_init_from_file(archive_path.c_str(), mount_point.c_str()));
+
+  tebako_dir_t dir = tebako_fs_opendir((mount_point + "/content").c_str());
+  ASSERT_NE(nullptr, dir);
+
+  std::vector<std::string> first_pass;
+  struct tebako_c_dirent* entry;
+  while ((entry = tebako_fs_readdir(dir)) != nullptr) {
+    first_pass.push_back(entry->d_name);
+  }
+  ASSERT_FALSE(first_pass.empty());
+
+  tebako_fs_rewinddir(dir);
+  EXPECT_EQ(0, tebako_fs_telldir(dir));
+
+  std::vector<std::string> second_pass;
+  while ((entry = tebako_fs_readdir(dir)) != nullptr) {
+    second_pass.push_back(entry->d_name);
+  }
+  EXPECT_EQ(first_pass, second_pass);
+
+  tebako_fs_closedir(dir);
+}
+
+TEST_F(CApiTest, Rewinddir_InvalidHandle)
+{
+  ASSERT_EQ(0, tebako_fs_init_from_file(archive_path.c_str(), mount_point.c_str()));
+
+  tebako_fs_rewinddir(nullptr);  // no crash; errno reports EBADF
+  EXPECT_EQ(EBADF, tebako_get_errno());
+}
+
+TEST_F(CApiTest, Seekdir_RoundTripsCookie)
+{
+  ASSERT_EQ(0, tebako_fs_init_from_file(archive_path.c_str(), mount_point.c_str()));
+
+  tebako_dir_t dir = tebako_fs_opendir((mount_point + "/content").c_str());
+  ASSERT_NE(nullptr, dir);
+
+  struct tebako_c_dirent* entry = tebako_fs_readdir(dir);
+  ASSERT_NE(nullptr, entry);
+  const std::string name0 = entry->d_name;
+
+  const long cookie = tebako_fs_telldir(dir);  // ordinal of the next entry
+  EXPECT_EQ(1, cookie);
+
+  entry = tebako_fs_readdir(dir);
+  ASSERT_NE(nullptr, entry);
+  const std::string name1 = entry->d_name;
+
+  // Seek back to the saved cookie: the same entry must come again
+  tebako_fs_seekdir(dir, cookie);
+  EXPECT_EQ(cookie, tebako_fs_telldir(dir));
+  entry = tebako_fs_readdir(dir);
+  ASSERT_NE(nullptr, entry);
+  EXPECT_EQ(name1, entry->d_name);
+
+  // seekdir(dir, 0) is a rewind
+  tebako_fs_seekdir(dir, 0);
+  EXPECT_EQ(0, tebako_fs_telldir(dir));
+  entry = tebako_fs_readdir(dir);
+  ASSERT_NE(nullptr, entry);
+  EXPECT_EQ(name0, entry->d_name);
+
+  tebako_fs_closedir(dir);
+}
+
+TEST_F(CApiTest, Seekdir_InvalidHandleAndNegativePos)
+{
+  ASSERT_EQ(0, tebako_fs_init_from_file(archive_path.c_str(), mount_point.c_str()));
+
+  tebako_fs_seekdir(nullptr, 0);  // no crash; errno reports EBADF
+  EXPECT_EQ(EBADF, tebako_get_errno());
+
+  tebako_dir_t dir = tebako_fs_opendir((mount_point + "/content").c_str());
+  ASSERT_NE(nullptr, dir);
+
+  tebako_fs_seekdir(dir, -1);
+  EXPECT_EQ(EINVAL, tebako_get_errno());
+  // Failed seek leaves the stream where it was
+  EXPECT_EQ(0, tebako_fs_telldir(dir));
+
+  tebako_fs_closedir(dir);
+}
+
+// ============================================================
+// tebako_fs_dlmap2file Tests
+// ============================================================
+
+TEST_F(CApiTest, Dlmap2file_ExtractsReadableHostFile)
+{
+  ASSERT_EQ(0, tebako_fs_init_from_file(archive_path.c_str(), mount_point.c_str()));
+
+  char* host_path = tebako_fs_dlmap2file((mount_point + "/content/hello.txt").c_str());
+  ASSERT_NE(nullptr, host_path);
+  EXPECT_EQ(0, tebako_get_errno());
+
+  // The mapped file lives on the host and carries the memfs content
+  ASSERT_TRUE(fs::exists(host_path));
+  std::ifstream ifs(host_path, std::ios::binary);
+  ASSERT_TRUE(ifs.is_open());
+  std::string content((std::istreambuf_iterator<char>(ifs)), std::istreambuf_iterator<char>());
+  EXPECT_EQ("Hello, World!", content);
+
+  free(host_path);
+}
+
+TEST_F(CApiTest, Dlmap2file_CachesExtraction)
+{
+  ASSERT_EQ(0, tebako_fs_init_from_file(archive_path.c_str(), mount_point.c_str()));
+
+  const std::string path = mount_point + "/content/data.bin";
+  char* first = tebako_fs_dlmap2file(path.c_str());
+  ASSERT_NE(nullptr, first);
+  char* second = tebako_fs_dlmap2file(path.c_str());
+  ASSERT_NE(nullptr, second);
+
+  // Same memfs path maps to the same host file (separate string copies)
+  EXPECT_STREQ(first, second);
+  EXPECT_EQ(static_cast<uintmax_t>(1024), fs::file_size(first));
+
+  free(first);
+  free(second);
+}
+
+TEST_F(CApiTest, Dlmap2file_NotEmbedded)
+{
+  ASSERT_EQ(0, tebako_fs_init_from_file(archive_path.c_str(), mount_point.c_str()));
+
+  EXPECT_EQ(nullptr, tebako_fs_dlmap2file("/tmp/not-embedded.txt"));
+  EXPECT_EQ(ENOENT, tebako_get_errno());
+}
+
+TEST_F(CApiTest, Dlmap2file_NullPath)
+{
+  ASSERT_EQ(0, tebako_fs_init_from_file(archive_path.c_str(), mount_point.c_str()));
+
+  EXPECT_EQ(nullptr, tebako_fs_dlmap2file(nullptr));
+}
+
+TEST_F(CApiTest, Dlmap2file_MissingInMount)
+{
+  ASSERT_EQ(0, tebako_fs_init_from_file(archive_path.c_str(), mount_point.c_str()));
+
+  EXPECT_EQ(nullptr, tebako_fs_dlmap2file((mount_point + "/content/nonexistent.txt").c_str()));
+  EXPECT_EQ(ENOENT, tebako_get_errno());
+}
+
+// ============================================================
+// Multi-mount interplay: operations dispatch to the owning mount
+// ============================================================
+
+TEST_F(CApiMultiMountTest, Pread_DispatchesToOwningMount)
+{
+  const std::string mp_a = "/__mm_pa__";
+  const std::string mp_b = "/__mm_pb__";
+  ASSERT_GE(mount_a_from_memory(mp_a), 0);
+  ASSERT_GE(mount_b_from_memory(mp_b), 0);
+
+  int fd_a = tebako_fs_open((mp_a + "/content/alpha.txt").c_str(), O_RDONLY);
+  int fd_b = tebako_fs_open((mp_b + "/beta.txt").c_str(), O_RDONLY);
+  ASSERT_GT(fd_a, 0);
+  ASSERT_GT(fd_b, 0);
+
+  // "alpha-content": 7 bytes at offset 6 is "content"
+  char buf_a[16] = {0};
+  EXPECT_EQ(7, tebako_fs_pread(fd_a, buf_a, 7, 6));
+  EXPECT_STREQ("content", buf_a);
+
+  // "beta-content": 4 bytes at offset 0 is "beta"
+  char buf_b[16] = {0};
+  EXPECT_EQ(4, tebako_fs_pread(fd_b, buf_b, 4, 0));
+  EXPECT_STREQ("beta", buf_b);
+
+  // Both fd positions are untouched
+  char rest_a[32] = {0};
+  EXPECT_EQ(13, tebako_fs_read(fd_a, rest_a, sizeof(rest_a) - 1));
+  EXPECT_STREQ("alpha-content", rest_a);
+  char rest_b[32] = {0};
+  EXPECT_EQ(12, tebako_fs_read(fd_b, rest_b, sizeof(rest_b) - 1));
+  EXPECT_STREQ("beta-content", rest_b);
+
+  EXPECT_EQ(0, tebako_fs_close(fd_a));
+  EXPECT_EQ(0, tebako_fs_close(fd_b));
+}
+
+TEST_F(CApiMultiMountTest, DirPositioning_IndependentPerMount)
+{
+  const std::string mp_a = "/__mm_dpa__";
+  const std::string mp_b = "/__mm_dpb__";
+  ASSERT_GE(mount_a_from_memory(mp_a), 0);
+  ASSERT_GE(mount_b_from_memory(mp_b), 0);
+
+  tebako_dir_t dir_a = tebako_fs_opendir((mp_a + "/content").c_str());
+  tebako_dir_t dir_b = tebako_fs_opendir(mp_b.c_str());
+  ASSERT_NE(nullptr, dir_a);
+  ASSERT_NE(nullptr, dir_b);
+
+  struct tebako_c_dirent* entry = tebako_fs_readdir(dir_a);
+  ASSERT_NE(nullptr, entry);
+  EXPECT_STREQ("alpha.txt", entry->d_name);
+  EXPECT_EQ(1, tebako_fs_telldir(dir_a));
+  // Positioning on A does not disturb B's stream
+  EXPECT_EQ(0, tebako_fs_telldir(dir_b));
+
+  tebako_fs_seekdir(dir_a, 0);
+  EXPECT_EQ(0, tebako_fs_telldir(dir_a));
+  entry = tebako_fs_readdir(dir_a);
+  ASSERT_NE(nullptr, entry);
+  EXPECT_STREQ("alpha.txt", entry->d_name);
+
+  // B still serves its own first entry
+  entry = tebako_fs_readdir(dir_b);
+  ASSERT_NE(nullptr, entry);
+  EXPECT_STREQ("beta.txt", entry->d_name);
+
+  tebako_fs_rewinddir(dir_b);
+  EXPECT_EQ(0, tebako_fs_telldir(dir_b));
+  entry = tebako_fs_readdir(dir_b);
+  ASSERT_NE(nullptr, entry);
+  EXPECT_STREQ("beta.txt", entry->d_name);
+
+  EXPECT_EQ(0, tebako_fs_closedir(dir_a));
+  EXPECT_EQ(0, tebako_fs_closedir(dir_b));
+}
+
+TEST_F(CApiMultiMountTest, DirIsEmbedded_PerMountRegistry)
+{
+  const std::string mp_a = "/__mm_dia__";
+  const std::string mp_b = "/__mm_dib__";
+  tebako_mount_t ha = mount_a_from_memory(mp_a);
+  tebako_mount_t hb = mount_b_from_memory(mp_b);
+  ASSERT_GE(ha, 0);
+  ASSERT_GE(hb, 0);
+
+  tebako_dir_t dir_a = tebako_fs_opendir((mp_a + "/content").c_str());
+  tebako_dir_t dir_b = tebako_fs_opendir(mp_b.c_str());
+  ASSERT_NE(nullptr, dir_a);
+  ASSERT_NE(nullptr, dir_b);
+  EXPECT_EQ(1, tebako_fs_dir_is_embedded(dir_a));
+  EXPECT_EQ(1, tebako_fs_dir_is_embedded(dir_b));
+
+  // Unmounting A force-closes only A's dir handles
+  ASSERT_EQ(0, tebako_fs_unmount_handle(ha));
+  EXPECT_EQ(0, tebako_fs_dir_is_embedded(dir_a));
+  EXPECT_EQ(1, tebako_fs_dir_is_embedded(dir_b));
+
+  EXPECT_EQ(0, tebako_fs_closedir(dir_b));
+  EXPECT_EQ(0, tebako_fs_unmount_handle(hb));
+}
+
+TEST_F(CApiMultiMountTest, Dlmap2file_MultiMount_DistinctExtractions)
+{
+  const std::string mp_a = "/__mm_dla__";
+  const std::string mp_b = "/__mm_dlb__";
+  ASSERT_GE(mount_a_from_memory(mp_a), 0);
+  ASSERT_GE(mount_b_from_memory(mp_b), 0);
+
+  // Same basename "beta.txt" in both mounts, different content
+  char* host_a = tebako_fs_dlmap2file((mp_a + "/nested/beta.txt").c_str());
+  char* host_b = tebako_fs_dlmap2file((mp_b + "/beta.txt").c_str());
+  ASSERT_NE(nullptr, host_a);
+  ASSERT_NE(nullptr, host_b);
+  EXPECT_STRNE(host_a, host_b);
+
+  std::ifstream ifs_a(host_a, std::ios::binary);
+  ASSERT_TRUE(ifs_a.is_open());
+  std::string content_a((std::istreambuf_iterator<char>(ifs_a)), std::istreambuf_iterator<char>());
+  EXPECT_EQ("from-A", content_a);
+
+  std::ifstream ifs_b(host_b, std::ios::binary);
+  ASSERT_TRUE(ifs_b.is_open());
+  std::string content_b((std::istreambuf_iterator<char>(ifs_b)), std::istreambuf_iterator<char>());
+  EXPECT_EQ("beta-content", content_b);
+
+  free(host_a);
+  free(host_b);
 }

@@ -132,6 +132,37 @@ class DwarfsFileHandle : public FileHandle {
   }
 
   /**
+   * @brief Read data at a given offset (POSIX pread semantics)
+   *
+   * Uses the DwarFS reader's offset-based read directly; the handle's
+   * current position and eof state are not modified.
+   */
+  ssize_t pread(void* buffer, size_t count, off_t offset) override
+  {
+    if (closed_ || offset < 0) {
+      return -1;
+    }
+
+    if (count == 0 || offset >= size_) {
+      return 0;
+    }
+
+    size_t to_read = std::min(count, static_cast<size_t>(size_ - offset));
+
+    try {
+      std::error_code ec;
+      size_t bytes_read = fs_.read(inode_.inode_num(), static_cast<char*>(buffer), to_read, offset, ec);
+      if (ec) {
+        return -1;
+      }
+      return static_cast<ssize_t>(bytes_read);
+    }
+    catch (...) {
+      return -1;
+    }
+  }
+
+  /**
    * @brief Seek to a position in the file
    *
    * DwarFS supports native seeking, so this is efficient.

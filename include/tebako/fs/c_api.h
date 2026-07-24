@@ -323,6 +323,24 @@ int tebako_fs_open(const char* path, int flags);
 ssize_t tebako_fs_read(int fd, void* buf, size_t count);
 
 /**
+ * @brief Read from embedded file at a given offset
+ *
+ * Reads up to nbyte bytes from the file at byte `offset` into buffer.
+ * Behaves like POSIX pread(2): the file position of `fd` is NOT modified
+ * by this call, and concurrent reads through the same fd are unaffected.
+ *
+ * @param fd File descriptor from tebako_fs_open()
+ * @param buf Buffer to read into
+ * @param nbyte Maximum number of bytes to read
+ * @param offset Byte offset from the beginning of the file
+ * @return Number of bytes read (may be less than nbyte), 0 at EOF, -1 on error
+ *
+ * @note Returns -1 with errno=EBADF if fd is not a valid libtfs FD
+ * @note Returns -1 with errno=EINVAL if offset is negative
+ */
+ssize_t tebako_fs_pread(int fd, void* buf, size_t nbyte, off_t offset);
+
+/**
  * @brief Seek within embedded file
  *
  * Changes the file position. Behaves like POSIX lseek(2).
@@ -428,6 +446,64 @@ struct tebako_c_dirent* tebako_fs_readdir(tebako_dir_t dir);
  * @return 0 on success, -1 on error
  */
 int tebako_fs_closedir(tebako_dir_t dir);
+
+/**
+ * @brief Check if directory handle is from libtfs
+ *
+ * Registry-membership test for directory handles, the dir-handle
+ * counterpart of tebako_fd_is_embedded(). Used to dispatch
+ * readdir/closedir/etc. between the embedded filesystem and the host.
+ *
+ * @param dir Directory handle to check
+ * @return 1 if dir is a live handle from tebako_fs_opendir(), 0 otherwise
+ *         (NULL, unknown, or already closed/unmounted handle)
+ */
+int tebako_fs_dir_is_embedded(tebako_dir_t dir);
+
+/**
+ * @brief Reset directory stream to the beginning
+ *
+ * Behaves like POSIX rewinddir(3): the next tebako_fs_readdir() call
+ * returns the first entry again. Equivalent to tebako_fs_seekdir(dir, 0).
+ *
+ * @param dir Directory handle from tebako_fs_opendir()
+ *
+ * @note On an invalid handle the call is a no-op with errno=EBADF
+ *       (check via tebako_get_errno())
+ */
+void tebako_fs_rewinddir(tebako_dir_t dir);
+
+/**
+ * @brief Current location in a directory stream
+ *
+ * Behaves like POSIX telldir(3). Cookies are index-based: the returned
+ * value is the ordinal (0-based) of the entry the next tebako_fs_readdir()
+ * call will return. A cookie obtained from this function remains valid
+ * for the lifetime of the directory handle (the entry order of a mounted
+ * directory does not change; the filesystem is read-only).
+ *
+ * @param dir Directory handle from tebako_fs_opendir()
+ * @return Position cookie, or -1 with errno=EBADF for an invalid handle
+ */
+long tebako_fs_telldir(tebako_dir_t dir);
+
+/**
+ * @brief Set the location of a directory stream
+ *
+ * Behaves like POSIX seekdir(3) with index-based cookies (see
+ * tebako_fs_telldir()): after the call, the next tebako_fs_readdir()
+ * returns entry #pos. pos == 0 rewinds. Seeking backwards resets the
+ * underlying iterator and advances; seeking past the end leaves the
+ * stream at end-of-directory.
+ *
+ * @param dir Directory handle from tebako_fs_opendir()
+ * @param pos Position cookie (ordinal of the next entry to return)
+ *
+ * @note On an invalid handle the call is a no-op with errno=EBADF;
+ *       a negative pos is rejected with errno=EINVAL (check via
+ *       tebako_get_errno())
+ */
+void tebako_fs_seekdir(tebako_dir_t dir, long pos);
 
 /* ============================================================
  * Metadata Operations
@@ -551,6 +627,43 @@ const char* tebako_strerror(int err);
  * @note Used to implement --tebako-extract functionality
  */
 int tebako_fs_extract_all(const char* dest_path);
+
+/* ============================================================
+ * Dynamic Loading Support
+ * ============================================================ */
+
+/**
+ * @brief Extract a memfs file to a host filesystem path for dlopen
+ *
+ * Modern entry point of the legacy tebako_dlmap2file() mechanism with the
+ * same extraction/cache/lifetime semantics: the file at `path` (dispatched
+ * to its owning mount by longest mount-point prefix) is streamed out to a
+ * per-process temporary directory and the host path is returned, so that
+ * native code (e.g. dlopen of a packaged extension) can load it. Repeated
+ * calls for the same path return the cached host file; extracted files are
+ * owned by libtfs and removed at process teardown.
+ *
+ * @param path Absolute path within a mounted filesystem
+ * @return Newly allocated host path string on success, NULL on error
+ *         (check errno via tebako_get_errno())
+ *
+ * @note Ownership: the RETURNED STRING is caller-owned and must be
+ *       released with free(). The host file it points to is owned by
+ *       libtfs — do not unlink or modify it.
+ * @note Returns NULL with errno=ENOENT if the path is not within any
+ *       mounted filesystem or does not exist in its mount
+ *
+ * @example
+ * @code
+ * char* host_path = tebako_fs_dlmap2file("/__tebako__/lib/native/ext.so");
+ * if (host_path != NULL) {
+ *     void* h = dlopen(host_path, RTLD_LAZY);
+ *     free(host_path);
+ *     // ...
+ * }
+ * @endcode
+ */
+char* tebako_fs_dlmap2file(const char* path);
 
 /* ============================================================
  * Utility Functions

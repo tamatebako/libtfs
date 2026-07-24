@@ -95,6 +95,7 @@ struct DirectoryState {
   tebako_c_dirent current_entry{};
   bool has_current = false;
   tebako_mount_t owner = -1;
+  long position = 0;  // Ordinal of the entry the next readdir returns (telldir cookie)
 };
 
 /**
@@ -226,6 +227,19 @@ class FsContext {
   ssize_t read(int fd, void* buffer, size_t count);
 
   /**
+   * @brief Read from file at a given offset (like POSIX pread)
+   *
+   * Dispatches to the owning mount of the fd. The fd's file position
+   * is not modified.
+   * @param fd File descriptor
+   * @param buffer Buffer to read into
+   * @param count Maximum bytes to read
+   * @param offset Byte offset from the beginning of the file
+   * @return Bytes read, 0 when offset is at/past EOF, -1 on error
+   */
+  ssize_t pread(int fd, void* buffer, size_t count, off_t offset);
+
+  /**
    * @brief Seek on file
    * @param fd File descriptor
    * @param offset Seek offset
@@ -265,6 +279,38 @@ class FsContext {
    * @return 0 on success, -1 on error
    */
   int closedir(void* dir);
+
+  /**
+   * @brief Registry-membership test for directory handles
+   * @param dir Directory handle to check
+   * @return 1 if dir is a live handle from opendir, 0 otherwise
+   */
+  int dir_is_embedded(void* dir) const;
+
+  /**
+   * @brief Reset a directory stream to the beginning (like rewinddir)
+   * @param dir Directory handle from opendir
+   */
+  void rewinddir(void* dir);
+
+  /**
+   * @brief Current position cookie of a directory stream (like telldir)
+   *
+   * Index-based: ordinal of the entry the next readdir returns.
+   * @param dir Directory handle from opendir
+   * @return Position cookie, -1 on error (errno=EBADF)
+   */
+  long telldir(void* dir);
+
+  /**
+   * @brief Set a directory stream's position (like seekdir)
+   *
+   * Backward seeks reset the underlying iterator and advance; seeking
+   * past the end leaves the stream at end-of-directory.
+   * @param dir Directory handle from opendir
+   * @param pos Position cookie from telldir (0 rewinds)
+   */
+  void seekdir(void* dir, long pos);
 
   // ===================================================================
   // Metadata Operations
@@ -314,6 +360,19 @@ class FsContext {
    * @return 0 on success, -1 on error
    */
   int extract_all(std::string_view dest_path);
+
+  /**
+   * @brief Extract a memfs file to a host path for dlopen (dlmap2file)
+   *
+   * Modern variant of the legacy tebako_dlmap2file mechanism with the same
+   * extraction/cache/lifetime semantics: the file is dispatched to its
+   * owning mount (longest prefix), streamed to a per-process temporary
+   * directory, and cached by memfs path until context teardown.
+   * @param path Absolute path within a mounted filesystem
+   * @return Newly allocated host path (caller frees with free()), nullptr
+   *         on error (errno set)
+   */
+  char* dlmap2file(std::string_view path);
 
   // ===================================================================
   // Compat Accessor Methods (report the compat/first mount)
@@ -400,6 +459,8 @@ class FsContext {
   std::map<tebako_mount_t, Mount> mounts_;
   std::unordered_map<int, FdEntry> fd_table_;
   std::unordered_map<void*, std::unique_ptr<DirectoryState>> dir_table_;
+  std::map<std::string, std::string> dl_cache_;  // memfs path -> extracted host file (dlmap2file)
+  std::string dl_tmpdir_;                        // lazy per-process extraction directory
   tebako_mount_t compat_handle_ = -1;  // Mount created by tebako_fs_init* (-1 = none)
   tebako_mount_t next_handle_ = 0;     // Never reused within a process run
   int next_fd_ = 1;                    // Internal FD counter (external FDs OR TEBAKO_FD_FLAG)
