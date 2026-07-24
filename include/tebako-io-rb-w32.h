@@ -128,8 +128,22 @@ struct stati128 {
   long st_ctimensec;
 };
 
+#if !defined(_TEBAKO_UID_GID_DEFINED)
+#define _TEBAKO_UID_GID_DEFINED
+/* MinGW has no uid_t/gid_t (they come from ruby's win32 headers in the ruby
+ * build context); int matches both rb_uid_t/rb_gid_t and POSIX */
+typedef int uid_t;
+typedef int gid_t;
+#endif
+
 #ifdef __cplusplus
-inline stati128* operator<<(stati128* o, struct stat i)
+/* Template, deliberately: sys/stat.h includes <io.h>, which this header
+ * shadows (tebako/fs/io.h), so on MinGW we are routinely evaluated *before*
+ * struct stat is defined at sys/stat.h:137. A template declaration needs no
+ * complete type here; it instantiates only at call sites (ruby's stat, the
+ * CRT's struct stat, or stati128 itself). */
+template <typename StatT>
+inline stati128* operator<<(stati128* o, StatT i)
 {
   o->st_dev = i.st_dev;
   o->st_ino = i.st_ino;
@@ -149,7 +163,8 @@ inline stati128* operator<<(stati128* o, struct stat i)
   return o;
 }
 
-inline struct stat* operator<<(struct stat* o, stati128 i)
+template <typename StatT>
+inline StatT* operator<<(StatT* o, stati128 i)
 {
   o->st_dev = i.st_dev;
   o->st_ino = i.st_ino;
