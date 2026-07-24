@@ -29,10 +29,11 @@
 
 #pragma once
 
-#if !defined(RUBY_WIN32_H) && !defined(_TEBAKO_UID_GID_DEFINED)
+#if defined(_WIN32) && !defined(RUBY_WIN32_H) && !defined(_TEBAKO_UID_GID_DEFINED)
 #define _TEBAKO_UID_GID_DEFINED
 /* MinGW has no uid_t/gid_t (ruby's win32 headers provide them in the ruby
- * build context); int matches both rb_uid_t/rb_gid_t and POSIX */
+ * build context); int matches both rb_uid_t/rb_gid_t and POSIX. Windows-only:
+ * on POSIX sys/types.h already has uid_t/gid_t and a typedef here conflicts. */
 typedef int uid_t;
 typedef int gid_t;
 #endif
