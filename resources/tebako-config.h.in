@@ -57,8 +57,3 @@
 #cmakedefine TEBAKO_HAS_POSIX_MKDIR 1
 #cmakedefine TEBAKO_HAS_WINDOWS_MKDIR 1
 
-#cmakedefine RB_W32 1
-
-#if defined(_WIN32) && !defined(RB_W32)
-#error "Only Ruby style Dir IO can be used on Windows. Please check why RB_W32 is not defined by build script."
-#endif
