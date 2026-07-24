@@ -54,6 +54,16 @@
 #define S_ISDIR(mode) _S_ISTYPE((mode), _S_IFDIR)
 #endif
 
+/* Standalone MinGW (no ruby build context): pull in the CRT types the
+ * shims below rely on -- ino_t/_dev_t (sys/types.h), struct stat
+ * (sys/stat.h), __time64_t (corecrt.h via sys/types.h). In the ruby build
+ * context these come from ruby's win32 headers and RUBY_WIN32_H is set, so
+ * this branch stays inert there. */
+#if !defined(RUBY_WIN32_H)
+#include <sys/types.h>
+#include <sys/stat.h>
+#endif
+
 #ifndef LOCK_SH
 #define LOCK_SH 1
 #endif
@@ -118,8 +128,22 @@ struct stati128 {
   long st_ctimensec;
 };
 
+#if !defined(_TEBAKO_UID_GID_DEFINED)
+#define _TEBAKO_UID_GID_DEFINED
+/* MinGW has no uid_t/gid_t (they come from ruby's win32 headers in the ruby
+ * build context); int matches both rb_uid_t/rb_gid_t and POSIX */
+typedef int uid_t;
+typedef int gid_t;
+#endif
+
 #ifdef __cplusplus
-inline stati128* operator<<(stati128* o, struct stat i)
+/* Template, deliberately: sys/stat.h includes <io.h>, which this header
+ * shadows (tebako/fs/io.h), so on MinGW we are routinely evaluated *before*
+ * struct stat is defined at sys/stat.h:137. A template declaration needs no
+ * complete type here; it instantiates only at call sites (ruby's stat, the
+ * CRT's struct stat, or stati128 itself). */
+template <typename StatT>
+inline stati128* operator<<(stati128* o, StatT i)
 {
   o->st_dev = i.st_dev;
   o->st_ino = i.st_ino;
@@ -139,7 +163,8 @@ inline stati128* operator<<(stati128* o, struct stat i)
   return o;
 }
 
-inline struct stat* operator<<(struct stat* o, stati128 i)
+template <typename StatT>
+inline StatT* operator<<(StatT* o, stati128 i)
 {
   o->st_dev = i.st_dev;
   o->st_ino = i.st_ino;
@@ -155,6 +180,132 @@ inline struct stat* operator<<(struct stat* o, stati128 i)
   return o;
 }
 #endif  // __cplusplus
+
+/* -----------------------------------------------------------------------
+ * Standalone MinGW POSIX compatibility shims
+ *
+ * The legacy quartet (file-ctl/file-io, dir-ctl/dir-io), dl-ctl and
+ * fs/internal/fd_table.h call a handful of POSIX functions via raw global
+ * scope names (::readlink, getuid, ...) that the UCRT does not provide.
+ * In the ruby build context these resolve through ruby's win32 layer, so
+ * the shim stays inert there (RUBY_WIN32_H). The CRT low-I/O surface
+ * (open/close/read/write, _get_osfhandle, the F_OK..R_OK bits, ...) is
+ * covered by the real <io.h> -- tebako/fs/io.h chains to it via
+ * include_next; the three declarations below are only a fallback for
+ * including this header without tebako/fs/io.h.
+ * ----------------------------------------------------------------------- */
+#include <errno.h>
+#include <fcntl.h>
+#include <stdarg.h>
+#include <stdio.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+int _open(const char*, int, ...);
+int _read(int, void*, unsigned int);
+__int64 _lseeki64(int, __int64, int);
+
+/* Windows has no uid/gid; 0 matches ruby's win32 stubs (win32.h maps these
+ * to 0 there as well) */
+static inline uid_t getuid(void)
+{
+  return 0;
+}
+
+static inline uid_t geteuid(void)
+{
+  return 0;
+}
+
+static inline gid_t getgid(void)
+{
+  return 0;
+}
+
+static inline gid_t getegid(void)
+{
+  return 0;
+}
+
+/* tebako_readlink falls back to the host ::readlink only for memfs links
+ * pointing outside of the memfs; host symlinks are rare on Windows, so a
+ * graceful ENOSYS is acceptable (v1) */
+static inline ssize_t readlink(const char* path, char* buf, size_t bufsize)
+{
+  (void)path;
+  (void)buf;
+  (void)bufsize;
+  errno = ENOSYS;
+  return -1;
+}
+
+/* Approximation: open() semantics for AT_FDCWD and absolute paths; there is
+ * no dirfd table standalone, so a real dirfd gets ENOSYS (v1) */
+#ifndef AT_FDCWD
+#define AT_FDCWD -100
+#endif
+static inline int openat(int dirfd, const char* path, int flags, ...)
+{
+  int mode = 0;
+  int absolute = (path[0] == '/' || path[0] == '\\' ||
+                  (((path[0] >= 'A' && path[0] <= 'Z') || (path[0] >= 'a' && path[0] <= 'z')) && path[1] == ':'));
+  if (dirfd == AT_FDCWD || absolute) {
+    if (flags & O_CREAT) {
+      va_list args;
+      va_start(args, flags);
+      mode = va_arg(args, int);
+      va_end(args);
+    }
+    return _open(path, flags, mode);
+  }
+  errno = ENOSYS;
+  return -1;
+}
+
+/* Approximation: seek+read+restore (not atomic; the CRT has no positional
+ * read and the fd is not shared across threads in the legacy use) */
+static inline ssize_t pread(int fd, void* buf, size_t nbyte, off_t offset)
+{
+  __int64 prev = _lseeki64(fd, 0, SEEK_CUR);
+  int ret;
+  if (prev == -1 || _lseeki64(fd, (__int64)offset, SEEK_SET) == -1) {
+    return -1;
+  }
+  ret = _read(fd, buf, (unsigned int)nbyte);
+  _lseeki64(fd, prev, SEEK_SET);
+  return (ssize_t)ret;
+}
+
+#if !defined(_SYS_UIO_H) && !defined(_SYS_UIO_H_)
+struct iovec {
+  void* iov_base;
+  size_t iov_len;
+};
+#endif
+
+static inline ssize_t readv(int fd, const struct iovec* iov, int iovcnt)
+{
+  ssize_t total = 0;
+  int i;
+  for (i = 0; i < iovcnt; i++) {
+    int n = _read(fd, iov[i].iov_base, (unsigned int)iov[i].iov_len);
+    if (n <= 0) {
+      return (total > 0) ? total : (ssize_t)n;
+    }
+    total += n;
+    if ((size_t)n < iov[i].iov_len) {
+      break;
+    }
+  }
+  return total;
+}
+
+#ifdef __cplusplus
+}
+#endif
+
 #endif  // RUBY_WIN32_H
 
 #endif  // RB_W32, TEBAKO_IO_RB_W32_H

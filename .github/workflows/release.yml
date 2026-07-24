@@ -121,7 +121,14 @@ jobs:
             container: ghcr.io/tamatebako/tebako-ubuntu-20.04:sha-59b1b86-arm64
           - platform: linux-musl-x86_64
             os: ubuntu-latest
+            # alpine:3.21 for the build (musl-native cmake 3.31, working
+            # toolchain); the deps package carries the build's libstdc++.a so
+            # consumers on older-libstdc++ containers (tebako alpine-3.17,
+            # gcc-12) still close the link — see the packaging step.
             container: alpine:3.21
+          # NOTE: linux-musl-arm64 is NOT in this matrix — GitHub blocks
+          # JavaScript actions in Alpine containers on ARM64 runners, so it
+          # has a dedicated docker-exec job below (build-musl-arm64).
           - platform: macos-arm64
             os: macos-14
           - platform: macos-x86_64
@@ -131,18 +138,34 @@ jobs:
 
     steps:
       - name: Bootstrap container (musl)
-        # Same bootstrap as alpine.yml: nodejs + gcompat/libc6-compat run the
-        # runner's Node actions on musl; GNU tar for the cache action; zip +
-        # squashfs-tools for tests/fixtures/regenerate_all.sh; mistletoe for
-        # the dwarfs tools man pages.
-        if: matrix.platform == 'linux-musl-x86_64'
+        # nodejs + gcompat/libc6-compat run the runner's Node actions on musl;
+        # apk cmake is musl-native 3.31 (boost-1.90 needs >= 3.25) — do NOT
+        # use the xpack cmake here, it is a glibc binary and cannot run on
+        # musl. mistletoe unnecessary (man pages off); squashfs optional.
+        if: startswith(matrix.platform, 'linux-musl')
         run: |
           apk --no-cache --upgrade add \
             bash git curl ca-certificates zip unzip tar gzip \
             nodejs gcompat libc6-compat \
             build-base cmake ninja linux-headers perl python3 py3-pip \
-            autoconf automake libtool pkgconf squashfs-tools
-          pip3 install --break-system-packages --root-user-action ignore mistletoe
+            autoconf automake libtool pkgconf
+
+      - name: Upgrade cmake (gnu container legs with cmake < 3.25)
+        # The 20.04 gnu ci containers ship cmake 3.24.4; boost-1.90's
+        # cmake_minimum_required is 3.25 and vcpkg port builds use the
+        # system cmake. Install the xpack 3.31.9 build (same mechanism as
+        # ci-containers' tools.sh; the image bump itself is tracked at
+        # tamatebako/tebako-ci-containers#67).
+        if: startswith(matrix.platform, 'linux-gnu')
+        shell: bash
+        run: |
+          ARCH=$(uname -m); case "$ARCH" in aarch64) ARCH=arm64;; x86_64) ARCH=x64;; esac
+          wget -nv "https://github.com/xpack-dev-tools/cmake-xpack/releases/download/v3.31.9-1/xpack-cmake-3.31.9-1-linux-${ARCH}.tar.gz" -O /tmp/cmake.tgz
+          # no --skip-old-files: the image's /usr/bin/cmake outdates the tar
+          # entries by mtime and must be overwritten
+          if [ "$(id -u)" = "0" ]; then SUDO=""; else SUDO="sudo"; fi
+          $SUDO tar -zxf /tmp/cmake.tgz --directory /usr --strip-components=1
+          cmake --version | head -1
 
       - name: Declare directory safe (container)
         if: startswith(matrix.platform, 'linux-')
@@ -162,10 +185,12 @@ jobs:
           echo "version=${TAG#v}" >> "$GITHUB_ENV"
 
       - name: Install fixture tools (Linux)
-        # zip and mksquashfs are needed by tests/fixtures/regenerate_all.sh;
-        # unzip/ninja are vcpkg prerequisites the minimal gnu build containers
-        # lack (the musl bootstrap installs its own set).
-        if: runner.os == 'Linux' && matrix.platform != 'linux-musl-x86_64'
+        # Reserved for non-container Linux legs. The gnu ci containers already
+        # ship zip/unzip/ninja, and squashfs fixtures are optional in
+        # WITH_SQUASHFS=OFF builds (regenerate_all.sh skips them when
+        # mksquashfs is absent) — no apt in these legs, so the ubuntu archive
+        # state cannot break the release.
+        if: runner.os == 'Linux' && !startswith(matrix.platform, 'linux-')
         run: |
           sudo apt-get -y update
           sudo apt-get -y install zip unzip squashfs-tools ninja-build
@@ -189,7 +214,7 @@ jobs:
       # Cache keys match the per-platform CI workflows so release jobs reuse
       # the warm caches from main.
       - name: Cache vcpkg package archives (Linux/macOS)
-        if: runner.os != 'Windows' && matrix.platform != 'linux-musl-x86_64'
+        if: runner.os != 'Windows' && !startswith(matrix.platform, 'linux-musl')
         uses: actions/cache@v4
         with:
           path: .vcpkg-cache
@@ -197,7 +222,7 @@ jobs:
           restore-keys: vcpkg-archives-${{ runner.os }}-${{ matrix.os }}-
 
       - name: Cache vcpkg package archives (musl)
-        if: matrix.platform == 'linux-musl-x86_64'
+        if: startswith(matrix.platform, 'linux-musl')
         uses: actions/cache@v4
         with:
           path: .vcpkg-cache
@@ -213,7 +238,7 @@ jobs:
           restore-keys: vcpkg-archives-${{ runner.os }}-${{ runner.arch }}-mingw-
 
       - name: Cache vcpkg installed tree (Linux/macOS)
-        if: runner.os != 'Windows' && matrix.platform != 'linux-musl-x86_64'
+        if: runner.os != 'Windows' && !startswith(matrix.platform, 'linux-musl')
         uses: actions/cache@v4
         with:
           path: build/vcpkg_installed
@@ -221,7 +246,7 @@ jobs:
           restore-keys: vcpkg-installed-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Cache vcpkg installed tree (musl)
-        if: matrix.platform == 'linux-musl-x86_64'
+        if: startswith(matrix.platform, 'linux-musl')
         uses: actions/cache@v4
         with:
           path: build/vcpkg_installed
@@ -379,229 +404,32 @@ jobs:
           objdump -p stage/bin/tebakofs.exe | grep "DLL Name" || true
 
       - name: Package deps (Linux/macOS/musl)
-        # libtfs-deps-<ver>-<platform>.tar.gz: the transitive static libs a
-        # consumer links against (see DEPS_LIBS) plus a curated include/ tree
-        # to compile against them (see DEPS_HEADER_DIRS/DEPS_HEADER_FILES and
-        # the boost subset below), so libtfs + libtfs-deps is self-contained —
-        # no vcpkg downstream. Fails loudly when an expected lib or header is
-        # missing. macOS ships no libcrypto/libssl (brew/system OpenSSL at
-        # link time); Linux and musl include them.
+        # Shared logic: .github/scripts/package-deps.sh (also used by the
+        # musl-arm64 docker job). Fails loudly when an expected lib or
+        # header is missing. macOS ships no libcrypto/libssl.
         if: runner.os != 'Windows'
         shell: bash
-        run: |
-          set -euxo pipefail
-          VILIB=$(ls -d build/vcpkg_installed/*/lib | head -1)
-          VIROOT=$(dirname "$VILIB")
-          LIBS="$DEPS_LIBS"
-          SHARES="$DEPS_SHARES"
-          HEADER_DIRS="$DEPS_HEADER_DIRS"
-          if [ "$RUNNER_OS" != "macOS" ]; then
-            LIBS="$LIBS libcrypto.a libssl.a"
-            SHARES="$SHARES openssl"
-            # Ship the matching OpenSSL headers with the archives: tebako's
-            # ruby build (ext/openssl) configures against the triplet include
-            # dir; without them it fell back to system headers whose opaque
-            # structs mismatched the shipped 3.x libs and broke the build.
-            HEADER_DIRS="$HEADER_DIRS openssl"
-          fi
-          rm -rf deps-stage
-          mkdir -p deps-stage/lib deps-stage/share
-          resolve() {
-            local base="$1" stem f
-            stem="${base%.a}"
-            case "$base" in
-              libz.a)   cand="$VILIB/libz.a $VILIB/libzlib.a" ;;
-              libbz2.a) cand="$VILIB/libbz2.a $VILIB/libbzip2.a" ;;
-              *)        cand="$VILIB/$base" ;;
-            esac
-            for f in $cand; do [ -f "$f" ] && { echo "$f"; return 0; }; done
-            for f in "$VILIB/${stem}-mt.a" "$VILIB/${stem}"*.a; do
-              [ -f "$f" ] && { echo "$f"; return 0; }
-            done
-            return 1
-          }
-          for l in $LIBS; do
-            src=$(resolve "$l") || { echo "ERROR: expected dep lib missing: $VILIB/$l (incl. variants)" >&2; exit 1; }
-            cp "$src" deps-stage/lib/
-          done
-          for s in $SHARES; do
-            if [ -d "$VIROOT/share/$s" ]; then
-              cp -R "$VIROOT/share/$s" deps-stage/share/
-            fi
-            if [ -d "$VILIB/cmake/$s" ]; then
-              mkdir -p deps-stage/lib/cmake
-              cp -R "$VILIB/cmake/$s" deps-stage/lib/cmake/
-            fi
-          done
-          # Curated headers (DEPS_HEADER_DIRS / DEPS_HEADER_FILES) staged
-          # under include/ so consumers can also compile against the shipped
-          # archives (gem native extensions need e.g. <brotli/encode.h>).
-          VIINC="$VIROOT/include"
-          mkdir -p deps-stage/include
-          for d in $HEADER_DIRS; do
-            if [ ! -d "$VIINC/$d" ]; then
-              echo "ERROR: expected dep header dir missing: $VIINC/$d" >&2; exit 1
-            fi
-            cp -R "$VIINC/$d" deps-stage/include/
-          done
-          for h in $DEPS_HEADER_FILES; do
-            if [ ! -f "$VIINC/$h" ]; then
-              echo "ERROR: expected dep header missing: $VIINC/$h" >&2; exit 1
-            fi
-            cp "$VIINC/$h" deps-stage/include/
-          done
-          # boost: stage only the transitive #include closure of
-          # boost_filesystem + boost_chrono — the whole boost/ tree is
-          # ~100 MB of headers consumers never include. MPL's preprocessed
-          # headers are seeded explicitly: they are pulled in via
-          # macro-computed includes (BOOST_PP_STRINGIZE(...)) that textual
-          # scanning cannot follow.
-          normalize_boost() {
-            local p="$1"
-            while [[ "$p" == *"/./"* || "$p" == *"/../"* || "$p" == ../* || "$p" == ./* ]]; do
-              p=$(printf '%s' "$p" | sed -E -e 's|(^|/)\./|\1|g' -e 's|[^/]+/\.\./||' -e 's|^\.\./||')
-            done
-            printf '%s' "$p"
-          }
-          stage_boost() {
-            local rel="$1" src dst inc sub
-            src="$VIINC/$rel"
-            dst="deps-stage/include/$rel"
-            if [ -d "$src" ]; then
-              for sub in "$src"/*; do
-                [ -e "$sub" ] || continue
-                stage_boost "$rel/$(basename "$sub")"
-              done
-            elif [ -f "$src" ] && [ ! -f "$dst" ]; then
-              mkdir -p "$(dirname "$dst")"
-              cp "$src" "$dst"
-              sed -n -E 's|^[[:space:]]*#[[:space:]]*include[[:space:]]*[<"](boost/[^">]+)[">].*|\1|p' "$dst" |
-                while read -r inc; do stage_boost "$inc"; done
-              sed -n -E 's|^[[:space:]]*#[[:space:]]*include[[:space:]]*"([^">]+)".*|\1|p' "$dst" |
-                while read -r inc; do
-                  case "$inc" in
-                    boost/*) : ;;
-                    *) inc=$(normalize_boost "$(dirname "$rel")/$inc") ;;
-                  esac
-                  [ -f "$VIINC/$inc" ] && stage_boost "$inc"
-                done
-            fi
-          }
-          for seed in boost/filesystem.hpp boost/filesystem boost/chrono.hpp boost/chrono boost/mpl/aux_/preprocessed; do
-            if [ ! -e "$VIINC/$seed" ]; then
-              echo "ERROR: expected boost seed missing: $VIINC/$seed" >&2; exit 1
-            fi
-            stage_boost "$seed"
-          done
-          du -sh deps-stage/include deps-stage/include/boost
-          tar -C deps-stage -czf "artifacts/libtfs-deps-${{ env.version }}-${{ matrix.platform }}.tar.gz" lib share include
-          tar -tzf "artifacts/libtfs-deps-${{ env.version }}-${{ matrix.platform }}.tar.gz"
+        env:
+          PLATFORM: ${{ matrix.platform }}
+          PKG_VERSION: ${{ env.version }}
+          SHIP_OPENSSL: ${{ runner.os != 'macOS' && '1' || '0' }}
+          SHIP_TOOLCHAIN_RT: ${{ startswith(matrix.platform, 'linux-musl') && '1' || '0' }}
+        run: bash .github/scripts/package-deps.sh
 
       - name: Package deps (Windows)
-        # Same deps contract as POSIX — libs and the curated include/ tree
-        # (shipped as .tar.gz, not .zip: MSYS2 tar handles it and the asset
-        # name stays uniform across platforms); OpenSSL (libcrypto/libssl)
-        # is included on Windows.
+        # Same shared logic as POSIX (shipped as .tar.gz for asset-name
+        # uniformity; OpenSSL included on Windows).
         if: runner.os == 'Windows'
         shell: msys2 {0}
-        run: |
-          set -euxo pipefail
-          VILIB=$(ls -d build/vcpkg_installed/*/lib | head -1)
-          VIROOT=$(dirname "$VILIB")
-          LIBS="$DEPS_LIBS libcrypto.a libssl.a"
-          SHARES="$DEPS_SHARES openssl"
-          rm -rf deps-stage
-          mkdir -p deps-stage/lib deps-stage/share
-          resolve() {
-            local base="$1" stem f
-            stem="${base%.a}"
-            case "$base" in
-              libz.a)   cand="$VILIB/libz.a $VILIB/libzlib.a" ;;
-              libbz2.a) cand="$VILIB/libbz2.a $VILIB/libbzip2.a" ;;
-              *)        cand="$VILIB/$base" ;;
-            esac
-            for f in $cand; do [ -f "$f" ] && { echo "$f"; return 0; }; done
-            for f in "$VILIB/${stem}-mt.a" "$VILIB/${stem}"*.a; do
-              [ -f "$f" ] && { echo "$f"; return 0; }
-            done
-            return 1
-          }
-          for l in $LIBS; do
-            src=$(resolve "$l") || { echo "ERROR: expected dep lib missing: $VILIB/$l (incl. variants)" >&2; exit 1; }
-            cp "$src" deps-stage/lib/
-          done
-          for s in $SHARES; do
-            if [ -d "$VIROOT/share/$s" ]; then
-              cp -R "$VIROOT/share/$s" deps-stage/share/
-            fi
-            if [ -d "$VILIB/cmake/$s" ]; then
-              mkdir -p deps-stage/lib/cmake
-              cp -R "$VILIB/cmake/$s" deps-stage/lib/cmake/
-            fi
-          done
-          # Curated headers (DEPS_HEADER_DIRS / DEPS_HEADER_FILES) staged
-          # under include/ so consumers can also compile against the shipped
-          # archives (gem native extensions need e.g. <brotli/encode.h>).
-          VIINC="$VIROOT/include"
-          mkdir -p deps-stage/include
-          for d in $DEPS_HEADER_DIRS; do
-            if [ ! -d "$VIINC/$d" ]; then
-              echo "ERROR: expected dep header dir missing: $VIINC/$d" >&2; exit 1
-            fi
-            cp -R "$VIINC/$d" deps-stage/include/
-          done
-          for h in $DEPS_HEADER_FILES; do
-            if [ ! -f "$VIINC/$h" ]; then
-              echo "ERROR: expected dep header missing: $VIINC/$h" >&2; exit 1
-            fi
-            cp "$VIINC/$h" deps-stage/include/
-          done
-          # boost: stage only the transitive #include closure of
-          # boost_filesystem + boost_chrono — the whole boost/ tree is
-          # ~100 MB of headers consumers never include. MPL's preprocessed
-          # headers are seeded explicitly: they are pulled in via
-          # macro-computed includes (BOOST_PP_STRINGIZE(...)) that textual
-          # scanning cannot follow.
-          normalize_boost() {
-            local p="$1"
-            while [[ "$p" == *"/./"* || "$p" == *"/../"* || "$p" == ../* || "$p" == ./* ]]; do
-              p=$(printf '%s' "$p" | sed -E -e 's|(^|/)\./|\1|g' -e 's|[^/]+/\.\./||' -e 's|^\.\./||')
-            done
-            printf '%s' "$p"
-          }
-          stage_boost() {
-            local rel="$1" src dst inc sub
-            src="$VIINC/$rel"
-            dst="deps-stage/include/$rel"
-            if [ -d "$src" ]; then
-              for sub in "$src"/*; do
-                [ -e "$sub" ] || continue
-                stage_boost "$rel/$(basename "$sub")"
-              done
-            elif [ -f "$src" ] && [ ! -f "$dst" ]; then
-              mkdir -p "$(dirname "$dst")"
-              cp "$src" "$dst"
-              sed -n -E 's|^[[:space:]]*#[[:space:]]*include[[:space:]]*[<"](boost/[^">]+)[">].*|\1|p' "$dst" |
-                while read -r inc; do stage_boost "$inc"; done
-              sed -n -E 's|^[[:space:]]*#[[:space:]]*include[[:space:]]*"([^">]+)".*|\1|p' "$dst" |
-                while read -r inc; do
-                  case "$inc" in
-                    boost/*) : ;;
-                    *) inc=$(normalize_boost "$(dirname "$rel")/$inc") ;;
-                  esac
-                  [ -f "$VIINC/$inc" ] && stage_boost "$inc"
-                done
-            fi
-          }
-          for seed in boost/filesystem.hpp boost/filesystem boost/chrono.hpp boost/chrono boost/mpl/aux_/preprocessed; do
-            if [ ! -e "$VIINC/$seed" ]; then
-              echo "ERROR: expected boost seed missing: $VIINC/$seed" >&2; exit 1
-            fi
-            stage_boost "$seed"
-          done
-          du -sh deps-stage/include deps-stage/include/boost
-          tar -C deps-stage -czf "artifacts/libtfs-deps-${{ env.version }}-${{ matrix.platform }}.tar.gz" lib share include
-          tar -tzf "artifacts/libtfs-deps-${{ env.version }}-${{ matrix.platform }}.tar.gz"
+        env:
+          PLATFORM: ${{ matrix.platform }}
+          # PKG_VERSION, not VERSION: the Windows runner merges env
+          # case-insensitively and a step-level VERSION would collide with the
+          # GITHUB_ENV-provided lowercase "version" and be silently dropped
+          PKG_VERSION: ${{ env.version }}
+          SHIP_OPENSSL: 1
+          SHIP_TOOLCHAIN_RT: 0
+        run: bash .github/scripts/package-deps.sh
 
       - name: Upload release assets
         uses: actions/upload-artifact@v4
@@ -610,9 +438,122 @@ jobs:
           path: artifacts/
           if-no-files-found: error
 
+  build-musl-arm64:
+    name: linux-musl-arm64
+    # GitHub blocks JavaScript actions in Alpine containers on ARM64 runners,
+    # so this leg cannot use `container:`. It runs the identical build inside
+    # a long-lived alpine:3.21 container via docker exec (checkout, caches
+    # and artifact upload happen on the host).
+    runs-on: ubuntu-24.04-arm
+    env:
+      PLATFORM: linux-musl-arm64
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+          ref: ${{ inputs.tag || github.ref_name }}
+
+      - name: Resolve release tag and version
+        shell: bash
+        run: |
+          TAG="${{ inputs.tag || github.ref_name }}"
+          echo "tag=$TAG" >> "$GITHUB_ENV"
+          echo "version=${TAG#v}" >> "$GITHUB_ENV"
+
+      - name: Cache vcpkg package archives
+        uses: actions/cache@v4
+        with:
+          path: .vcpkg-cache
+          key: vcpkg-archives-alpine-musl-arm64-${{ hashFiles('vcpkg-configuration.json') }}
+          restore-keys: vcpkg-archives-alpine-musl-arm64-
+
+      - name: Cache vcpkg installed tree
+        uses: actions/cache@v4
+        with:
+          path: build/vcpkg_installed
+          key: vcpkg-installed-alpine-musl-arm64-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json', 'vcpkg-overlay/**') }}
+          restore-keys: vcpkg-installed-alpine-musl-arm64-
+
+      - name: Cache vcpkg checkout
+        id: vcpkg-cache
+        uses: actions/cache@v4
+        with:
+          path: vcpkg
+          key: vcpkg-${{ env.VCPKG_COMMIT }}
+          restore-keys: vcpkg-
+
+      - name: Start build container
+        shell: bash
+        run: |
+          docker create --name muslbuild -v "$PWD:/w" -w /w \
+            -e VCPKG_DISABLE_METRICS=1 -e VCPKG_FORCE_SYSTEM_BINARIES=1 \
+            -e VCPKG_ROOT=/opt/vcpkg -e CC -e CXX \
+            alpine:3.21 sleep infinity
+          docker start muslbuild
+          docker exec muslbuild apk --no-cache --upgrade add \
+            bash git curl ca-certificates zip unzip tar gzip \
+            build-base cmake ninja linux-headers perl python3 py3-pip \
+            autoconf automake libtool pkgconf
+
+      - name: Bootstrap vcpkg (container)
+        shell: bash
+        run: |
+          docker exec muslbuild bash -lc '
+            set -e
+            if [ ! -x /w/vcpkg/vcpkg ]; then
+              rm -rf /opt/vcpkg
+              if [ -d /w/vcpkg/.git ]; then cp -a /w/vcpkg /opt/vcpkg; else git clone https://github.com/microsoft/vcpkg.git /opt/vcpkg; fi
+              cd /opt/vcpkg && git checkout ${VCPKG_COMMIT} && ./bootstrap-vcpkg.sh -disableMetrics
+            else
+              mkdir -p /opt && cp -a /w/vcpkg /opt/vcpkg
+            fi'
+        env:
+          VCPKG_COMMIT: ${{ env.VCPKG_COMMIT }}
+
+      - name: Configure (container)
+        shell: bash
+        run: docker exec muslbuild bash -lc 'cmake -S /w -B /w/build -G Ninja -DCMAKE_TOOLCHAIN_FILE=/opt/vcpkg/scripts/buildsystems/vcpkg.cmake -DCMAKE_BUILD_TYPE=Release -DWITH_SQUASHFS=OFF'
+
+      - name: Build (container)
+        shell: bash
+        run: docker exec muslbuild bash -lc 'cmake --build /w/build --parallel'
+
+      - name: Regenerate test fixtures (container)
+        shell: bash
+        run: |
+          docker exec muslbuild bash -lc 'cd /w && bash tests/fixtures/regenerate_all.sh && MKDWARFS_DIR=$(dirname "$(ls build/vcpkg_installed/*/bin/mkdwarfs | head -1)") && PATH="/w/$MKDWARFS_DIR:$PATH" bash tests/fixtures/dwarfs/create_fixtures.sh && cmake -S /w -B /w/build -G Ninja -DCMAKE_TOOLCHAIN_FILE=/opt/vcpkg/scripts/buildsystems/vcpkg.cmake -DCMAKE_BUILD_TYPE=Release -DWITH_SQUASHFS=OFF'
+
+      - name: Run unit tests (container)
+        shell: bash
+        run: docker exec muslbuild bash -lc 'ctest --test-dir /w/build --output-on-failure --parallel'
+
+      - name: Install and package (container)
+        shell: bash
+        run: |
+          docker exec muslbuild bash -lc '
+            set -euxo pipefail
+            cmake --install /w/build --prefix /w/stage
+            mkdir -p /w/artifacts
+            tar -C /w/stage -czf "/w/artifacts/libtfs-${{ env.version }}-${{ env.PLATFORM }}.tar.gz" lib include
+            cp /w/stage/bin/mkdwarfs "/w/artifacts/mkdwarfs-${{ env.PLATFORM }}"
+            cp /w/stage/bin/tebakofs "/w/artifacts/tebakofs-${{ env.PLATFORM }}"
+            chmod +x /w/artifacts/mkdwarfs-* /w/artifacts/tebakofs-*'
+
+      - name: Package deps (container)
+        shell: bash
+        run: docker exec -e DEPS_LIBS="$DEPS_LIBS" -e DEPS_SHARES="$DEPS_SHARES" -e DEPS_HEADER_DIRS="$DEPS_HEADER_DIRS" -e DEPS_HEADER_FILES="$DEPS_HEADER_FILES" -e PLATFORM="${{ env.PLATFORM }}" -e PKG_VERSION="${{ env.version }}" -e SHIP_OPENSSL=1 -e SHIP_TOOLCHAIN_RT=1 -e WORKDIR=/w muslbuild bash /w/.github/scripts/package-deps.sh
+
+      - name: Upload release assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-assets-linux-musl-arm64
+          path: artifacts/
+          if-no-files-found: error
+
   publish:
     name: Publish GitHub release
-    needs: build
+    needs: [build, build-musl-arm64]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -634,13 +575,13 @@ jobs:
           merge-multiple: true
 
       - name: Verify asset set
-        # 6 platforms x 4 assets (libtfs package + libtfs-deps package +
+        # 7 platforms x 4 assets (libtfs package + libtfs-deps package +
         # mkdwarfs + tebakofs)
         run: |
           ls -l dist
           count=$(find dist -maxdepth 1 -type f | wc -l)
-          if [ "$count" -ne 24 ]; then
-            echo "ERROR: expected 24 release assets, found $count"
+          if [ "$count" -ne 28 ]; then
+            echo "ERROR: expected 28 release assets, found $count"
             exit 1
           fi
 
@@ -666,7 +607,8 @@ jobs:
           ## Release artifacts
 
           Per-platform packages (platform ids: `linux-gnu-x86_64`, `linux-gnu-arm64`,
-          `linux-musl-x86_64`, `macos-arm64`, `macos-x86_64`, `windows-ucrt64`):
+          `linux-musl-x86_64`, `linux-musl-arm64`, `macos-arm64`, `macos-x86_64`,
+          `windows-ucrt64`):
 
           - `libtfs-<version>-<platform>.tar.gz` (`.zip` on Windows):
             - `lib/libtfs.a` — the libtfs static library
@@ -705,13 +647,17 @@ jobs:
 
           Linkage notes (from the shipped binaries' `ldd`/`objdump` output):
 
-          - All C/C++ third-party dependencies (dwarfs-t, libzip, fmt,
-            jemalloc, Boost, …) are statically linked into the binaries on
-            every platform.
-          - `linux-gnu-*`: dynamic glibc/libstdc++ (built on ubuntu-24.04;
-            requires glibc ≥ 2.38 at runtime, e.g. Ubuntu 24.04 or newer).
-          - `linux-musl-x86_64`: dynamic musl libc + libstdc++/libgcc_s (built
-            on Alpine 3.21; on a minimal Alpine install: `apk add libstdc++ libgcc`).
+          - All C/C++ third-party dependencies (dwarfs-t, libzip, fmt, Boost, …)
+            are statically linked into the binaries on every platform.
+          - `linux-gnu-*`: dynamic glibc only (built inside the tebako
+            ubuntu-20.04 ci container; libstdc++/libgcc linked statically —
+            runs on any glibc ≥ 2.31 system such as Ubuntu 20.04+).
+          - `linux-musl-*`: dynamic musl libc only (built on Alpine 3.21;
+            libstdc++/libgcc linked statically — runs on any musl system,
+            including tebako's older alpine-3.17 containers). The musl deps
+            packages additionally carry the build's `libstdc++.a`/`libgcc.a`/
+            `libgcc_eh.a` so consumers on older toolchains can still close
+            the static link.
           - `macos-*`: dynamic macOS system libraries only (libSystem, libc++;
             built on `macos-14` / `macos-15-intel`).
           - `windows-ucrt64`: dynamic UCRT + MSYS2 runtime DLLs

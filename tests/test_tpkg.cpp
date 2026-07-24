@@ -277,10 +277,10 @@ TEST(TpkgValidate, OffsetSizeOverflowRejected)
 TEST(TpkgValidate, BadFormatIdRejected)
 {
   auto m = MakeManifest(1);
-  m.slots[0].format_id = 4;
+  m.slots[0].format_id = TPKG_FORMAT_RUNTIME + 1;
   EXPECT_EQ(-1, tpkg_validate(&m));
   EXPECT_EQ(tpkg_errno(), TPKG_ERR_INVALID);
-  for (uint32_t f = TPKG_FORMAT_AUTO; f <= TPKG_FORMAT_ZIP; f++) {
+  for (uint32_t f = TPKG_FORMAT_AUTO; f <= TPKG_FORMAT_RUNTIME; f++) {
     m.slots[0].format_id = f;
     EXPECT_EQ(0, tpkg_validate(&m)) << "format_id " << f;
   }

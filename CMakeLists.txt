@@ -246,15 +246,12 @@ endif()
 # Legacy tebako API availability
 # -----------------------------------------------------------------------------
 # The legacy tebako C++ API (libdwarfs-wr lineage: tebako-memfs/fd/kfd, mount
-# tables) carries the RB_W32 ruby-win32 shims (include/tebako-io-rb-w32.h),
-# which need ruby's win32 types (WCHAR, ino_t, _dev_t, stati128) and only
-# compile inside the ruby build context. The Stage-2 tebako build injects
-# -DTEBAKO_BUILD_SCOPE=... (a cache variable); standalone MinGW has no ruby
-# headers, so the legacy layer is skipped there (modern API + backends only).
-if(IS_MSYS AND NOT DEFINED CACHE{TEBAKO_BUILD_SCOPE} AND WITH_LEGACY_TEBAKO_API)
-  set(WITH_LEGACY_TEBAKO_API OFF CACHE BOOL "Build the legacy tebako C++ API (tebako-io/memfs/fd/kfd)" FORCE)
-  message(STATUS "WITH_LEGACY_TEBAKO_API forced OFF — standalone MinGW: legacy tebako API skipped (ruby-win32 shims need the ruby build context)")
-endif()
+# tables) carries the RB_W32 ruby-win32 shims (include/tebako-io-rb-w32.h).
+# The shim is self-contained (falls back to the UCRT types when ruby's win32
+# headers are absent), so the legacy layer compiles on standalone MinGW as
+# well; WITH_LEGACY_TEBAKO_API stays ON everywhere. (History: it was forced
+# OFF on standalone MinGW when the shim assumed the ruby build context, which
+# left the prebuilt windows package without tebako-io.h -- see tebako#345.)
 
 # RB_W32
 # -----------------------------------------------------------------------------
@@ -266,7 +263,7 @@ endif()
 #    RB_W32 means use of Ruby Linux-like Dir IO functions
 #    Possible other methods may be MinGW Dir IO (== posix), folly portability (== posix)
 #    These two most likely would work but are not tested
-if(WITH_LEGACY_TEBAKO_API AND (IS_WINDOWS OR (IS_MSYS AND DEFINED CACHE{TEBAKO_BUILD_SCOPE})))
+if(WITH_LEGACY_TEBAKO_API AND (IS_WINDOWS OR IS_MSYS))
   set(RB_W32 ON)
 else()
   set(RB_W32 OFF)

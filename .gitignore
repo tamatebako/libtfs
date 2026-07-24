@@ -77,3 +77,4 @@ tests/fixtures/**/*.sqfs
 
 # CMake backup files
 CMakeLists.txt.bak*
+artifacts/

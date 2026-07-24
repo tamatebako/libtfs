@@ -1,6 +1,6 @@
 # vcpkg portfile for dwarfs
 # DwarFS - A fast high-compression read-only file system
-# Source: tamatebako/dwarfs-t fork, tag tebako-v0.14.1-13
+# Source: tamatebako/dwarfs-t fork, tag tebako-v0.14.1-18
 
 vcpkg_check_linkage(ONLY_STATIC_LIBRARY)
 
@@ -17,8 +17,8 @@ endif()
 vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
     REPO tamatebako/dwarfs-t
-    REF tebako-v0.14.1-13
-    SHA512 eaaab677b798f6f54814a8022ddbb2c8c7175e07dc2d9715f418eeca9567a54c64a00850bedbd5b88771d7f72980672f269112554a4ed6c9e1ff2cdad3d66d4e
+    REF tebako-v0.14.1-18
+    SHA512 a0e18c584dd67cf3aa5946b1c3c04dd48ded1aea8a7e7b5008c579e3ba84c60eb8e061a25398db99af53d038d5ce9c8fca39beaa7583a8a767dc7af492eca40a
     HEAD_REF main
 )
 
@@ -30,8 +30,11 @@ vcpkg_cmake_configure(
         -DWITH_TOOLS=ON
         -DWITH_FUSE_DRIVER=OFF
         # shipped artifacts are libs + binaries only; man pages need the
-        # mistletoe Python module that minimal build containers do not have
+        # mistletoe Python module that minimal build containers do not have.
+        # WITH_MAN_PAGES covers the standalone .1 files, WITH_MAN_OPTION the
+        # text embedded in the tools (--man) — both must be off.
         -DWITH_MAN_PAGES=OFF
+        -DWITH_MAN_OPTION=OFF
         # tarball builds have no git metadata; version.cmake's source-build override
         -DNIXPKGS_DWARFS_VERSION_OVERRIDE=v0.14.1
         # need_fuse.cmake is included unconditionally and FATAL_ERRORs without FUSE-T;

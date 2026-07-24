@@ -34,6 +34,16 @@
 
 #pragma once
 
+/* MinGW: this header shadows the CRT's <io.h> for every TU that has
+ * include/tebako/fs on its include path -- including mingw's own
+ * <sys/stat.h> and <unistd.h>, which do `#include <io.h>` internally.
+ * Chain to the real CRT header so the low-I/O declarations (_open/_close/
+ * _read/_write, _get_osfhandle, _lseeki64, the POSIX-alias names and the
+ * F_OK..R_OK access-mode bits) stay available. */
+#if defined(__MINGW32__)
+#include_next <io.h>
+#endif
+
 #include <tebako/fs/platform.h>
 
 #ifdef _WIN32

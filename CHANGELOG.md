@@ -9,8 +9,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - Multi-mount support in the modern C API: `FsContext` now keeps a mount table (`tebako_mount_t` handle → mount) instead of a single mount, with longest-mount-point-prefix path dispatch across mounts and per-mount fd/dir ownership. New additive symbols: `tebako_fs_mount_from_file`, `tebako_fs_mount_from_file_at`, `tebako_fs_mount_from_memory` (all returning a mount handle via out-param) and `tebako_fs_unmount_handle` (force-closes only that mount's fds/dirs). Compat shims are unchanged: `tebako_fs_init*` stays single-mount (`EEXIST` when any mount exists), `tebako_fs_unmount()` unmounts all, and `tebako_get_mount_point`/`tebako_get_archive_path`/`tebako_get_backend_name` keep reporting the `init*` mount. `tebako_fs_extract_all` extracts a single mount at the destination root as before; with multiple mounts each mount's tree goes into its own `<dest>/<mount-point-basename>` subtree.
+
+## [0.12.9] - 2026-07-23
+
+### Added
+- `TPKG_FORMAT_RUNTIME` (format_id 4): a runtime payload slot in the tpkg manifest — fat three-part packages (bootstrap + runtime payload + images) validate as well-formed; vendored into tebako and tebako-bootstrap from this header.
+- `linux-musl-arm64` release leg (prebuilt libtfs + deps + mkdwarfs + tebakofs for musl/arm64) — enables the runtime-ruby musl-arm64 matrix and tebako prebuilt flows on arm64 Alpine.
+
+### Changed
+- Release notes corrected for the current build/link reality (gnu legs in the ubuntu-20.04 ci container with static C++ runtime; musl legs static C++ runtime + shipped toolchain archives).
+
+
+## [0.12.8] - 2026-07-23
+
+### Fixed
+- dwarfs-t tebako-v0.14.1-18 (same tree as -17): directory streams synthesize `.` and `..` (POSIX readdir semantics) — packaged ruby's `Dir.read` contract (tebako patches-dir test) holds on libtfs images.
+- dwarfs port: `USE_JEMALLOC=OFF` — consumers no longer inherit a shared jemalloc reference (brew dylib leak into tebako packaged binaries on macOS).
+
+### Changed
+- dwarfs overlay port: tebako-v0.14.1-18 (identical content to -17; renamed after a vcpkg asset-cache poisoning by a propagation-lag download).
+- musl deps packages now also ship the build's `libstdc++.a`/`libgcc.a`/`libgcc_eh.a` so tebako's musl link resolves the dep set's references (e.g. `_M_replace_cold` from libstdc++ >= 13) on older-toolchain containers (tebako alpine-3.17, gcc-12); musl release legs stay on alpine:3.21 with musl-native cmake (the xpack cmake is a glibc binary and cannot run on musl).
+
+## [0.12.7] - 2026-07-22
+
+### Fixed
+- Legacy fd read path clamps `read`/`pread`/`readv` to the open-time file size, so zero-length deduplicated files yield honest EOF instead of another file's bytes (defense-in-depth; root cause fixed in dwarfs-t tebako-v0.14.1-13, which ships in this release).
+- dwarfs-t tebako-v0.14.1-14: `std::atomic<bool>` replaces `std::atomic_flag`, so dwarfs-t and its consumers build against ubuntu-20.04's stock libstdc++ (gcc-9/10, also under clang-18) with no libstdc++ >= 11 requirement.
+- Linux tool binaries (`mkdwarfs`, `tebakofs`) link the C++ runtime statically (`-static-libstdc++ -static-libgcc`): the released musl/gnu binaries now start on hosts whose libstdc++ is older than the build container's.
+- gnu release packages build inside the tebako ubuntu-20.04 ci container — shipped archives no longer reference glibc 2.38+ symbols (e.g. `__isoc23_strtol` via libcrypto), which broke consumers' `ext/openssl` configure checks on ubuntu-20.04.
+
+### Added
 - tebakofs package tooling for tebako three-part packages (bootstrap + image slots + `tpkg` manifest trailer): `bundle`, `unbundle`, `reassemble`, `insert-image`, `remove-image`, `set-runtime`, `mkimage` (mkdwarfs wrapper; dwarfs only — the zip backend is read-only), and `tebakofs info` now detects and dumps a `tpkg` trailer while keeping archive-info behavior for plain image files.
 - Release pipeline: per-platform `libtfs-deps-<version>-<platform>.tar.gz` package carrying the exact transitive static libraries consumers link against (dwarfs reader set, flatbuffers, libzip, fmt, xxhash, zstd/lz4/lzma/brotli/z/bzip2, boost filesystem+chrono; plus OpenSSL on Linux/Windows — macOS consumers link brew/system OpenSSL) together with those ports' CMake package configs. A `libtfs` package plus the matching `libtfs-deps` package are fully self-contained: no vcpkg needed downstream.
+- libtfs-deps packages on Linux/musl now ship the matching `include/openssl` tree alongside `libssl.a`/`libcrypto.a`, so tebako's ruby build configures against a consistent OpenSSL 3.x.
+
+### Changed
+- dwarfs overlay port: tebako-v0.14.1-16; man-page generation disabled (binaries-only artifacts).
 
 ## [0.12.6] - 2026-07-22
 

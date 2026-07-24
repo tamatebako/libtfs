@@ -50,6 +50,32 @@
 
 using namespace dwarfs;
 
+#if defined(_WIN32)
+namespace {
+// dwarfs::file_stat::copy_to unconditionally writes POSIX-only struct stat
+// members (st_blksize/st_blocks, st_atim/st_mtim/st_ctim) that neither the
+// mingw struct stat nor ruby's stati128 provide. Copy the portable subset
+// instead -- this is the old dwarfs copy_file_stat<false> behavior
+// expressed via file_stat accessors. A template so it accepts both the
+// mingw struct stat (standalone) and ruby's stati128 (ruby build context).
+template <typename StatT>
+void copy_file_stat_windows(StatT* st, const dwarfs::file_stat& dwarfs_st)
+{
+  st->st_dev = dwarfs_st.dev();
+  st->st_ino = dwarfs_st.ino();
+  st->st_nlink = dwarfs_st.nlink();
+  st->st_mode = dwarfs_st.mode();
+  st->st_uid = dwarfs_st.uid();
+  st->st_gid = dwarfs_st.gid();
+  st->st_rdev = dwarfs_st.rdev();
+  st->st_size = dwarfs_st.size();
+  st->st_atime = dwarfs_st.atime();
+  st->st_mtime = dwarfs_st.mtime();
+  st->st_ctime = dwarfs_st.ctime();
+}
+}  // namespace
+#endif
+
 namespace tebako {
 
 dwarfs::reader::filesystem_options& operator<<(dwarfs::reader::filesystem_options& fsopts, tebako::memfs_options& opts)
@@ -145,7 +171,7 @@ void memfs::set_image_offset_str(const char* image_offset_str)
     std::string image_offset{image_offset_str};
     try {
       fsopts.image_offset = image_offset == "auto" ? dwarfs::reader::filesystem_options::IMAGE_OFFSET_AUTO
-                                                   : tebako::util::string_to<file_off_t>(image_offset);
+                                                   : tebako::util::string_to<dwarfs::file_off_t>(image_offset);
     }
     catch (...) {
       DWARFS_THROW(runtime_error, "failed to parse offset: " + image_offset);
@@ -276,7 +302,7 @@ int memfs::find_inode(uint32_t start_from,
     // Copy the stat structure only if there is no error
     if (ret != DWARFS_IO_ERROR) {
 #if defined(_WIN32)
-      dwarfs_st.copy_to(st);
+      copy_file_stat_windows(st, dwarfs_st);
 #else
       dwarfs_st.copy_to(st);
 #endif
@@ -484,7 +510,7 @@ int memfs::dwarfs_file_stat(dwarfs::reader::inode_view& inode, struct stat* st)
   dwarfs::file_stat dwarfs_file_stat = fs.getattr(inode, ec);
   int ret = ec ? -ec.value() : 0;
 #if defined(_WIN32)
-  dwarfs_file_stat.copy_to(st);
+  copy_file_stat_windows(st, dwarfs_file_stat);
 #else
   dwarfs_file_stat.copy_to(st);
 #endif
