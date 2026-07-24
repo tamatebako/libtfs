@@ -1234,7 +1234,7 @@ TEST_F(CApiMultiMountTest, MountFromFileAt_MixedWithMemoryMount)
 
   tebako_mount_t ha = -1;
   ASSERT_EQ(0, tebako_fs_mount_from_file_at(combined_path.c_str(), junk_size, static_cast<uint64_t>(archive_a.size()),
-                                           "/__mm_at__", &ha));
+                                            "/__mm_at__", &ha));
   tebako_mount_t hb = mount_b_from_memory("/__mm_mem__");
   ASSERT_GE(hb, 0);
 

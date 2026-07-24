@@ -374,7 +374,10 @@ int FsContext::mount_from_file_at(std::string_view archive_path,
   return mount_from_file_at_locked(archive_path, offset, length, mount_point, out_handle);
 }
 
-int FsContext::mount_from_memory(const void* data, size_t size, std::string_view mount_point, tebako_mount_t* out_handle)
+int FsContext::mount_from_memory(const void* data,
+                                 size_t size,
+                                 std::string_view mount_point,
+                                 tebako_mount_t* out_handle)
 {
   if (mount_point.empty()) {
     set_errno(EINVAL);

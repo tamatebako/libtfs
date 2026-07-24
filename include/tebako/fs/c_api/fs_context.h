@@ -152,7 +152,10 @@ class FsContext {
    * @param out_handle Receives the mount handle on success
    * @return 0 on success, -1 on error (errno set)
    */
-  int mount_from_file_at(std::string_view archive_path, uint64_t offset, uint64_t length, std::string_view mount_point,
+  int mount_from_file_at(std::string_view archive_path,
+                         uint64_t offset,
+                         uint64_t length,
+                         std::string_view mount_point,
                          tebako_mount_t* out_handle);
 
   /**
@@ -187,8 +190,7 @@ class FsContext {
   /**
    * @brief Compat mount from a file region; EEXIST if any mount exists
    */
-  int init_from_file_at(std::string_view archive_path, uint64_t offset, uint64_t length,
-                        std::string_view mount_point);
+  int init_from_file_at(std::string_view archive_path, uint64_t offset, uint64_t length, std::string_view mount_point);
 
   /**
    * @brief Compat mount from memory; EEXIST if any mount exists
@@ -420,7 +422,9 @@ class FsContext {
    *
    * Caller must hold mutex_.
    */
-  int insert_mount(std::unique_ptr<FileSystem> fs, std::string_view mount_point, std::unique_ptr<char[]> owned_region,
+  int insert_mount(std::unique_ptr<FileSystem> fs,
+                   std::string_view mount_point,
+                   std::unique_ptr<char[]> owned_region,
                    tebako_mount_t* out_handle);
 
   /**
@@ -429,10 +433,12 @@ class FsContext {
    * Caller must hold mutex_.
    */
   int mount_from_file_locked(std::string_view archive_path, std::string_view mount_point, tebako_mount_t* out_handle);
-  int mount_from_file_at_locked(std::string_view archive_path, uint64_t offset, uint64_t length,
-                                std::string_view mount_point, tebako_mount_t* out_handle);
-  int mount_from_memory_locked(const void* data, size_t size, std::string_view mount_point,
-                               tebako_mount_t* out_handle);
+  int mount_from_file_at_locked(std::string_view archive_path,
+                                uint64_t offset,
+                                uint64_t length,
+                                std::string_view mount_point,
+                                tebako_mount_t* out_handle);
+  int mount_from_memory_locked(const void* data, size_t size, std::string_view mount_point, tebako_mount_t* out_handle);
 
   /**
    * @brief Locked body of file_stat (fd_stat re-dispatches by path)
@@ -461,9 +467,9 @@ class FsContext {
   std::unordered_map<void*, std::unique_ptr<DirectoryState>> dir_table_;
   std::map<std::string, std::string> dl_cache_;  // memfs path -> extracted host file (dlmap2file)
   std::string dl_tmpdir_;                        // lazy per-process extraction directory
-  tebako_mount_t compat_handle_ = -1;  // Mount created by tebako_fs_init* (-1 = none)
-  tebako_mount_t next_handle_ = 0;     // Never reused within a process run
-  int next_fd_ = 1;                    // Internal FD counter (external FDs OR TEBAKO_FD_FLAG)
+  tebako_mount_t compat_handle_ = -1;            // Mount created by tebako_fs_init* (-1 = none)
+  tebako_mount_t next_handle_ = 0;               // Never reused within a process run
+  int next_fd_ = 1;                              // Internal FD counter (external FDs OR TEBAKO_FD_FLAG)
   std::uintptr_t next_dir_id_ = 1;
   mutable std::mutex mutex_;
 };

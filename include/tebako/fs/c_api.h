@@ -249,7 +249,10 @@ int tebako_fs_mount_from_file(const char* archive_path, const char* mount_point,
  *       (zero-copy); any other region is read into memory owned by libtfs
  *       until the mount is unmounted
  */
-int tebako_fs_mount_from_file_at(const char* archive_path, uint64_t offset, uint64_t length, const char* mount_point,
+int tebako_fs_mount_from_file_at(const char* archive_path,
+                                 uint64_t offset,
+                                 uint64_t length,
+                                 const char* mount_point,
                                  tebako_mount_t* out_handle);
 
 /**

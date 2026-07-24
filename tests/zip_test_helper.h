@@ -66,8 +66,8 @@ inline bool create_zip_from_dir(const std::string& zip_path,
   // An empty zip_root_name stores entries at the archive root.
   auto add_tree = [&](auto&& self, const fs::path& dir, const std::string& prefix) -> bool {
     for (const auto& entry : fs::directory_iterator(dir)) {
-      std::string name =
-          prefix.empty() ? entry.path().filename().generic_string() : prefix + "/" + entry.path().filename().generic_string();
+      std::string name = prefix.empty() ? entry.path().filename().generic_string()
+                                        : prefix + "/" + entry.path().filename().generic_string();
       if (entry.is_directory()) {
         if (zip_dir_add(archive, (name + "/").c_str(), ZIP_FL_ENC_UTF_8) < 0) {
           return false;
