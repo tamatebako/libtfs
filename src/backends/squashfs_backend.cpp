@@ -198,6 +198,33 @@ class SquashFSFileHandle : public FileHandle {
   }
 
   /**
+   * @brief Read data at a given offset (POSIX pread semantics)
+   *
+   * Uses the SquashFS data reader's offset-based read directly; the
+   * handle's current position and eof state are not modified.
+   */
+  ssize_t pread(void* buffer, size_t count, off_t offset) override
+  {
+    if (closed_ || offset < 0) {
+      return -1;
+    }
+
+    if (count == 0 || offset >= size_) {
+      return 0;
+    }
+
+    size_t to_read = std::min(count, static_cast<size_t>(size_ - offset));
+
+    sqfs_s32 bytes_read = sqfs_data_reader_read(data_reader_, inode_, static_cast<sqfs_u64>(offset), buffer,
+                                                static_cast<sqfs_u32>(to_read));
+    if (bytes_read < 0) {
+      return -1;
+    }
+
+    return static_cast<ssize_t>(bytes_read);
+  }
+
+  /**
    * @brief Seek to a position in the file
    *
    * SquashFS supports native seeking, so this is straightforward.

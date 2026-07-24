@@ -64,7 +64,6 @@ option(PREFER_SYSTEM_GTEST "Use system Google test" OFF)
 option(WITH_TESTS "Find Google test, install INCBIN, build test applications" ON)
 option(WITH_LINK_TESTS "Include tests for hard and symbolic links" ON)
 option(WITH_SQUASHFS "Build the SquashFS backend" ON)
-option(WITH_LEGACY_TEBAKO_API "Build the legacy tebako C++ API (tebako-io/memfs/fd/kfd)" ON)
 
 # squashfs-tools-ng is a POSIX/autotools-only library (requires unistd.h and
 # friends) and does not build with MSVC, so the SquashFS backend is disabled
@@ -243,31 +242,7 @@ if(NOT EXISTS "${MKDWARFS}" AND VCPKG_INSTALLED_DIR AND VCPKG_TARGET_TRIPLET)
   endif()
 endif()
 
-# Legacy tebako API availability
-# -----------------------------------------------------------------------------
-# The legacy tebako C++ API (libdwarfs-wr lineage: tebako-memfs/fd/kfd, mount
-# tables) carries the RB_W32 ruby-win32 shims (include/tebako-io-rb-w32.h).
-# The shim is self-contained (falls back to the UCRT types when ruby's win32
-# headers are absent), so the legacy layer compiles on standalone MinGW as
-# well; WITH_LEGACY_TEBAKO_API stays ON everywhere. (History: it was forced
-# OFF on standalone MinGW when the shim assumed the ruby build context, which
-# left the prebuilt windows package without tebako-io.h -- see tebako#345.)
-
-# RB_W32
-# -----------------------------------------------------------------------------
-#  - windows (enforced)         will have IS_WINDOWS flag set
-#    actually it is defined by compiler only (i.e.: MSVC) and my need revision
-#    RB_W32 setting calls for Ruby style simulation of IO
-#   (enable it by default when running on Windows)
-#
-#    RB_W32 means use of Ruby Linux-like Dir IO functions
-#    Possible other methods may be MinGW Dir IO (== posix), folly portability (== posix)
-#    These two most likely would work but are not tested
-if(WITH_LEGACY_TEBAKO_API AND (IS_WINDOWS OR IS_MSYS))
-  set(RB_W32 ON)
-else()
-  set(RB_W32 OFF)
-endif()
+# Platform notes
 # -----------------------------------------------------------------------------
 #  - "darwin.*"                 will have IS_DARWIN flag set
 # -----------------------------------------------------------------------------
@@ -284,10 +259,6 @@ endif(OSTYPE_RES EQUAL 0)
 
 message("Configuraion summary:")
 message(STATUS "Tebako build scope: ${TEBAKO_BUILD_SCOPE}")
-message(STATUS "Legacy tebako API: ${WITH_LEGACY_TEBAKO_API}")
-if (IS_WINDOWS OR IS_MSYS)
-  message(STATUS "Building for Ruby Win32: ${RB_W32}")
-endif(IS_WINDOWS OR IS_MSYS)
 message(STATUS "Use jemalloc: ${USE_JEMALLOC}${JEMALLOC_LG_VADDR_MSG}${JEMALLOC_LG_PAGE_MSG}")
 message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 message(STATUS "  with ASAN: ${WITH_ASAN}")
@@ -400,30 +371,14 @@ if(INSTALL_OPENSSL AND WITH_CXX11_ABI)
   set(CMAKE_PREFIX_PATH ${CMAKE_PREFIX_PATH} ${CMAKE_TRY_COMPILE_PLATFORM_VARIABLE_PREFIX}SSL_ROOT )
 endif(INSTALL_OPENSSL AND WITH_CXX11_ABI)
 
-# CRITICAL: Build pure C library in subdirectory BEFORE global include_directories()
-# This completely isolates it from C++ headers in the parent scope
-add_subdirectory(src/c_helpers)
-
-if(WITH_LEGACY_TEBAKO_API)
-include_directories(BEFORE ${CMAKE_CURRENT_SOURCE_DIR}/include
-                    ${CMAKE_CURRENT_SOURCE_DIR}/include/tebako
-                    ${CMAKE_CURRENT_SOURCE_DIR}/include/tebako/fs
-                    ${CMAKE_CURRENT_SOURCE_DIR}/include/tebako/fs/internal
-                    ${CMAKE_CURRENT_SOURCE_DIR}/include/tebako/fs/util
-                    ${CMAKE_CURRENT_SOURCE_DIR}/include/tebako/fs/ruby
-                    ${DEPS}/include
-                    ${DEPS}/include/libxml2-2.9.1
-)
-else()
-# Modern-only build: all modern includes are <tebako/fs/...>-prefixed, so the
-# legacy sub-directories stay off the global include path. This matters on
-# MinGW, where include/tebako/fs/io.h shadows the system <io.h> pulled in by
-# <fcntl.h>/<sys/stat.h> (and include/tebako/fs/dirent.h shadows <dirent.h>).
+# Modern-only build: all public includes are <tebako/...>-prefixed, so only the
+# top-level include dir is on the global include path. This matters on MinGW,
+# where a nested include dir would let libtfs headers shadow system headers
+# (<io.h> pulled in by <fcntl.h>/<sys/stat.h>, <dirent.h>).
 include_directories(BEFORE ${CMAKE_CURRENT_SOURCE_DIR}/include
                     ${DEPS}/include
                     ${DEPS}/include/libxml2-2.9.1
 )
-endif(WITH_LEGACY_TEBAKO_API)
 
 link_directories(BEFORE ${DEPS_LIB_DIR})
 
@@ -486,21 +441,6 @@ configure_file(
   ${CMAKE_CURRENT_SOURCE_DIR}/include/tebako-config.h
 )
 
-set(TFS_SOURCE_FILES
-  src/backend_factory.cpp
-  src/c_api.cpp
-  src/tebako-cmdline.cpp
-  src/tebako-dirent.cpp
-  src/tebako-fd.cpp
-  src/tebako-io-helpers.cpp
-  src/tebako-io-root.cpp
-  src/tebako-kfd.cpp
-  src/tebako-memfs-table.cpp
-  src/tebako-memfs.cpp
-  src/tebako-mount-table.cpp
-  src/tebako-package-descriptor.cpp
-)
-
 add_library(tfs STATIC
     "src/backend_factory.cpp"
     "src/backends/zip_backend.cpp"
@@ -509,18 +449,14 @@ add_library(tfs STATIC
     "src/internal/memory_file_segment.cpp"
     "src/core/path.cpp"
     "src/core/config.cpp"
-    # Modern C API implementation (successor to the legacy file-ctl/dir-ctl/file-io/dir-io
-    # quartet; the quartet is restored below under WITH_LEGACY_TEBAKO_API. The modern
-    # functions are namespaced tebako_fs_* -- tebako_fs_open/tebako_fs_read/tebako_fs_lseek/
-    # tebako_fs_close/tebako_fs_stat/tebako_fs_fstat/tebako_fs_opendir/tebako_fs_readdir/
-    # tebako_fs_closedir -- so they no longer collide with the legacy quartet's
-    # tebako_open/tebako_read/... exports, and mixed legacy+modern binaries link cleanly)
+    # Modern C API implementation (the tebako_fs_* surface --
+    # tebako_fs_open/tebako_fs_read/tebako_fs_lseek/tebako_fs_close/
+    # tebako_fs_stat/tebako_fs_fstat/tebako_fs_opendir/tebako_fs_readdir/
+    # tebako_fs_closedir and friends)
     "src/c_api.cpp"
     "src/c_api/fs_context.cpp"
     "src/backend_registry.cpp"
-    "include/tebako-common.h"
     "include/tebako-config.h"
-    "include/tebako-defines.h"
     "include/version.h"
     "include/tebako/fs/backend_factory.h"
     "include/tebako/fs/backends/zip_backend.h"
@@ -532,44 +468,6 @@ add_library(tfs STATIC
     "include/tebako/fs/backend_registry.h"
   )
 
-# Legacy tebako C++ API (libdwarfs-wr lineage: tebako-io/memfs/fd/kfd, mount/fd
-# tables, cmdline, package descriptor, and the restored POSIX-shim quartet
-# file-ctl/file-io/dir-ctl/dir-io implementing the legacy tebako_* libc surface).
-# The modern API (c_api, backends, fs_context, cli) has no dependency on this
-# layer; it is skipped where WITH_LEGACY_TEBAKO_API is OFF (standalone MinGW —
-# see above).
-if(WITH_LEGACY_TEBAKO_API)
-  target_sources(tfs PRIVATE
-    "src/file-ctl.cpp"
-    "src/file-io.cpp"
-    "src/dir-ctl.cpp"
-    "src/dir-io.cpp"
-    "src/dl-ctl.cpp"
-    "src/tebako-cmdline.cpp"
-    "src/tebako-io-helpers.cpp"
-    "src/tebako-io-root.cpp"
-    "src/tebako-kfd.cpp"
-    "src/tebako-mount-table.cpp"
-    "src/tebako-memfs.cpp"
-    "src/tebako-memfs-table.cpp"
-    "src/tebako-fd.cpp"
-    "src/tebako-dirent.cpp"
-    "src/tebako-package-descriptor.cpp"
-    "include/tebako-cmdline.h"
-    "include/tebako-dirent.h"
-    "include/tebako-fd.h"
-    "include/tebako-io.h"
-    "include/tebako-io-inner.h"
-    "include/tebako-io-root.h"
-    "include/tebako-kfd.h"
-    "include/tebako-memfs.h"
-    "include/tebako-memfs-table.h"
-    "include/tebako-mount-table.h"
-    "include/tebako-package-descriptor.h"
-    "include/tebako-pch.h"
-    "include/tebako-pch-pp.h"
-  )
-endif(WITH_LEGACY_TEBAKO_API)
 
 # SquashFS backend sources (POSIX-only; see WITH_SQUASHFS option above)
 if(WITH_SQUASHFS)
@@ -580,18 +478,6 @@ endif()
 # SquashFS code paths of their own
 target_compile_definitions(tfs PUBLIC $<$<BOOL:${WITH_SQUASHFS}>:TEBAKO_WITH_SQUASHFS>)
 
-if(RB_W32)
-  # PRIVATE: PUBLIC would leak source-prefixed paths into INTERFACE_SOURCES
-  # and break install(EXPORT) at generate time ("prefixed in the source
-  # directory"). These are header listings for IDE visibility only.
-  target_sources(tfs PRIVATE
-    "include/tebako-io.h"
-    "include/tebako-io-rb-w32-inner.h"
-  )
-endif(RB_W32)
-
-# Link the pure C helper library to tfs
-target_link_libraries(tfs PUBLIC tebako_dirent_helper_c)
 
 # IMPORTANT: Add vcpkg include directories FIRST (BEFORE any system includes)
 # This ensures vcpkg headers take precedence over Homebrew/system headers
@@ -707,25 +593,8 @@ endif(INSTALL_OPENSSL)
 
 install(FILES
         "include/tebako-config.h"
-        "include/tebako-defines.h"
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/tebako
 )
-
-if(WITH_LEGACY_TEBAKO_API)
-  install(FILES
-          "include/tebako-io.h"
-          "include/tebako-cmdline.h"
-          "include/tebako-package-descriptor.h"
-          DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/tebako
-  )
-endif(WITH_LEGACY_TEBAKO_API)
-
-if(RB_W32)
-  install(FILES
-          "include/tebako-io-rb-w32.h"
-          DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/tebako
-  )
-endif(RB_W32)
 
 if(IS_WINDOWS)
   install(FILES
@@ -766,25 +635,12 @@ install(EXPORT libtfsTargets
   DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/libtfs"
 )
 
-# Install public headers for libtfs API
-# Legacy tebako API headers (common/io/memfs/dirent/package_descriptor) are
-# installed only with the legacy layer; internal/ and ruby/ are never public.
-if(NOT WITH_LEGACY_TEBAKO_API)
-  set(TFS_LEGACY_HEADER_EXCLUDES
-    PATTERN "common.h" EXCLUDE
-    PATTERN "dirent.h" EXCLUDE
-    PATTERN "io.h" EXCLUDE
-    PATTERN "memfs.h" EXCLUDE
-    PATTERN "package_descriptor.h" EXCLUDE
-  )
-endif()
+# Install public headers for the modern libtfs API; internal/ is never public.
 install(DIRECTORY
   "include/tebako/fs"
   DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/tebako
   FILES_MATCHING PATTERN "*.h"
   PATTERN "internal" EXCLUDE
-  PATTERN "ruby" EXCLUDE
-  ${TFS_LEGACY_HEADER_EXCLUDES}
 )
 
 if(IS_WINDOWS OR IS_MSYS)
@@ -830,7 +686,6 @@ if (WITH_TESTS)
   )
   target_link_libraries(test_backend_factory PRIVATE
     tfs
-    tebako_dirent_helper_c
     GTest::gtest
     GTest::gtest_main
   )
@@ -842,7 +697,6 @@ if (WITH_TESTS)
   )
   target_link_libraries(test_zip_backend PRIVATE
     tfs
-    tebako_dirent_helper_c
     GTest::gtest
     GTest::gtest_main
   )
@@ -854,7 +708,6 @@ if (WITH_TESTS)
   )
   target_link_libraries(test_zip_integration PRIVATE
     tfs
-    tebako_dirent_helper_c
     GTest::gtest
     GTest::gtest_main
   )
@@ -866,7 +719,6 @@ if (WITH_TESTS)
   )
   target_link_libraries(test_dwarfs_backend PRIVATE
     tfs
-    tebako_dirent_helper_c
     GTest::gtest
     GTest::gtest_main
     dwarfs::dwarfs_reader
@@ -880,7 +732,6 @@ if (WITH_TESTS)
   )
   target_link_libraries(test_dwarfs_integration PRIVATE
     tfs
-    tebako_dirent_helper_c
     GTest::gtest
     GTest::gtest_main
     dwarfs::dwarfs_reader
@@ -895,7 +746,6 @@ if (WITH_TESTS)
     )
     target_link_libraries(test_squashfs_backend PRIVATE
       tfs
-      tebako_dirent_helper_c
       GTest::gtest
       GTest::gtest_main
     )
@@ -907,7 +757,6 @@ if (WITH_TESTS)
     )
     target_link_libraries(test_squashfs_integration PRIVATE
       tfs
-      tebako_dirent_helper_c
       GTest::gtest
       GTest::gtest_main
     )
@@ -920,7 +769,6 @@ if (WITH_TESTS)
   )
   target_link_libraries(test_c_api PRIVATE
     tfs
-    tebako_dirent_helper_c
     GTest::gtest
     GTest::gtest_main
     dwarfs::dwarfs_reader
@@ -936,7 +784,6 @@ if (WITH_TESTS)
   )
   target_link_libraries(test_extraction PRIVATE
     tfs
-    tebako_dirent_helper_c
     GTest::gtest
     GTest::gtest_main
   )
@@ -950,7 +797,6 @@ if (WITH_TESTS)
   )
   target_link_libraries(test_result PRIVATE
     tfs
-    tebako_dirent_helper_c
     GTest::gtest
     GTest::gtest_main
   )
@@ -1030,7 +876,6 @@ if (WITH_TESTS)
   )
   target_link_libraries(test_unified_interface PRIVATE
     tfs
-    tebako_dirent_helper_c
     GTest::gtest
     GTest::gtest_main
   )
@@ -1058,9 +903,9 @@ add_executable(tebakofs
 
 target_include_directories(tebakofs PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/include
-  # NOTE: do not add include/tebako/fs here — with that dir on the include
-  # path, `#include <io.h>` resolves to libtfs's own include/tebako/fs/io.h
-  # and shadows the system header MinGW needs for _read/_write (tpkg.h).
+  # NOTE: keep nested dirs (include/tebako/fs) off the include path — all
+  # libtfs includes are <tebako/...>-prefixed, and stray nested dirs risk
+  # shadowing system headers.
 )
 
 target_link_libraries(tebakofs PRIVATE
