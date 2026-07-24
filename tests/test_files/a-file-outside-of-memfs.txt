@@ -1,1 +1,0 @@
-This is just a file outside of memfs that will be symlinked from inside memfs
