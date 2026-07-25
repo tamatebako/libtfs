@@ -75,6 +75,34 @@ extern "C" {
 #define TEBAKO_FD_MAX 0x0FFFFFFF
 
 /* ============================================================
+ * ABI Version
+ * ============================================================ */
+
+/**
+ * @brief libtfs C ABI version
+ *
+ * The C ABI (this header: tebako_fs_* / tebako_get_* / tebako_strerror /
+ * tebako_is_initialized, POD types, opaque handles, thread-local errno) is
+ * the machine contract every adapter binds to. It is versioned
+ * independently of the libtfs release version:
+ * - the version is bumped on any ABI-incompatible change (removed or
+ *   re-signed symbols, changed semantics of existing calls);
+ * - additive changes (new symbols) keep the version — adapters feature-
+ *   detect those by symbol presence.
+ *
+ * Adapters should check tebako_fs_abi_version() at load time and refuse
+ * to run against a library older than the ABI they were built for.
+ */
+#define TEBAKO_FS_ABI_VERSION 1
+
+/**
+ * @brief Get the C ABI version of the loaded library
+ *
+ * @return ABI version (== TEBAKO_FS_ABI_VERSION of the library's headers)
+ */
+int tebako_fs_abi_version(void);
+
+/* ============================================================
  * Lifecycle Management
  * ============================================================ */
 

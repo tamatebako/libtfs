@@ -1929,3 +1929,15 @@ TEST_F(CApiMultiMountTest, Dlmap2file_MultiMount_DistinctExtractions)
   free(host_a);
   free(host_b);
 }
+
+// ============================================================
+// ABI Version Tests
+// ============================================================
+
+TEST(CApiAbiVersionTest, AbiVersion_MatchesHeaderConstant)
+{
+  // The loaded library reports the same ABI version as the headers it was
+  // built with; adapters rely on this for load-time feature detection
+  EXPECT_EQ(TEBAKO_FS_ABI_VERSION, tebako_fs_abi_version());
+  EXPECT_GE(tebako_fs_abi_version(), 1);
+}
