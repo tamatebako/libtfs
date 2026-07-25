@@ -45,7 +45,8 @@ namespace fs {
  * @brief DwarFS archive backend implementation
  *
  * Provides read-only access to DwarFS archives through the FileSystem interface.
- * Uses DwarFS v0.9+ reader library for archive operations.
+ * Uses the stable libdwarfs_c C binding (dwarfs_c.h) for archive operations;
+ * no dwarfs C++ headers are consumed.
  *
  * Thread Safety: All methods are thread-safe for concurrent access using
  * std::shared_mutex for read/write locking.
