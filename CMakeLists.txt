@@ -445,8 +445,6 @@ add_library(tfs STATIC
     "src/backend_factory.cpp"
     "src/backends/zip_backend.cpp"
     "src/backends/dwarfs_backend.cpp"
-    "src/internal/memory_file_view.cpp"
-    "src/internal/memory_file_segment.cpp"
     "src/core/path.cpp"
     "src/core/config.cpp"
     # Modern C API implementation (the tebako_fs_* surface --
@@ -461,8 +459,6 @@ add_library(tfs STATIC
     "include/tebako/fs/backend_factory.h"
     "include/tebako/fs/backends/zip_backend.h"
     "include/tebako/fs/backends/dwarfs_backend.h"
-    "include/tebako/fs/internal/memory_file_view.h"
-    "include/tebako/fs/internal/memory_file_segment.h"
     "include/tebako/fs/backends/squashfs_backend.h"
     "include/tebako/fs/c_api.h"
     "include/tebako/fs/backend_registry.h"
@@ -493,10 +489,11 @@ endif()
 find_package(libzip CONFIG REQUIRED)
 target_link_libraries(tfs PUBLIC libzip::zip)
 
-# Link DwarFS libraries via CMake targets (provided by vcpkg)
+# Link the DwarFS stable C binding via its CMake target (provided by vcpkg).
+# dwarfs_c PUBLIC-links the C++ reader, so the transitive closure of dwarfs
+# static libraries resolves through it; libtfs code includes only dwarfs_c.h.
 target_link_libraries(tfs PUBLIC
-  dwarfs::dwarfs_reader
-  dwarfs::dwarfs_common
+  dwarfs::dwarfs_c
 )
 
 # Find and link squashfs-tools-ng (provided by vcpkg)

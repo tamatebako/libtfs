@@ -31,25 +31,21 @@
 
 #include <tebako/fs/file_handle.h>
 #include <tebako/fs/directory_iterator.h>
-#include <tebako/fs/internal/memory_file_view.h>
 
-#include <dwarfs/reader/filesystem_loader.h>
-#include <dwarfs/reader/filesystem_v2.h>
-#include <dwarfs/reader/filesystem_options.h>
-#include <dwarfs/file_stat.h>
-#include <dwarfs/os_access_generic.h>
-#include <dwarfs/logger.h>
+// The ONLY dwarfs header consumed by libtfs: the stable C ABI reader
+// binding (libdwarfs_c). No dwarfs C++ headers are included anywhere in
+// libtfs; the C++ runtime stays inside the binding.
+#include <dwarfs_c.h>
 
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <algorithm>
+#include <cerrno>
 #include <cstring>
 #include <mutex>
 #include <stdexcept>
 #include <vector>
 #include <string>
-#include <filesystem>
-#include <iostream>
 
 namespace tebako {
 namespace fs {
@@ -61,7 +57,7 @@ namespace fs {
 /**
  * @brief FileHandle implementation for DwarFS archive files
  *
- * Handles file reading from DwarFS archives using DwarFS v0.9+ reader.
+ * Reads file data through the libdwarfs_c pread primitive.
  * Supports efficient seek operations natively.
  */
 class DwarfsFileHandle : public FileHandle {
@@ -69,16 +65,14 @@ class DwarfsFileHandle : public FileHandle {
   /**
    * @brief Construct a file handle for a DwarFS file
    *
-   * @param fs Reference to the DwarFS filesystem
-   * @param inode The inode view for this file
-   * @param path Full path to the file
+   * @param fs The libdwarfs_c filesystem handle (borrowed; must outlive
+   *           this handle, i.e. the archive must stay mounted)
+   * @param rel_path Path of the file relative to the archive root
+   * @param path Full path to the file (as reported by path())
    * @param size File size in bytes
    */
-  DwarfsFileHandle(dwarfs::reader::filesystem_v2_lite& fs,
-                   dwarfs::reader::inode_view inode,
-                   std::string_view path,
-                   int64_t size)
-      : fs_(fs), inode_(inode), path_(path), size_(size), current_pos_(0), eof_(false), closed_(false)
+  DwarfsFileHandle(dwarfs_c_filesystem* fs, std::string rel_path, std::string_view path, int64_t size)
+      : fs_(fs), rel_path_(std::move(rel_path)), path_(path), size_(size), current_pos_(0), eof_(false), closed_(false)
   {
   }
 
@@ -103,32 +97,45 @@ class DwarfsFileHandle : public FileHandle {
       return 0;
     }
 
-    // Calculate how much we can actually read
-    size_t to_read = std::min(count, static_cast<size_t>(size_ - current_pos_));
-
-    try {
-      // Use DwarFS reader's read function with error code
-      std::error_code ec;
-      size_t bytes_read = fs_.read(inode_.inode_num(), static_cast<char*>(buffer), to_read, current_pos_, ec);
-
-      if (ec) {
-        return -1;
-      }
-
-      if (bytes_read == 0) {
-        return 0;
-      }
-
-      current_pos_ += bytes_read;
-      if (current_pos_ >= size_) {
-        eof_ = true;
-      }
-
-      return static_cast<ssize_t>(bytes_read);
-    }
-    catch (...) {
+    // dwarfs_c_pread clamps the read to the end of the file
+    int64_t bytes_read = dwarfs_c_pread(fs_, rel_path_.c_str(), buffer, count, current_pos_);
+    if (bytes_read < 0) {
       return -1;
     }
+
+    if (bytes_read == 0) {
+      return 0;
+    }
+
+    current_pos_ += bytes_read;
+    if (current_pos_ >= size_) {
+      eof_ = true;
+    }
+
+    return static_cast<ssize_t>(bytes_read);
+  }
+
+  /**
+   * @brief Read data at a given offset (POSIX pread semantics)
+   *
+   * Maps directly onto dwarfs_c_pread; the handle's current position and
+   * eof state are not modified.
+   */
+  ssize_t pread(void* buffer, size_t count, off_t offset) override
+  {
+    if (closed_ || offset < 0) {
+      return -1;
+    }
+
+    if (count == 0 || offset >= size_) {
+      return 0;
+    }
+
+    int64_t bytes_read = dwarfs_c_pread(fs_, rel_path_.c_str(), buffer, count, offset);
+    if (bytes_read < 0) {
+      return -1;
+    }
+    return static_cast<ssize_t>(bytes_read);
   }
 
   /**
@@ -221,13 +228,13 @@ class DwarfsFileHandle : public FileHandle {
   int64_t size() const override { return size_; }
 
  private:
-  dwarfs::reader::filesystem_v2_lite& fs_;  ///< DwarFS filesystem reference
-  dwarfs::reader::inode_view inode_;        ///< Inode for this file
-  std::string path_;                        ///< Full file path
-  int64_t size_;                            ///< File size in bytes
-  off_t current_pos_;                       ///< Current position in file
-  bool eof_;                                ///< End-of-file flag
-  bool closed_;                             ///< Closed flag
+  dwarfs_c_filesystem* fs_;  ///< libdwarfs_c filesystem handle (borrowed)
+  std::string rel_path_;     ///< Path relative to the archive root
+  std::string path_;         ///< Full file path
+  int64_t size_;             ///< File size in bytes
+  off_t current_pos_;        ///< Current position in file
+  bool eof_;                 ///< End-of-file flag
+  bool closed_;              ///< Closed flag
 };
 
 // ===================================================================
@@ -237,56 +244,46 @@ class DwarfsFileHandle : public FileHandle {
 /**
  * @brief DirectoryIterator implementation for DwarFS archives
  *
- * Iterates through directory entries in a DwarFS filesystem.
+ * Iterates through directory entries in a DwarFS filesystem via the
+ * libdwarfs_c directory iterator.
  */
 class DwarfsDirectoryIterator : public DirectoryIterator {
  public:
   /**
    * @brief Construct a directory iterator for a DwarFS directory
    *
-   * @param fs Reference to the DwarFS filesystem
-   * @param inode The directory inode
+   * @param fs The libdwarfs_c filesystem handle (borrowed)
+   * @param rel_path Directory path relative to the archive root
+   *                 ("" denotes the root)
    */
-  DwarfsDirectoryIterator(dwarfs::reader::filesystem_v2_lite& fs, dwarfs::reader::inode_view dir_inode)
-      : fs_(fs), current_index_(0)
+  DwarfsDirectoryIterator(dwarfs_c_filesystem* fs, const std::string& rel_path)
   {
-    try {
-      // Get directory entries using DwarFS API
-      auto dir = fs_.opendir(dir_inode);
-      if (dir) {
-        size_t offset = 0;
-        while (true) {
-          auto entry = fs_.readdir(*dir, offset++);
-          if (!entry)
-            break;  // End of directory
+    dwarfs_c_dir* dir = dwarfs_c_opendir(fs, rel_path.c_str());
+    if (dir == nullptr) {
+      // Leave entries empty, mirroring the old catch-all behavior
+      return;
+    }
 
-          // Skip ".", "..", and empty entries
-          std::string name = entry->name();
-          if (name.empty() || name == "." || name == "..") {
-            continue;
-          }
+    dwarfs_c_dirent entry;
+    while (dwarfs_c_readdir(dir, &entry) == 1) {
+      DirectoryEntry de;
+      de.name = entry.name;
+      de.is_directory = (entry.type == DWARFS_C_FILE_DIRECTORY);
+      de.size = 0;
+      de.mtime = 0;
 
-          DirectoryEntry de;
-          de.name = name;
-
-          // Get the inode for this entry
-          auto child_inode = entry->inode();
-          std::error_code ec;
-          auto stat = fs_.getattr(child_inode, ec);
-
-          if (!ec) {
-            de.is_directory = S_ISDIR(stat.mode());
-            de.size = stat.size();
-            de.mtime = stat.mtime();
-          }
-
-          entries_.push_back(de);
-        }
+      // Per-entry metadata, best effort like the old per-entry getattr
+      std::string child_path = rel_path.empty() ? de.name : rel_path + "/" + de.name;
+      struct dwarfs_c_stat st;
+      if (dwarfs_c_stat(fs, child_path.c_str(), &st) == 0) {
+        de.size = st.size;
+        de.mtime = static_cast<time_t>(st.mtime);
       }
+
+      entries_.push_back(std::move(de));
     }
-    catch (...) {
-      // If we fail to read directory, leave entries empty
-    }
+
+    dwarfs_c_closedir(dir);
   }
 
   /**
@@ -311,9 +308,8 @@ class DwarfsDirectoryIterator : public DirectoryIterator {
   void reset() override { current_index_ = 0; }
 
  private:
-  dwarfs::reader::filesystem_v2_lite& fs_;  ///< DwarFS filesystem reference
-  std::vector<DirectoryEntry> entries_;     ///< Directory entries
-  size_t current_index_;                    ///< Current iteration position
+  std::vector<DirectoryEntry> entries_;  ///< Directory entries
+  size_t current_index_ = 0;             ///< Current iteration position
 };
 
 // ===================================================================
@@ -323,14 +319,12 @@ class DwarfsDirectoryIterator : public DirectoryIterator {
 /**
  * @brief PIMPL implementation for DwarfsBackend
  *
- * Hides DwarFS library details from the public interface.
+ * Holds the libdwarfs_c filesystem handle, keeping all dwarfs details
+ * out of the public interface.
  */
 class DwarfsBackend::Impl {
  public:
-  Impl() : is_mounted_(false), logger_(std::make_shared<dwarfs::stream_logger>())
-  {
-    logger_->set_threshold(dwarfs::LOGGER_LEVEL_INFO);
-  }
+  Impl() = default;
 
   ~Impl() { unmount(); }
 
@@ -340,29 +334,16 @@ class DwarfsBackend::Impl {
       return false;
     }
 
-    try {
-      // Use filesystem_loader for clean initialization
-      dwarfs::reader::filesystem_load_config config;
-      config.image_path = archive_path;
-      config.cache_size = 512 << 20;  // 512 MiB default
-      config.block_size = 512 << 10;  // 512 KiB default
-      config.num_workers = 2;
-      config.image_offset = std::nullopt;  // Auto-detect
-
-      dwarfs::os_access_generic os;
-
-      // Create filesystem using filesystem_loader (returns filesystem_v2_lite)
-      fs_ = std::make_unique<dwarfs::reader::filesystem_v2_lite>(
-          dwarfs::reader::filesystem_loader::load(*logger_, os, config));
-
-      is_mounted_ = true;
-      return true;
-    }
-    catch (const std::exception& e) {
+    dwarfs_c_filesystem* fs = dwarfs_c_open(archive_path.c_str());
+    if (fs == nullptr) {
       // Preserve the loader error so mount() can report it
-      last_error_ = e.what();
+      last_error_ = dwarfs_c_error_message();
       return false;
     }
+
+    fs_ = fs;
+    is_mounted_ = true;
+    return true;
   }
 
   bool mount_memory(const void* data, size_t size)
@@ -375,34 +356,25 @@ class DwarfsBackend::Impl {
       return false;
     }
 
-    try {
-      // Create memory file view using our internal implementation
-      auto mem_view = std::make_shared<tebako::memory_file_view_impl>(data, size, "/__tebako_dwarfs__");
-      dwarfs::file_view view{mem_view};
-
-      dwarfs::os_access_generic os;
-
-      // filesystem_loader doesn't support memory views, use direct constructor
-      dwarfs::reader::filesystem_options opts;
-      opts.image_offset = 0;
-      opts.image_size = size;
-
-      fs_ = std::make_unique<dwarfs::reader::filesystem_v2_lite>(*logger_, os, view, opts);
-
-      is_mounted_ = true;
-      return true;
-    }
-    catch (const std::exception& e) {
+    // The buffer is borrowed by libdwarfs_c, NOT copied; the caller keeps
+    // it valid until unmount (unchanged mount_from_memory contract)
+    dwarfs_c_filesystem* fs = dwarfs_c_open_memory(data, size);
+    if (fs == nullptr) {
       // Preserve the loader error so mount_from_memory() can report it
-      last_error_ = e.what();
+      last_error_ = dwarfs_c_error_message();
       return false;
     }
+
+    fs_ = fs;
+    is_mounted_ = true;
+    return true;
   }
 
   void unmount()
   {
     if (is_mounted_) {
-      fs_.reset();
+      dwarfs_c_close(fs_);
+      fs_ = nullptr;
       is_mounted_ = false;
     }
   }
@@ -411,48 +383,26 @@ class DwarfsBackend::Impl {
 
   const std::string& last_error() const { return last_error_; }
 
-  dwarfs::reader::filesystem_v2_lite* get_fs() { return fs_.get(); }
+  dwarfs_c_filesystem* get_fs() { return fs_; }
 
-  std::optional<dwarfs::reader::inode_view> find_inode(const std::string& path)
+  /**
+   * @brief Stat a path relative to the archive root
+   *
+   * Wraps dwarfs_c_stat; "" and "/" resolve to the root directory.
+   * On failure dwarfs_c_errno() yields the errno-style cause.
+   */
+  bool stat_path(const std::string& rel_path, struct dwarfs_c_stat* st) const
   {
-    if (!fs_) {
-      return std::nullopt;
+    if (fs_ == nullptr) {
+      return false;
     }
-
-    try {
-      // Normalize path for DwarFS lookup
-      std::string normalized = path;
-      if (normalized.empty() || normalized == "/") {
-        // Return root inode - find root directory
-        auto entry = fs_->find("/");
-        if (entry) {
-          return entry->inode();
-        }
-        return std::nullopt;
-      }
-
-      // Remove leading slash
-      if (normalized.front() == '/') {
-        normalized = normalized.substr(1);
-      }
-
-      // Find the entry and extract inode
-      auto entry = fs_->find(normalized);
-      if (entry) {
-        return entry->inode();
-      }
-      return std::nullopt;
-    }
-    catch (...) {
-      return std::nullopt;
-    }
+    return dwarfs_c_stat(fs_, rel_path.c_str(), st) == 0;
   }
 
  private:
-  bool is_mounted_;
+  bool is_mounted_ = false;
   std::string last_error_;
-  std::shared_ptr<dwarfs::stream_logger> logger_;
-  std::unique_ptr<dwarfs::reader::filesystem_v2_lite> fs_;
+  dwarfs_c_filesystem* fs_ = nullptr;
 };
 
 // ===================================================================
@@ -543,28 +493,20 @@ Result<std::unique_ptr<FileHandle>> DwarfsBackend::open(std::string_view path, i
   std::string rel_path = strip_mount_point(path);
   rel_path = normalize_path(rel_path);
 
-  auto inode_opt = impl_->find_inode(rel_path);
-  if (!inode_opt) {
-    return Err{ErrorCode::NotFound, "File not found", path};
+  struct dwarfs_c_stat st;
+  if (!impl_->stat_path(rel_path, &st)) {
+    if (dwarfs_c_errno() == ENOENT) {
+      return Err{ErrorCode::NotFound, "File not found", path};
+    }
+    return Err{ErrorCode::IOError, "Failed to get file attributes", path};
   }
 
   // Verify it's a file, not a directory
-  try {
-    std::error_code ec;
-    auto stat = impl_->get_fs()->getattr(*inode_opt, ec);
-    if (ec) {
-      return Err{ErrorCode::IOError, "Failed to get file attributes", path};
-    }
-    if (!S_ISREG(stat.mode())) {
-      return Err{ErrorCode::NotAFile, "Path is not a regular file", path};
-    }
+  if (!S_ISREG(st.mode)) {
+    return Err{ErrorCode::NotAFile, "Path is not a regular file", path};
+  }
 
-    return Ok<std::unique_ptr<FileHandle>>{
-        std::make_unique<DwarfsFileHandle>(*impl_->get_fs(), *inode_opt, path, stat.size())};
-  }
-  catch (const std::exception& e) {
-    return Err{ErrorCode::IOError, "Failed to open file", path};
-  }
+  return Ok<std::unique_ptr<FileHandle>>{std::make_unique<DwarfsFileHandle>(impl_->get_fs(), rel_path, path, st.size)};
 }
 
 bool DwarfsBackend::exists(std::string_view path) const
@@ -578,8 +520,8 @@ bool DwarfsBackend::exists(std::string_view path) const
   std::string rel_path = strip_mount_point(path);
   rel_path = normalize_path(rel_path);
 
-  auto inode_opt = impl_->find_inode(rel_path);
-  return inode_opt.has_value();
+  struct dwarfs_c_stat st;
+  return impl_->stat_path(rel_path, &st);
 }
 
 bool DwarfsBackend::is_file(std::string_view path) const
@@ -593,19 +535,8 @@ bool DwarfsBackend::is_file(std::string_view path) const
   std::string rel_path = strip_mount_point(path);
   rel_path = normalize_path(rel_path);
 
-  auto inode_opt = impl_->find_inode(rel_path);
-  if (!inode_opt) {
-    return false;
-  }
-
-  try {
-    std::error_code ec;
-    auto stat = impl_->get_fs()->getattr(*inode_opt, ec);
-    return !ec && S_ISREG(stat.mode());
-  }
-  catch (...) {
-    return false;
-  }
+  struct dwarfs_c_stat st;
+  return impl_->stat_path(rel_path, &st) && S_ISREG(st.mode);
 }
 
 bool DwarfsBackend::is_directory(std::string_view path) const
@@ -624,19 +555,8 @@ bool DwarfsBackend::is_directory(std::string_view path) const
     return true;
   }
 
-  auto inode_opt = impl_->find_inode(rel_path);
-  if (!inode_opt) {
-    return false;
-  }
-
-  try {
-    std::error_code ec;
-    auto stat = impl_->get_fs()->getattr(*inode_opt, ec);
-    return !ec && S_ISDIR(stat.mode());
-  }
-  catch (...) {
-    return false;
-  }
+  struct dwarfs_c_stat st;
+  return impl_->stat_path(rel_path, &st) && S_ISDIR(st.mode);
 }
 
 Result<std::unique_ptr<DirectoryIterator>> DwarfsBackend::list_directory(std::string_view path)
@@ -654,13 +574,7 @@ Result<std::unique_ptr<DirectoryIterator>> DwarfsBackend::list_directory(std::st
   std::string rel_path = strip_mount_point(path);
   rel_path = normalize_path(rel_path);
 
-  auto inode_opt = impl_->find_inode(rel_path);
-  if (!inode_opt) {
-    return Err{ErrorCode::NotFound, "Directory not found", path};
-  }
-
-  return Ok<std::unique_ptr<DirectoryIterator>>{
-      std::make_unique<DwarfsDirectoryIterator>(*impl_->get_fs(), *inode_opt)};
+  return Ok<std::unique_ptr<DirectoryIterator>>{std::make_unique<DwarfsDirectoryIterator>(impl_->get_fs(), rel_path)};
 }
 
 Result<int64_t> DwarfsBackend::file_size(std::string_view path) const
@@ -674,25 +588,19 @@ Result<int64_t> DwarfsBackend::file_size(std::string_view path) const
   std::string rel_path = strip_mount_point(path);
   rel_path = normalize_path(rel_path);
 
-  auto inode_opt = impl_->find_inode(rel_path);
-  if (!inode_opt) {
-    return Err{ErrorCode::NotFound, "File not found", path};
+  struct dwarfs_c_stat st;
+  if (!impl_->stat_path(rel_path, &st)) {
+    if (dwarfs_c_errno() == ENOENT) {
+      return Err{ErrorCode::NotFound, "File not found", path};
+    }
+    return Err{ErrorCode::IOError, "Failed to get file attributes", path};
   }
 
-  try {
-    std::error_code ec;
-    auto stat = impl_->get_fs()->getattr(*inode_opt, ec);
-    if (ec) {
-      return Err{ErrorCode::IOError, "Failed to get file attributes", path};
-    }
-    if (S_ISDIR(stat.mode())) {
-      return Err{ErrorCode::NotAFile, "Path is a directory", path};
-    }
-    return Ok<int64_t>{static_cast<int64_t>(stat.size())};
+  if (S_ISDIR(st.mode)) {
+    return Err{ErrorCode::NotAFile, "Path is a directory", path};
   }
-  catch (...) {
-    return Err{ErrorCode::IOError, "Failed to get file size", path};
-  }
+
+  return Ok<int64_t>{st.size};
 }
 
 Result<time_t> DwarfsBackend::modification_time(std::string_view path) const
@@ -706,22 +614,15 @@ Result<time_t> DwarfsBackend::modification_time(std::string_view path) const
   std::string rel_path = strip_mount_point(path);
   rel_path = normalize_path(rel_path);
 
-  auto inode_opt = impl_->find_inode(rel_path);
-  if (!inode_opt) {
-    return Err{ErrorCode::NotFound, "Path not found", path};
+  struct dwarfs_c_stat st;
+  if (!impl_->stat_path(rel_path, &st)) {
+    if (dwarfs_c_errno() == ENOENT) {
+      return Err{ErrorCode::NotFound, "Path not found", path};
+    }
+    return Err{ErrorCode::IOError, "Failed to get file attributes", path};
   }
 
-  try {
-    std::error_code ec;
-    auto stat = impl_->get_fs()->getattr(*inode_opt, ec);
-    if (ec) {
-      return Err{ErrorCode::IOError, "Failed to get file attributes", path};
-    }
-    return Ok<time_t>{stat.mtime()};
-  }
-  catch (...) {
-    return Err{ErrorCode::IOError, "Failed to get modification time", path};
-  }
+  return Ok<time_t>{static_cast<time_t>(st.mtime)};
 }
 
 Result<mode_t> DwarfsBackend::permissions(std::string_view path) const
@@ -735,28 +636,20 @@ Result<mode_t> DwarfsBackend::permissions(std::string_view path) const
   std::string rel_path = strip_mount_point(path);
   rel_path = normalize_path(rel_path);
 
-  auto inode_opt = impl_->find_inode(rel_path);
-  if (!inode_opt) {
-    return Err{ErrorCode::NotFound, "Path not found", path};
+  struct dwarfs_c_stat st;
+  if (!impl_->stat_path(rel_path, &st)) {
+    if (dwarfs_c_errno() == ENOENT) {
+      return Err{ErrorCode::NotFound, "Path not found", path};
+    }
+    return Err{ErrorCode::IOError, "Failed to get file attributes", path};
   }
 
-  try {
-    std::error_code ec;
-    auto stat = impl_->get_fs()->getattr(*inode_opt, ec);
-    if (ec) {
-      return Err{ErrorCode::IOError, "Failed to get file attributes", path};
-    }
-    return Ok<mode_t>{static_cast<mode_t>(stat.mode() & 0777)};
-  }
-  catch (...) {
-    return Err{ErrorCode::IOError, "Failed to get permissions", path};
-  }
+  return Ok<mode_t>{static_cast<mode_t>(st.mode & 0777)};
 }
 
 std::string DwarfsBackend::backend_version() const
 {
-  // TODO: Get actual DwarFS version from library
-  return "DwarFS v0.9+";
+  return dwarfs_c_version_string();
 }
 
 // ===================================================================

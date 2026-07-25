@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- The DwarFS backend now consumes dwarfs exclusively through the stable C ABI reader binding (`libdwarfs_c` / `dwarfs_c.h`, dwarfs-t @ `f4b502e3`): mounts map to `dwarfs_c_open` / `dwarfs_c_open_memory`, lookup+getattr to `dwarfs_c_stat`, file reads to `dwarfs_c_pread`, directory listing to the `dwarfs_c_opendir`/`dwarfs_c_readdir` iterator, and `backend_version()` now reports the real `dwarfs_c_version_string()` instead of a hardcoded string. The `FileSystem` facade contract is unchanged. libtfs no longer includes any dwarfs C++ header; the internal `memory_file_view`/`memory_file_segment` shims (whose only consumer was the old backend) are removed. The vcpkg overlay port is bumped accordingly and now also installs `libdwarfs_c.a` + `dwarfs_c.h` (exported as `dwarfs::dwarfs_c`, which `tfs` links).
+
 ## [0.13.0] - 2026-07-24
 
 ### Added
