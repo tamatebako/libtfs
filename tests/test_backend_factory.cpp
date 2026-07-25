@@ -147,7 +147,8 @@ TEST_F(BackendFactoryTest, DetectZipCentralMagic)
   EXPECT_FALSE(BackendFactory::is_squashfs_format(path));
 }
 
-#ifdef TEBAKO_WITH_SQUASHFS
+// SquashFS magic detection is available in every build (plain byte check),
+// including builds where the backend itself is compiled out
 TEST_F(BackendFactoryTest, DetectSquashFSLittleEndian)
 {
   // SquashFS little-endian magic: "hsqs"
@@ -171,7 +172,24 @@ TEST_F(BackendFactoryTest, DetectSquashFSBigEndian)
   EXPECT_FALSE(BackendFactory::is_dwarfs_format(path));
   EXPECT_FALSE(BackendFactory::is_zip_format(path));
 }
+
+TEST_F(BackendFactoryTest, SquashfsSupported_MatchesBuildFlag)
+{
+#ifdef TEBAKO_WITH_SQUASHFS
+  EXPECT_TRUE(BackendFactory::squashfs_supported());
+#else
+  EXPECT_FALSE(BackendFactory::squashfs_supported());
 #endif
+}
+
+TEST_F(BackendFactoryTest, SquashfsExtensionDetection)
+{
+  EXPECT_TRUE(BackendFactory::is_squashfs_extension("image.sqfs"));
+  EXPECT_TRUE(BackendFactory::is_squashfs_extension("IMAGE.SQUASHFS"));
+  EXPECT_TRUE(BackendFactory::is_squashfs_extension("/tmp/a/b.sqfs"));
+  EXPECT_FALSE(BackendFactory::is_squashfs_extension("image.zip"));
+  EXPECT_FALSE(BackendFactory::is_squashfs_extension("sqfs"));
+}
 
 // ===================================================================
 // Auto-Detection Tests

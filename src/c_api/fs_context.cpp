@@ -171,6 +171,38 @@ bool path_is_in_mount(std::string_view path, std::string_view mount)
 }
 
 /**
+ * @brief Check a memory buffer for the SquashFS magic ("hsqs"/"sqsh")
+ *
+ * Memory counterpart of BackendFactory::is_squashfs_format (plain byte
+ * check, no squashfs-tools-ng needed — available in every build).
+ */
+bool looks_like_squashfs(const void* data, size_t size)
+{
+  if (data == nullptr || size < 4) {
+    return false;
+  }
+  const auto* b = static_cast<const uint8_t*>(data);
+  return (b[0] == 'h' && b[1] == 's' && b[2] == 'q' && b[3] == 's') ||
+         (b[0] == 's' && b[1] == 'q' && b[2] == 's' && b[3] == 'h');
+}
+
+/**
+ * @brief errno for a failed backend creation
+ *
+ * A SquashFS image on a build without the SquashFS backend is a capability
+ * gap, not a bad argument: report ENOTSUP loudly instead of EINVAL. The
+ * check is magic-verified (a missing or corrupt .sqfs file still yields
+ * EINVAL, not a misleading capability error).
+ */
+int unsupported_format_errno(std::string_view archive_path)
+{
+  if (!BackendFactory::squashfs_supported() && BackendFactory::is_squashfs_format(std::string(archive_path))) {
+    return ENOTSUP;
+  }
+  return EINVAL;
+}
+
+/**
  * @brief Basename of a mount point for per-mount extraction subtrees
  *
  * Strips trailing slashes and returns the last path component;
@@ -1085,7 +1117,7 @@ int FsContext::mount_from_file_locked(std::string_view archive_path,
   // Whole-file mount: zero-copy path (backend reads/mmaps the file itself)
   auto filesystem = BackendFactory::create_from_file(std::string(archive_path));
   if (!filesystem) {
-    set_errno(EINVAL);
+    set_errno(unsupported_format_errno(archive_path));
     return -1;
   }
 
@@ -1158,7 +1190,10 @@ int FsContext::mount_from_file_at_locked(std::string_view archive_path,
 
   auto filesystem = BackendFactory::create_from_memory(buffer.get(), static_cast<size_t>(region));
   if (!filesystem) {
-    set_errno(EINVAL);
+    // A SquashFS region on a build without the backend: ENOTSUP, not EINVAL
+    set_errno(!BackendFactory::squashfs_supported() && looks_like_squashfs(buffer.get(), static_cast<size_t>(region))
+                  ? ENOTSUP
+                  : EINVAL);
     return -1;
   }
 
@@ -1185,7 +1220,8 @@ int FsContext::mount_from_memory_locked(const void* data,
   // Auto-detect format from memory
   auto filesystem = BackendFactory::create_from_memory(data, size);
   if (!filesystem) {
-    set_errno(EINVAL);
+    // A SquashFS image on a build without the backend: ENOTSUP, not EINVAL
+    set_errno(!BackendFactory::squashfs_supported() && looks_like_squashfs(data, size) ? ENOTSUP : EINVAL);
     return -1;
   }
 

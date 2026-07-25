@@ -184,8 +184,33 @@ class BackendFactory {
    * @return true if SquashFS format detected, false otherwise
    *
    * @note Returns false if file cannot be read or is too small
+   * @note Detection is available in every build (it is a plain byte check
+   *       and needs no squashfs-tools-ng), including builds where the
+   *       SquashFS backend itself is compiled out — see
+   *       squashfs_supported(). This lets tools report "SquashFS not
+   *       supported by this build" instead of a bare "unknown format".
    */
   static bool is_squashfs_format(const std::string& path);
+
+  /**
+   * @brief Detect if a path names a SquashFS image by extension
+   *
+   * @param path Path to check
+   * @return true for .sqfs / .squashfs (case-insensitive)
+   */
+  static bool is_squashfs_extension(const std::string& path);
+
+  /**
+   * @brief Whether this build includes the SquashFS backend
+   *
+   * The backend is POSIX-only (squashfs-tools-ng) and can also be disabled
+   * deliberately (-DWITH_SQUASHFS=OFF, e.g. consumer library packages that
+   * must not force the LGPL dependency onto consumers). Detection helpers
+   * above work in every build; this tells them apart.
+   *
+   * @return true if SquashFS images can actually be mounted
+   */
+  static bool squashfs_supported();
 
  private:
   // ===================================================================

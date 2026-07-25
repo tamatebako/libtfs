@@ -29,6 +29,7 @@
 
 #include <gtest/gtest.h>
 #include <tebako/fs/c_api.h>
+#include <tebako/fs/backend_factory.h>  // squashfs_supported() for the capability test
 
 #include <algorithm>
 #include <cstdio>
@@ -1940,4 +1941,45 @@ TEST(CApiAbiVersionTest, AbiVersion_MatchesHeaderConstant)
   // built with; adapters rely on this for load-time feature detection
   EXPECT_EQ(TEBAKO_FS_ABI_VERSION, tebako_fs_abi_version());
   EXPECT_GE(tebako_fs_abi_version(), 1);
+}
+
+// ============================================================
+// SquashFS Capability Reporting Tests
+// ============================================================
+
+/**
+ * Mounting a SquashFS image must succeed on builds that include the
+ * SquashFS backend and report ENOTSUP loudly on builds that do not
+ * (release consumer-library builds are WITH_SQUASHFS=OFF; a capability
+ * gap must never surface as a bare "unknown format"). Runs green in both
+ * configurations.
+ *
+ * NOTE: Shares the global C API state; serialized via RESOURCE_LOCK like
+ * the other test_c_api tests.
+ */
+TEST(CApiSquashfsCapabilityTest, MountSquashfs_CapabilityMatchesErrno)
+{
+  const char* fixture = "tests/fixtures/squashfs/simple.sqfs";
+  if (!fs::exists(fixture)) {
+    GTEST_SKIP() << "SquashFS fixtures not generated in this build tree";
+  }
+
+  tebako_fs_unmount();
+  int rc = tebako_fs_init_from_file(fixture, "/__sqfs_cap__");
+
+  if (tebako::fs::BackendFactory::squashfs_supported()) {
+    ASSERT_EQ(0, rc) << "errno=" << tebako_get_errno();
+    int fd = tebako_fs_open("/__sqfs_cap__/test.txt", O_RDONLY);
+    ASSERT_GT(fd, 0);
+    char buf[32] = {0};
+    ssize_t n = tebako_fs_read(fd, buf, sizeof(buf) - 1);
+    EXPECT_GT(n, 0);
+    EXPECT_STREQ("Hello from SquashFS!\n", buf);
+    tebako_fs_close(fd);
+    tebako_fs_unmount();
+  }
+  else {
+    EXPECT_EQ(-1, rc);
+    EXPECT_EQ(ENOTSUP, tebako_get_errno()) << "no-squashfs builds must report ENOTSUP, not a generic error";
+  }
 }
