@@ -1,0 +1,13 @@
+# ELF version script for the shared libtfs (libtfs.so).
+#
+# The shared build exports ONLY the public C ABI (tebako_*): every C++
+# symbol and every statically-linked third-party dependency symbol stays
+# local. The anonymous version node keeps the exported names unversioned
+# (plain `tebako_fs_open`, not `tebako_fs_open@@NODE`) so FFI adapters
+# bind them without version gymnastics.
+{
+  global:
+    tebako_*;
+  local:
+    *;
+};

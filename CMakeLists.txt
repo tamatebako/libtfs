@@ -441,7 +441,7 @@ configure_file(
   ${CMAKE_CURRENT_SOURCE_DIR}/include/tebako-config.h
 )
 
-add_library(tfs STATIC
+set(TFS_SOURCES
     "src/backend_factory.cpp"
     "src/backends/zip_backend.cpp"
     "src/backends/dwarfs_backend.cpp"
@@ -463,6 +463,8 @@ add_library(tfs STATIC
     "include/tebako/fs/c_api.h"
     "include/tebako/fs/backend_registry.h"
   )
+
+add_library(tfs STATIC ${TFS_SOURCES})
 
 
 # SquashFS backend sources (POSIX-only; see WITH_SQUASHFS option above)
@@ -502,6 +504,89 @@ if(WITH_SQUASHFS)
   target_link_libraries(tfs PUBLIC squashfs-tools-ng::squashfs)
 endif()
 
+# ===================================================================
+# Shared library (libtfs.so / libtfs.dylib) with restricted exports
+# ===================================================================
+#
+# The shared build exports ONLY the public C ABI (tebako_*); all C++
+# internals and every statically-linked third-party dependency symbol
+# stay hidden, enforced at link time:
+#   - ELF (Linux): version script      (cmake/libtfs.map)
+#   - macOS:       exported-symbols list (cmake/libtfs.exports)
+# Windows (.dll/.def) is deferred to the release pipeline.
+#
+# The static libtfs.a is the primary artifact and is untouched; the
+# shared target recompiles the same sources with PIC instead of
+# reusing the static archive.
+#
+# NOTE (Linux): linking the vcpkg static dependency archives into a
+# shared object requires them to be built with -fPIC. vcpkg's default
+# static triplets do not do that; the shared Linux build needs a
+# PIC-enabled overlay triplet (release pipeline concern). On macOS all
+# code is PIC and the shared build works as-is.
+option(WITH_SHARED_LIBTFS "Build the shared libtfs (libtfs.so/libtfs.dylib) exporting only the tebako_* C ABI" ON)
+
+if(WITH_SHARED_LIBTFS AND NOT IS_WINDOWS)
+  add_library(tfs_shared SHARED ${TFS_SOURCES})
+  set_target_properties(tfs_shared PROPERTIES
+    OUTPUT_NAME tfs
+    POSITION_INDEPENDENT_CODE ON
+  )
+
+  # Mirrors of the tfs target's compile-time setup (kept PRIVATE here:
+  # consumers of the shared library need nothing but the C ABI header)
+  target_compile_definitions(tfs_shared PRIVATE $<$<BOOL:${WITH_SQUASHFS}>:TEBAKO_WITH_SQUASHFS>)
+  if(VCPKG_INSTALLED_DIR AND VCPKG_TARGET_TRIPLET)
+    target_include_directories(tfs_shared BEFORE PRIVATE
+      "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/include"
+    )
+  endif()
+  target_link_libraries(tfs_shared PRIVATE libzip::zip dwarfs::dwarfs_c)
+  if(WITH_SQUASHFS)
+    target_sources(tfs_shared PRIVATE "src/backends/squashfs_backend.cpp")
+    target_link_libraries(tfs_shared PRIVATE squashfs-tools-ng::squashfs)
+  endif()
+
+  if(APPLE)
+    target_link_options(tfs_shared PRIVATE
+      "LINKER:-exported_symbols_list,${CMAKE_CURRENT_SOURCE_DIR}/cmake/libtfs.exports")
+  else()
+    target_link_options(tfs_shared PRIVATE
+      "LINKER:--version-script=${CMAKE_CURRENT_SOURCE_DIR}/cmake/libtfs.map")
+  endif()
+endif()
+
+# ===================================================================
+# pkg-config (libtfs.pc) for static and shared consumption
+# ===================================================================
+#
+# Shared consumption (the advertised path): `-ltfs` is all a consumer
+# needs. Static consumption via `pkg-config --static` additionally gets
+# the transitive closure: .pc-shipping dependencies through
+# Requires.private, the dwarfs/boost libraries (which ship no .pc files)
+# through Libs.private. The precise static route remains the libtfs
+# CMake package config or the libtfs-deps release package.
+set(TFS_PC_REQUIRES_PRIVATE
+  "libzip zlib liblzma libzstd liblz4 libxxhash bzip2 libbrotlicommon libbrotlienc libbrotlidec libcrypto fmt")
+set(TFS_PC_LIBS_PRIVATE
+  "-ldwarfs_c -ldwarfs_reader -ldwarfs_decompressor -ldwarfs_metadata_legacy -ldwarfs_common -lboost_filesystem -lboost_program_options -lboost_process -lboost_context -lboost_chrono -lboost_date_time -lboost_container -lboost_atomic -ldl -lm")
+if(WITH_SQUASHFS)
+  string(APPEND TFS_PC_LIBS_PRIVATE " -lsquashfs")
+endif()
+
+# Installed variant (prefix-relative)
+set(PC_PREFIX "${CMAKE_INSTALL_PREFIX}")
+set(PC_LIBDIR "\${prefix}/${CMAKE_INSTALL_LIBDIR}")
+set(PC_INCLUDEDIR "\${prefix}/${CMAKE_INSTALL_INCLUDEDIR}")
+configure_file("libtfs.pc.in" "${CMAKE_CURRENT_BINARY_DIR}/pkgconfig-install/libtfs.pc" @ONLY)
+install(FILES "${CMAKE_CURRENT_BINARY_DIR}/pkgconfig-install/libtfs.pc" DESTINATION "${CMAKE_INSTALL_LIBDIR}/pkgconfig")
+
+# Build-tree variant consumed by the adapter_smoke_c test
+set(PC_PREFIX "${CMAKE_CURRENT_BINARY_DIR}")
+set(PC_LIBDIR "${CMAKE_CURRENT_BINARY_DIR}")
+set(PC_INCLUDEDIR "${CMAKE_CURRENT_SOURCE_DIR}/include")
+configure_file("libtfs.pc.in" "${CMAKE_CURRENT_BINARY_DIR}/pkgconfig/libtfs.pc" @ONLY)
+
 # Find argtable3 for CLI tool
 # NOTE: the vcpkg port installs Argtable3Config.cmake (capital A); the
 # lowercase name only resolves on case-insensitive filesystems (macOS/Windows)
@@ -528,8 +613,13 @@ if(WITH_JEMALLOC_BUILD)
   add_dependencies(tfs ${JEMALLOC_PRJ})
 endif(WITH_JEMALLOC_BUILD)
 
+set(TFS_INSTALL_TARGETS tfs)
+if(TARGET tfs_shared)
+  list(APPEND TFS_INSTALL_TARGETS tfs_shared)
+endif()
+
 install(TARGETS
-         tfs
+         ${TFS_INSTALL_TARGETS}
          EXPORT libtfsTargets
          LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
          ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
@@ -787,6 +877,23 @@ if (WITH_TESTS)
   gtest_add_tests(TARGET test_extraction TEST_LIST extraction_tests)
   # Extraction tests also use C API global state and must not run in parallel with C API tests
   set_tests_properties(${extraction_tests} PROPERTIES RESOURCE_LOCK "capi_global_state")
+
+  # Adapter smoke: compile a C consumer against the SHARED libtfs using
+  # pkg-config flags, prove it binds the shared library, and read a file
+  # from a ZIP fixture through the public C ABI (runs in its own process,
+  # so no capi_global_state lock is needed)
+  if(TARGET tfs_shared)
+    add_test(NAME adapter_smoke_c
+      COMMAND ${CMAKE_COMMAND}
+        -DSMOKE_CC=${CMAKE_C_COMPILER}
+        -DSMOKE_SRC=${CMAKE_CURRENT_SOURCE_DIR}/tests/adapter_smoke.c
+        -DSMOKE_BIN=${CMAKE_CURRENT_BINARY_DIR}/adapter_smoke_c
+        -DSMOKE_PKG_CONFIG_PATH=${CMAKE_CURRENT_BINARY_DIR}/pkgconfig
+        -DSMOKE_DEPS_PC_PATH=${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/lib/pkgconfig
+        -DSMOKE_FIXTURE=${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/zip/simple.zip
+        -DSMOKE_LIBDIR=${CMAKE_CURRENT_BINARY_DIR}
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/run_adapter_smoke.cmake)
+  endif()
 
   # Result<T, Error> type tests
   add_executable(test_result

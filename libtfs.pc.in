@@ -1,0 +1,20 @@
+prefix=@PC_PREFIX@
+exec_prefix=${prefix}
+libdir=@PC_LIBDIR@
+includedir=@PC_INCLUDEDIR@
+
+Name: libtfs
+Description: Tebako filesystem library - mount dwarfs/zip/squashfs images attached to binaries
+URL: https://github.com/tamatebako/libtfs
+Version: @PROJECT_VERSION@
+# Shared consumption (the advertised path): -ltfs is all a consumer needs;
+# every backend and third-party dependency lives inside the shared library.
+Libs: -L${libdir} -ltfs
+# Static consumption (pkg-config --static): the full transitive closure.
+# Best effort — the precise paths for static consumers are the libtfs
+# CMake package config (libtfsConfig.cmake, which find_dependency()s the
+# backend packages) or the libtfs-deps-<version>-<platform> release
+# package. dwarfs ships no .pc file, so its libraries are listed directly.
+Requires.private: @TFS_PC_REQUIRES_PRIVATE@
+Libs.private: @TFS_PC_LIBS_PRIVATE@
+Cflags: -I${includedir}

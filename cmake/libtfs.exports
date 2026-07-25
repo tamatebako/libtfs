@@ -1,0 +1,39 @@
+# Exported-symbols list for the shared libtfs (libtfs.dylib on macOS).
+#
+# The shared build exports ONLY the public C ABI. Unlike the ELF version
+# script (cmake/libtfs.map), ld64 takes no wildcards here, so this list is
+# the explicit, reviewable ABI gate: adding a public C API function REQUIRES
+# adding it to this file on purpose. Keep sorted.
+_tebako_fd_is_embedded
+_tebako_fs_abi_version
+_tebako_fs_close
+_tebako_fs_closedir
+_tebako_fs_dir_is_embedded
+_tebako_fs_dlmap2file
+_tebako_fs_extract_all
+_tebako_fs_fstat
+_tebako_fs_init
+_tebako_fs_init_from_file
+_tebako_fs_init_from_file_at
+_tebako_fs_lseek
+_tebako_fs_mount_from_file
+_tebako_fs_mount_from_file_at
+_tebako_fs_mount_from_memory
+_tebako_fs_open
+_tebako_fs_opendir
+_tebako_fs_pread
+_tebako_fs_read
+_tebako_fs_readdir
+_tebako_fs_rewinddir
+_tebako_fs_seekdir
+_tebako_fs_stat
+_tebako_fs_telldir
+_tebako_fs_unmount
+_tebako_fs_unmount_handle
+_tebako_get_archive_path
+_tebako_get_backend_name
+_tebako_get_errno
+_tebako_get_mount_point
+_tebako_is_initialized
+_tebako_path_is_embedded
+_tebako_strerror
