@@ -364,10 +364,56 @@ jobs:
         shell: bash
         run: cmake --install build --prefix "$PWD/stage"
 
+      - name: Build tebakofs with SquashFS (POSIX)
+        # The consumer library packages stay WITH_SQUASHFS=OFF (LGPL
+        # squashfs-tools-ng must not be forced onto consumers), but the
+        # shipped tebakofs tool must mount SquashFS on every platform where
+        # the POSIX-only backend builds. Build the tool from a second,
+        # squashfs-enabled configure of the same tree (vcpkg artifacts are
+        # shared; only libtfs and the tool recompile).
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          cmake -S . -B build-sqfs -G Ninja -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" -DCMAKE_BUILD_TYPE=Release -DWITH_SQUASHFS=ON
+          cmake --build build-sqfs --parallel --target tebakofs
+          cmake --install build-sqfs --prefix "$PWD/stage-sqfs"
+
+      - name: SquashFS capability smoke (POSIX)
+        # Fail loudly if a shipped POSIX tebakofs ever loses the ability to
+        # read a SquashFS image again (v0.13.0 shipped one that could not;
+        # found downstream by the tebako-rs golden tests).
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$(stage-sqfs/bin/tebakofs ls .github/fixtures/smoke.sqfs)"
+          echo "$out"
+          echo "$out" | grep -q "test.txt" || { echo "ERROR: POSIX tebakofs cannot read .github/fixtures/smoke.sqfs"; exit 1; }
+
       - name: Install (Windows)
         if: runner.os == 'Windows'
         shell: msys2 {0}
         run: cmake --install build --prefix "$(cygpath -m "$GITHUB_WORKSPACE")/stage"
+
+      - name: SquashFS capability smoke (Windows)
+        # The SquashFS backend is POSIX-only, so the Windows tebakofs cannot
+        # mount .sqfs images — but it must REPORT that capability gap loudly
+        # (dedicated message, non-zero exit) rather than fail with a bare
+        # "unsupported format". Fail the release if that regresses.
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: |
+          set -uo pipefail
+          out="$(stage/bin/tebakofs ls .github/fixtures/smoke.sqfs 2>&1)" && rc=0 || rc=$?
+          echo "$out"
+          if [ "$rc" -eq 0 ]; then
+            echo "ERROR: Windows tebakofs unexpectedly read a SquashFS image"
+            exit 1
+          fi
+          echo "$out" | grep -q "does NOT include SquashFS support" || {
+            echo "ERROR: Windows tebakofs does not report the missing SquashFS capability loudly"
+            exit 1
+          }
 
       - name: Package (Linux/macOS/musl)
         # The tarball mirrors the install prefix: lib/ (libtfs.a,
@@ -380,7 +426,7 @@ jobs:
           mkdir -p artifacts
           tar -C stage -czf "artifacts/libtfs-${{ env.version }}-${{ matrix.platform }}.tar.gz" lib include
           cp stage/bin/mkdwarfs "artifacts/mkdwarfs-${{ matrix.platform }}"
-          cp stage/bin/tebakofs "artifacts/tebakofs-${{ matrix.platform }}"
+          cp stage-sqfs/bin/tebakofs "artifacts/tebakofs-${{ matrix.platform }}"
           chmod +x artifacts/mkdwarfs-* artifacts/tebakofs-*
           echo "== binary linkage =="
           if [ "$RUNNER_OS" = "macOS" ]; then
@@ -528,6 +574,15 @@ jobs:
         shell: bash
         run: docker exec muslbuild bash -lc 'ctest --test-dir /w/build --output-on-failure --parallel'
 
+      - name: Build tebakofs with SquashFS + capability smoke (container)
+        # Same two-config split as the other POSIX legs: consumer packages
+        # stay WITH_SQUASHFS=OFF; the shipped tool mounts SquashFS, proven
+        # by the capability smoke right here in the release job.
+        shell: bash
+        run: |
+          docker exec muslbuild bash -lc 'cmake -S /w -B /w/build-sqfs -G Ninja -DCMAKE_TOOLCHAIN_FILE=/opt/vcpkg/scripts/buildsystems/vcpkg.cmake -DCMAKE_BUILD_TYPE=Release -DWITH_SQUASHFS=ON && cmake --build /w/build-sqfs --parallel --target tebakofs && cmake --install /w/build-sqfs --prefix /w/stage-sqfs'
+          docker exec muslbuild bash -lc 'set -euo pipefail; out="$(/w/stage-sqfs/bin/tebakofs ls /w/.github/fixtures/smoke.sqfs)"; echo "$out"; echo "$out" | grep -q "test.txt"'
+
       - name: Install and package (container)
         shell: bash
         run: |
@@ -537,7 +592,7 @@ jobs:
             mkdir -p /w/artifacts
             tar -C /w/stage -czf "/w/artifacts/libtfs-${{ env.version }}-${{ env.PLATFORM }}.tar.gz" lib include
             cp /w/stage/bin/mkdwarfs "/w/artifacts/mkdwarfs-${{ env.PLATFORM }}"
-            cp /w/stage/bin/tebakofs "/w/artifacts/tebakofs-${{ env.PLATFORM }}"
+            cp /w/stage-sqfs/bin/tebakofs "/w/artifacts/tebakofs-${{ env.PLATFORM }}"
             chmod +x /w/artifacts/mkdwarfs-* /w/artifacts/tebakofs-*'
 
       - name: Package deps (container)
@@ -667,10 +722,19 @@ jobs:
           The Windows package ships the modern C/C++ API only (the legacy tebako
           API needs the ruby build context).
 
-          SquashFS: shipped artifacts are built `WITH_SQUASHFS=OFF` — the
-          backends are dwarfs + zip only, so consumers are not forced to link
-          LGPL squashfs-tools-ng. POSIX source builds may opt into the SquashFS
-          backend (LGPL) with `-DWITH_SQUASHFS=ON`.
+          SquashFS: the shipped `tebakofs` binaries on POSIX platforms (gnu,
+          musl, macOS) include the SquashFS backend (LGPL-3.0
+          squashfs-tools-ng, statically linked; tebakofs is built from the
+          same sources as libtfs and ships with full source and build
+          scripts, keeping relinking possible) and read `.sqfs` images out of
+          the box — a release-time capability smoke proves it on every POSIX
+          leg. The Windows `tebakofs` does not include the POSIX-only backend
+          and reports SquashFS images as unsupported loudly (dedicated
+          message + non-zero exit, also smoke-checked). The libtfs consumer
+          packages are unchanged: `libtfs.a` is built `WITH_SQUASHFS=OFF` —
+          dwarfs + zip only, so consumers are never forced to link LGPL
+          squashfs-tools-ng. POSIX source builds may opt into the backend
+          with `-DWITH_SQUASHFS=ON` (the default).
 
           SHA-256 checksums for all artifacts: see the `SHA256SUMS` asset.
           EOF
