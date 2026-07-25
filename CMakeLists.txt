@@ -985,12 +985,13 @@ if (WITH_TESTS)
   )
   gtest_add_tests(TARGET test_unified_interface)
 
-  # Copy test fixtures to build directory
+  # Copy test fixtures to build directory. The squashfs fixtures are copied
+  # unconditionally: the capability-reporting test
+  # (CApiSquashfsCapabilityTest) consumes them precisely in WITH_SQUASHFS=OFF
+  # builds, where it asserts the ENOTSUP path.
   file(COPY tests/fixtures/zip DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tests/fixtures)
   file(COPY tests/fixtures/dwarfs DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tests/fixtures)
-  if(WITH_SQUASHFS)
-    file(COPY tests/fixtures/squashfs DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tests/fixtures)
-  endif()
+  file(COPY tests/fixtures/squashfs DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tests/fixtures)
 
 endif(WITH_TESTS)
 

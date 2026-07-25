@@ -547,7 +547,17 @@ std::unique_ptr<FileSystem> TebakofsCLI::open_archive(const std::string& path)
     auto backend = BackendFactory::create_from_file(path);
     if (!backend) {
       std::cerr << "Error: Failed to open archive: " << path << std::endl;
-      std::cerr << "       Unsupported format or file does not exist" << std::endl;
+      if (!BackendFactory::squashfs_supported() && BackendFactory::is_squashfs_format(path)) {
+        // A SquashFS image on a build without the backend is a capability
+        // gap, not an unknown format — say so loudly (ENOTSUP-style)
+        std::cerr << "       SquashFS image detected, but this tebakofs build does NOT include SquashFS support"
+                  << std::endl;
+        std::cerr << "       (the SquashFS backend is POSIX-only; build with -DWITH_SQUASHFS=ON on a POSIX platform)"
+                  << std::endl;
+      }
+      else {
+        std::cerr << "       Unsupported format or file does not exist" << std::endl;
+      }
       return nullptr;
     }
 

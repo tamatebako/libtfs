@@ -54,11 +54,12 @@ constexpr uint8_t DWARFS_MAGIC[] = {'D', 'W', 'A', 'R', 'F', 'S'};
 constexpr uint8_t ZIP_LOCAL_MAGIC[] = {0x50, 0x4B, 0x03, 0x04};    // PK\x03\x04
 constexpr uint8_t ZIP_CENTRAL_MAGIC[] = {0x50, 0x4B, 0x05, 0x06};  // PK\x05\x06
 
-// SquashFS: "hsqs" (LE) or "sqsh" (BE) at offset 0
-#ifdef TEBAKO_WITH_SQUASHFS
+// SquashFS: "hsqs" (LE) or "sqsh" (BE) at offset 0.
+// Detection stays available in every build (plain byte check, no
+// squashfs-tools-ng needed) so tools can report "SquashFS not supported
+// by this build" loudly instead of a bare "unknown format".
 constexpr uint8_t SQUASHFS_MAGIC_LE[] = {0x68, 0x73, 0x71, 0x73};  // "hsqs"
 constexpr uint8_t SQUASHFS_MAGIC_BE[] = {0x73, 0x71, 0x73, 0x68};  // "sqsh"
-#endif
 
 constexpr size_t MAX_MAGIC_SIZE = 16;
 }  // namespace
@@ -202,7 +203,6 @@ bool BackendFactory::is_zip_format(const std::string& path)
 
 bool BackendFactory::is_squashfs_format(const std::string& path)
 {
-#ifdef TEBAKO_WITH_SQUASHFS
   uint8_t buffer[MAX_MAGIC_SIZE] = {0};
 
   if (!read_magic_bytes(path, buffer, sizeof(SQUASHFS_MAGIC_LE))) {
@@ -220,9 +220,18 @@ bool BackendFactory::is_squashfs_format(const std::string& path)
   }
 
   return false;
+}
+
+bool BackendFactory::is_squashfs_extension(const std::string& path)
+{
+  return has_extension(path, ".sqfs") || has_extension(path, ".squashfs");
+}
+
+bool BackendFactory::squashfs_supported()
+{
+#ifdef TEBAKO_WITH_SQUASHFS
+  return true;
 #else
-  // SquashFS support is not compiled in; the format is never detected
-  (void)path;
   return false;
 #endif
 }
