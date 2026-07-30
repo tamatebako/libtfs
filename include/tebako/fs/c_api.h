@@ -665,6 +665,28 @@ int tebako_fs_extract_all(const char* dest_path);
  */
 char* tebako_fs_dlmap2file(const char* path);
 
+/**
+ * @brief Serialize the mount table in the TEBAKO_TFS_MOUNTS grammar
+ * ("image:mount,image:mount,…").
+ *
+ * A spawned child re-establishes the namespace from this: the spawn hook
+ * writes it into the child's environment (the preload shim parses the
+ * same grammar). Only file-backed mounts serialize; memory mounts are
+ * skipped (a child cannot remount them).
+ *
+ * @return Heap-allocated string (free with libc free()); NULL when
+ *         nothing file-backed is mounted.
+ *
+ * @code
+ * char* mounts = tebako_fs_mounts();
+ * if (mounts != NULL) {
+ *     setenv("TEBAKO_TFS_MOUNTS", mounts, 1);
+ *     free(mounts);
+ * }
+ * @endcode
+ */
+char* tebako_fs_mounts(void);
+
 /* ============================================================
  * Utility Functions
  * ============================================================ */
