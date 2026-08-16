@@ -581,11 +581,20 @@ set(PC_INCLUDEDIR "\${prefix}/${CMAKE_INSTALL_INCLUDEDIR}")
 configure_file("libtfs.pc.in" "${CMAKE_CURRENT_BINARY_DIR}/pkgconfig-install/libtfs.pc" @ONLY)
 install(FILES "${CMAKE_CURRENT_BINARY_DIR}/pkgconfig-install/libtfs.pc" DESTINATION "${CMAKE_INSTALL_LIBDIR}/pkgconfig")
 
-# Build-tree variant consumed by the adapter_smoke_c test
+# Build-tree variant consumed by the adapter_smoke_c test.
 set(PC_PREFIX "${CMAKE_CURRENT_BINARY_DIR}")
 set(PC_LIBDIR "${CMAKE_CURRENT_BINARY_DIR}")
 set(PC_INCLUDEDIR "${CMAKE_CURRENT_SOURCE_DIR}/include")
-configure_file("libtfs.pc.in" "${CMAKE_CURRENT_BINARY_DIR}/pkgconfig/libtfs.pc" @ONLY)
+# NOTE the extra lib/ level: native Windows pkg-config/pkgconf performs
+# automatic prefix relocation for .pc files — it assumes the standard
+# <prefix>/<libdir-name>/pkgconfig layout and recomputes `prefix` as the
+# pkgconfig dir's GRANDPARENT, rewriting every variable that starts with
+# the original prefix. Generated directly in build/pkgconfig, `build` is
+# mistaken for the libdir component and prefix (and thus libdir) is
+# yanked up to the source root — ld then fails with "cannot find -ltfs".
+# At build/lib/pkgconfig the relocation lands exactly on the build dir
+# and every path survives intact. Do NOT "simplify" the lib/ away.
+configure_file("libtfs.pc.in" "${CMAKE_CURRENT_BINARY_DIR}/lib/pkgconfig/libtfs.pc" @ONLY)
 
 # Find argtable3 for CLI tool
 # NOTE: the vcpkg port installs Argtable3Config.cmake (capital A); the
@@ -888,7 +897,7 @@ if (WITH_TESTS)
         -DSMOKE_CC=${CMAKE_C_COMPILER}
         -DSMOKE_SRC=${CMAKE_CURRENT_SOURCE_DIR}/tests/adapter_smoke.c
         -DSMOKE_BIN=${CMAKE_CURRENT_BINARY_DIR}/adapter_smoke_c
-        -DSMOKE_PKG_CONFIG_PATH=${CMAKE_CURRENT_BINARY_DIR}/pkgconfig
+        -DSMOKE_PKG_CONFIG_PATH=${CMAKE_CURRENT_BINARY_DIR}/lib/pkgconfig
         -DSMOKE_DEPS_PC_PATH=${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/lib/pkgconfig
         -DSMOKE_FIXTURE=${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/zip/simple.zip
         -DSMOKE_LIBDIR=${CMAKE_CURRENT_BINARY_DIR}
