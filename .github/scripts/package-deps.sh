@@ -30,7 +30,12 @@ SHIP_TOOLCHAIN_RT="${SHIP_TOOLCHAIN_RT:-0}"
 
 cd "$WORKDIR"
 
-VILIB=$(ls -d build/vcpkg_installed/*/lib | head -1)
+# Exactly one triplet dir is expected under vcpkg_installed; take the first
+# sorted match and die loudly when the tree is missing (SC2012: no ls).
+shopt -s nullglob
+vi_libdirs=( build/vcpkg_installed/*/lib )
+shopt -u nullglob
+VILIB="${vi_libdirs[0]:?no build/vcpkg_installed/*/lib — run vcpkg install first}"
 VIROOT=$(dirname "$VILIB")
 LIBS="$DEPS_LIBS"
 SHARES="$DEPS_SHARES"
