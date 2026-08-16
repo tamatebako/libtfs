@@ -1,11 +1,17 @@
 # vcpkg portfile for dwarfs
 # DwarFS - A fast high-compression read-only file system
-# Source: tamatebako/dwarfs-t fork, commit d9ebfef7 (main HEAD 2026-08-08;
-# ships the stable C ABI reader binding libdwarfs_c / dwarfs_c.h, installed
-# via dwarfs-targets). Pin ONLY commits reachable from dwarfs-t main —
-# the previous pin (1a43690c, bumped for the writer binding) was a
-# pre-merge PR-branch sha that GitHub GC'd after the rebase-merge; its
-# archive tarball started 404ing and took every CI leg down with it.
+# Source: tamatebako/dwarfs-t fork, tag v1.0.0 (commit d9ebfef7; ships the
+# stable C ABI reader binding libdwarfs_c / dwarfs_c.h, installed via
+# dwarfs-targets).
+#
+# PIN CONTRACT (owner decision 2026-08-16): pin TAGS of dwarfs-t, never
+# bare commit shas. A pre-merge PR-branch sha can be orphaned by a
+# rebase-merge and garbage-collected by GitHub — the 1a43690c pin's
+# archive tarball started 404ing and took every CI leg down with it
+# (~3 weeks of red main). Tags are immutable anchors: a tag never moves,
+# a new release is a new tag. The pin-guard workflow enforces this at PR
+# time (REF must be an existing dwarfs-t tag, or — exceptionally — a sha
+# proven reachable from dwarfs-t main).
 
 vcpkg_check_linkage(ONLY_STATIC_LIBRARY)
 
@@ -22,8 +28,8 @@ endif()
 vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
     REPO tamatebako/dwarfs-t
-    REF d9ebfef7ca970ca6b7c8fe0e5716f71b321f9d4a
-    SHA512 5ccfa704e83d8175e78bb8860baa8ef5d3accc16ca3dcaf93cc0f2a2d708f4bae7095e094e7bad0f6edaef486d908c1a5175b6122b229a48b99707c4385c6b60
+    REF v1.0.0
+    SHA512 a0c70dd535cdcc3ad0967600fe41b21f52020b2f13a2a2c4b424f13019c22fd8c41a4a6e84a9717380bfe1dd11ea5658f0680cb614ae5ea789c0a5fe08e15051
     HEAD_REF main
 )
 
