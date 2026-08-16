@@ -1,0 +1,57 @@
+name: Pin guard
+
+# Enforces the dwarfs-t pin contract (owner decision 2026-08-16, see
+# vcpkg-overlay/dwarfs/portfile.cmake): REF must be an existing dwarfs-t
+# TAG — or, exceptionally, a 40-hex sha proven reachable from dwarfs-t
+# main. A pinned sha that is not on main can be orphaned by a
+# rebase-merge and garbage-collected by GitHub; its archive tarball then
+# 404s and takes every CI leg down with it (the 1a43690c incident, #168).
+
+on:
+  pull_request:
+    paths:
+      - 'vcpkg-overlay/**'
+  push:
+    branches: [main]
+    paths:
+      - 'vcpkg-overlay/**'
+
+permissions:
+  contents: read
+
+jobs:
+  dwarfs-pin:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract the pinned REF
+        id: pin
+        run: |
+          REF=$(sed -n 's/^[[:space:]]*REF[[:space:]]\{1,\}\([^[:space:]]\{1,\}\)$/\1/p' vcpkg-overlay/dwarfs/portfile.cmake | head -1)
+          test -n "$REF" || { echo "::error::no REF found in vcpkg-overlay/dwarfs/portfile.cmake"; exit 1; }
+          echo "ref=$REF" >> "$GITHUB_OUTPUT"
+
+      - name: Assert the pin is a dwarfs-t tag or a main-reachable sha
+        run: |
+          set -euo pipefail
+          REF="${{ steps.pin.outputs.ref }}"
+          if git ls-remote --tags https://github.com/tamatebako/dwarfs-t "refs/tags/$REF" | grep -q .; then
+            echo "OK: '$REF' is an existing dwarfs-t tag (immutable anchor)."
+            exit 0
+          fi
+          if [[ "$REF" =~ ^[0-9a-f]{40}$ ]]; then
+            # Exceptional sha pin: must be reachable from dwarfs-t main.
+            rm -rf /tmp/dwarfs-t-check
+            git clone --quiet --filter=blob:none --no-checkout https://github.com/tamatebako/dwarfs-t /tmp/dwarfs-t-check
+            git -C /tmp/dwarfs-t-check fetch --quiet origin "$REF" || { echo "::error::sha $REF does not exist in tamatebako/dwarfs-t (GC'd or never pushed?)"; exit 1; }
+            if git -C /tmp/dwarfs-t-check merge-base --is-ancestor "$REF" origin/main; then
+              echo "OK: sha $REF is reachable from dwarfs-t main."
+              echo "::warning::sha pins are the exception — prefer a dwarfs-t tag (see the pin contract in the portfile)."
+              exit 0
+            fi
+            echo "::error::sha $REF exists but is NOT reachable from dwarfs-t main — a rebase-merge can orphan and GC it. Pin a tag instead."
+            exit 1
+          fi
+          echo "::error::REF '$REF' is neither an existing dwarfs-t tag nor a 40-hex sha."
+          exit 1

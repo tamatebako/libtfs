@@ -1,6 +1,6 @@
 {
   "name": "dwarfs",
-  "version": "0.14.1",
+  "version": "1.0.0",
   "description": "DwarFS - A fast high-compression read-only file system",
   "homepage": "https://github.com/tamatebako/dwarfs-t",
   "license": "GPL-3.0-or-later",
