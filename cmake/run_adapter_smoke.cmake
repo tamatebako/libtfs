@@ -14,8 +14,17 @@ if(NOT PKG_CONFIG_EXECUTABLE)
   message(FATAL_ERROR "pkg-config not found; cannot run the adapter smoke")
 endif()
 
+# PKG_CONFIG_PATH list separator is platform-dependent: native Windows
+# pkg-config/pkgconf builds split on ';' (a ':' is eaten by the drive
+# letter, turning two dirs into one garbage path). Unix uses ':'.
+if(CMAKE_HOST_WIN32)
+  set(PC_PATH_SEP ";")
+else()
+  set(PC_PATH_SEP ":")
+endif()
+
 execute_process(
-  COMMAND ${CMAKE_COMMAND} -E env "PKG_CONFIG_PATH=${SMOKE_PKG_CONFIG_PATH}:${SMOKE_DEPS_PC_PATH}"
+  COMMAND ${CMAKE_COMMAND} -E env "PKG_CONFIG_PATH=${SMOKE_PKG_CONFIG_PATH}${PC_PATH_SEP}${SMOKE_DEPS_PC_PATH}"
           ${PKG_CONFIG_EXECUTABLE} --cflags --libs libtfs
   RESULT_VARIABLE PC_RC
   OUTPUT_VARIABLE PC_FLAGS
