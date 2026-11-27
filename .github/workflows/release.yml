@@ -130,7 +130,7 @@ jobs:
           # JavaScript actions in Alpine containers on ARM64 runners, so it
           # has a dedicated docker-exec job below (build-musl-arm64).
           - platform: macos-arm64
-            os: macos-14
+            os: macos-15
           - platform: macos-x86_64
             os: macos-15-intel
           - platform: windows-ucrt64
@@ -714,7 +714,7 @@ jobs:
             `libgcc_eh.a` so consumers on older toolchains can still close
             the static link.
           - `macos-*`: dynamic macOS system libraries only (libSystem, libc++;
-            built on `macos-14` / `macos-15-intel`).
+            built on `macos-15` / `macos-15-intel`).
           - `windows-ucrt64`: dynamic UCRT + MSYS2 runtime DLLs
             (`libgcc_s_seh-1.dll`, plus `libwinpthread-1.dll`/`libstdc++-6.dll`
             for mkdwarfs); run inside MSYS2 UCRT64 or ship those DLLs alongside.
